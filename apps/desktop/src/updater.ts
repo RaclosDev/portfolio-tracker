@@ -49,8 +49,28 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     const data = (await res.json()) as { sha: string; commit?: { committer?: { date?: string } } };
     etag = res.headers.get('etag');
     latest = { sha: data.sha, date: data.commit?.committer?.date ?? null };
+    verified = false;
   }
-  return latest && latest.sha !== env.sha ? latest : null;
+  if (!latest || latest.sha === env.sha) return null;
+  // Solo se instalan versiones que han pasado la verificación de GitHub Actions (job «verificar»).
+  if (!verified) verified = await passedVerification(latest.sha);
+  return verified ? latest : null;
+}
+
+let verified = false;
+
+async function passedVerification(sha: string) {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${env.repo}/commits/${sha}/check-runs?check_name=verificar`, {
+      headers: { Accept: 'application/vnd.github+json', ...UA },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return false;
+    const data = (await res.json()) as { check_runs?: { status: string; conclusion: string | null }[] };
+    return (data.check_runs ?? []).some((r) => r.status === 'completed' && r.conclusion === 'success');
+  } catch {
+    return false;
+  }
 }
 
 /**

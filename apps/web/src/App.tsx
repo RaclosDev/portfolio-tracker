@@ -182,6 +182,12 @@ export function App() {
 
       <main className="content">
         <UpdateBanner />
+        {view?.throttledUntil && (
+          <p className="notice" role="status">
+            Yahoo está limitando las consultas. Se muestran los últimos precios guardados y se vuelve a intentar a las{' '}
+            {new Date(view.throttledUntil).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}.
+          </p>
+        )}
         {view && <Highlights rows={view.rows} base={base} />}
 
         <div className="toolbar">

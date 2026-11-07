@@ -34,8 +34,35 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R
  *  - memoria con TTL para no pedir lo mismo en cada refresco,
  *  - SQLite como último dato conocido (sin conexión → se sirve marcado `stale`).
  */
+/** ¿El proveedor nos está limitando? (HTTP 429 "Too Many Requests") */
+const isRateLimit = (err: unknown) => /\b429\b|too many requests/i.test(err instanceof Error ? err.message : String(err));
+const BACKOFF_START_MS = 60_000;
+const BACKOFF_MAX_MS = 15 * 60_000;
+
 export class MarketService {
   private mem = new Map<string, Entry<unknown>>();
+  /** Si Yahoo limita las consultas, no se le vuelve a preguntar hasta esta hora (espera creciente). */
+  private throttledUntil = 0;
+  private backoffMs = BACKOFF_START_MS;
+
+  /** Hora (ISO) hasta la que se pausan las consultas por límite del proveedor, o null. */
+  get throttledUntilIso(): string | null {
+    return Date.now() < this.throttledUntil ? new Date(this.throttledUntil).toISOString() : null;
+  }
+
+  private get throttled() {
+    return Date.now() < this.throttledUntil;
+  }
+
+  private onProviderError(err: unknown, what: string) {
+    if (isRateLimit(err)) {
+      this.throttledUntil = Date.now() + this.backoffMs;
+      this.log(`Yahoo limita las consultas: se reintenta en ${Math.round(this.backoffMs / 60_000)} min`);
+      this.backoffMs = Math.min(this.backoffMs * 2, BACKOFF_MAX_MS);
+    } else {
+      this.log(what, err);
+    }
+  }
 
   constructor(
     private provider: MarketDataProvider,
@@ -64,10 +91,13 @@ export class MarketService {
     if (!missing.length) return out;
 
     let fetched: Omit<Quote, 'stale'>[] = [];
-    try {
-      fetched = await this.provider.getQuotes(missing);
-    } catch (err) {
-      this.log(`No se pudieron obtener cotizaciones (${missing.join(', ')})`, err);
+    if (!this.throttled) {
+      try {
+        fetched = await this.provider.getQuotes(missing);
+        this.backoffMs = BACKOFF_START_MS;
+      } catch (err) {
+        this.onProviderError(err, `No se pudieron obtener cotizaciones (${missing.join(', ')})`);
+      }
     }
     const bySymbol = new Map(fetched.map((q) => [q.symbol.toUpperCase(), q]));
     for (const sym of missing) {
@@ -91,9 +121,9 @@ export class MarketService {
       const key = `targets:${sym}`;
       const cached =
         (this.mem.get(key) as Entry<AnalystTargets | null> | undefined) ?? this.load<AnalystTargets | null>('targets', sym);
-      if (!force && cached && Date.now() - cached.fetchedAt < this.opts.targetsTtlMs) {
-        this.mem.set(key, cached);
-        out.set(sym, cached.value);
+      if ((!force && cached && Date.now() - cached.fetchedAt < this.opts.targetsTtlMs) || this.throttled) {
+        if (cached) this.mem.set(key, cached);
+        out.set(sym, cached?.value ?? null);
         return;
       }
       try {
@@ -104,7 +134,7 @@ export class MarketService {
         this.persist('targets', sym, value);
         out.set(sym, value);
       } catch (err) {
-        this.log(`Sin consenso para ${sym}`, err);
+        this.onProviderError(err, `Sin consenso para ${sym}`);
         out.set(sym, cached?.value ?? null);
       }
     });

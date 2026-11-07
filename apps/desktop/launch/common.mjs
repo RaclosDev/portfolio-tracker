@@ -156,6 +156,20 @@ export async function latestCommit({ repo, branch }) {
   return { sha: data.sha, date: data.commit?.committer?.date ?? null };
 }
 
+/**
+ * ¿Ese commit ha pasado la verificación de GitHub Actions (job «verificar»)?
+ * Solo se instalan versiones verificadas: un push roto nunca llega a los PCs.
+ */
+export async function passedVerification({ repo }, sha) {
+  const res = await fetch(`https://api.github.com/repos/${repo}/commits/${sha}/check-runs?check_name=verificar`, {
+    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'watchlist-desktop-app' },
+    signal: AbortSignal.timeout(6000),
+  });
+  if (!res.ok) return false;
+  const data = await res.json();
+  return (data.check_runs ?? []).some((r) => r.status === 'completed' && r.conclusion === 'success');
+}
+
 /** Descarga y descomprime el código de un commit. Devuelve la carpeta con el proyecto. */
 export async function downloadCommit({ repo }, sha) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'watchlist-update-'));
