@@ -1,0 +1,11 @@
+node_modules/
+dist/
+apps/server/data/
+*.log
+.env
+
+# Datos y configuración de cada instalación (nunca al repositorio)
+datos/
+watchlist.local.json
+# Lista personal de valores: se pasa aparte, no se publica
+apps/server/seed/watchlist.seed.json

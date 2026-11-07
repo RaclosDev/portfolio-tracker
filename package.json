@@ -1,0 +1,33 @@
+{
+  "name": "watchlist",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Watchlist local de acciones y ETF con niveles de compra y precios objetivo",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,magenta \"npm:dev -w @watchlist/server\" \"npm:dev -w @watchlist/web\"",
+    "build": "npm run build -w @watchlist/web",
+    "start": "npm run build && npm run start -w @watchlist/server",
+    "serve": "npm run start -w @watchlist/server",
+    "seed": "npm run seed -w @watchlist/server --",
+    "test": "vitest run",
+    "typecheck": "tsc -p packages/shared && tsc -p apps/server && tsc -p apps/web && tsc -p apps/desktop",
+    "desktop": "npm run build -w @watchlist/web && npm run start -w @watchlist/desktop"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0",
+    "typescript": "~5.9.0",
+    "vitest": "^4.0.0"
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "electron": true
+  }
+}
