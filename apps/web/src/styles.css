@@ -352,6 +352,11 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .grid-3 { grid-template-columns: 1fr; }
   .legend { display: none; }
   .search { width: 100%; }
+  /* Filtros: se desplazan en horizontal en vez de cortarse, y con altura táctil (44 px). */
+  .segmented { max-width: 100%; overflow-x: auto; scrollbar-width: thin; }
+  .segmented button { white-space: nowrap; min-height: 44px; }
+  .btn, .tab, .icon-btn { min-height: 44px; }
+  .icon-btn { min-width: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
