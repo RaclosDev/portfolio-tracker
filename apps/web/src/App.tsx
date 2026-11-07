@@ -1,6 +1,9 @@
 import { DEFAULT_SETTINGS, type WatchlistRow } from '@watchlist/shared';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { useForceRefresh, useListMutations, useLists, useSettings, useWatchlist } from './api/hooks.ts';
+import { api } from './api/client.ts';
+import { useForceRefresh, useListMutations, useLists, useSaveItem, useSettings, useWatchlist } from './api/hooks.ts';
+import { DetailPanel } from './features/detail/DetailPanel.tsx';
 import { ItemDialog } from './features/items/ItemDialog.tsx';
 import { SettingsDialog } from './features/settings/SettingsDialog.tsx';
 import { PriceMapLegend } from './features/watchlist/PriceMap.tsx';
@@ -61,8 +64,43 @@ export function App() {
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [currencyFilter, setCurrencyFilter] = useState<string>('all');
+  const [detailId, setDetailId] = useState<number | null>(null);
+
+  // Los filtros se recuerdan por lista (se restauran al volver a ella o al reabrir la app).
+  const filtersKey = listId ? `watchlist.filtros.${listId}` : null;
+  useEffect(() => {
+    if (!filtersKey) return;
+    try {
+      const f = JSON.parse(localStorage.getItem(filtersKey) ?? '{}') as { status?: Filter; type?: TypeFilter; currency?: string };
+      setFilter(f.status ?? 'all');
+      setTypeFilter(f.type ?? 'all');
+      setCurrencyFilter(f.currency ?? 'all');
+    } catch {
+      /* filtros guardados no válidos: se ignoran */
+    }
+  }, [filtersKey]);
+  useEffect(() => {
+    if (filtersKey) localStorage.setItem(filtersKey, JSON.stringify({ status: filter, type: typeFilter, currency: currencyFilter }));
+  }, [filtersKey, filter, typeFilter, currencyFilter]);
+
+  const saveItem = useSaveItem();
+  const onSaveLevel = (row: WatchlistRow, index: number, value: number | null) => {
+    const next = [...row.item.buyPrices];
+    if (value == null) next.splice(index, 1);
+    else next[index] = value;
+    saveItem.mutate({ id: row.item.id, data: { buyPrices: next } });
+  };
 
   const view = wl.data;
+  const symbols = useMemo(() => (view?.rows ?? []).map((r) => r.item.symbol).sort(), [view]);
+  const sparks = useQuery({
+    queryKey: ['sparks', symbols.join(',')],
+    queryFn: () => api.sparklines(symbols),
+    enabled: symbols.length > 0,
+    staleTime: 30 * 60_000,
+    refetchInterval: 30 * 60_000,
+  });
+  const detailRow = view?.rows.find((r) => r.item.id === detailId) ?? null;
   const base = view?.settings.baseCurrency ?? settings.baseCurrency;
   // Filtros por etiqueta: se aplican antes de las tarjetas, que cuentan sobre lo filtrado.
   const tagged = useMemo(
@@ -247,11 +285,15 @@ export function App() {
           <>
             <WatchlistTable
               rows={rows}
+              listId={listId!}
               baseCurrency={base}
               blink={settings.blinkReached}
               hiddenColumns={settings.hiddenColumns}
+              sparks={sparks.data}
               onEdit={setEditing}
+              onOpen={(r) => setDetailId(r.item.id)}
               onTag={onTag}
+              onSaveLevel={onSaveLevel}
             />
             {rows.length === 0 && (
               <div className="empty">
@@ -295,6 +337,17 @@ export function App() {
         <AlertsDialog
           itemIds={new Map((view?.rows ?? []).map((r) => [r.item.symbol, r.item.id]))}
           onClose={() => setShowAlerts(false)}
+        />
+      )}
+      {detailRow && (
+        <DetailPanel
+          row={detailRow}
+          base={base}
+          onClose={() => setDetailId(null)}
+          onEdit={() => {
+            setDetailId(null);
+            setEditing(detailRow);
+          }}
         />
       )}
     </div>

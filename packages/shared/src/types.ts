@@ -93,3 +93,19 @@ export interface WatchlistView {
   /** Si el proveedor de cotizaciones nos limita, hasta cuándo se pausan las consultas (ISO). */
   throttledUntil?: string | null;
 }
+
+/** Periodos del gráfico histórico. */
+export type HistoryRange = '1m' | '3m' | '6m' | '1y' | '5y';
+export const HISTORY_RANGES: { id: HistoryRange; label: string }[] = [
+  { id: '1m', label: '1 mes' },
+  { id: '3m', label: '3 meses' },
+  { id: '6m', label: '6 meses' },
+  { id: '1y', label: '1 año' },
+  { id: '5y', label: '5 años' },
+];
+
+/** Cierre de un día (o semana, en 5 años). */
+export interface PricePoint {
+  t: string;
+  c: number;
+}

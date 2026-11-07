@@ -35,6 +35,9 @@ class FakeProvider implements MarketDataProvider {
   async search() {
     return [];
   }
+  async getHistory() {
+    return [10, 11, 9.5, 10.2].map((c, i) => ({ t: new Date(Date.UTC(2026, 9, i + 1)).toISOString(), c }));
+  }
 }
 
 let provider: FakeProvider;
@@ -129,5 +132,16 @@ describe('límite de Yahoo', () => {
     const calls = provider.calls;
     await get('/api/lists/1/watchlist?force=1');
     expect(provider.calls).toBe(calls); // en pausa: no se vuelve a preguntar
+  });
+});
+
+describe('históricos', () => {
+  it('devuelve el histórico de un periodo y los minigráficos', async () => {
+    const h = (await get('/api/market/history/aaa.mc?range=6m')).json() as { points: { c: number }[]; stale: boolean };
+    expect(h.points.map((p) => p.c)).toEqual([10, 11, 9.5, 10.2]);
+    expect(h.stale).toBe(false);
+    expect((await get('/api/market/history/AAA.MC?range=10y')).statusCode).toBe(400);
+    const s = (await get('/api/market/sparklines?symbols=AAA.MC,BBB')).json() as Record<string, number[]>;
+    expect(Object.keys(s).sort()).toEqual(['AAA.MC', 'BBB']);
   });
 });

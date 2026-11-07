@@ -1,3 +1,4 @@
+import type { HistoryRange, PricePoint } from '@watchlist/shared';
 import YahooFinance from 'yahoo-finance2';
 import type { MarketDataProvider } from './provider.ts';
 
@@ -7,9 +8,30 @@ const s = (v: unknown): string | null => (typeof v === 'string' && v.length ? v 
 // Sin validación estricta: Yahoo cambia campos con frecuencia y no queremos romper por eso.
 const LOOSE = { validateResult: false } as const;
 
+/** Días hacia atrás e intervalo de cada periodo del gráfico. */
+const RANGES: Record<HistoryRange, { days: number; interval: '1d' | '1wk' }> = {
+  '1m': { days: 31, interval: '1d' },
+  '3m': { days: 92, interval: '1d' },
+  '6m': { days: 183, interval: '1d' },
+  '1y': { days: 366, interval: '1d' },
+  '5y': { days: 5 * 366, interval: '1wk' },
+};
+
 export class YahooProvider implements MarketDataProvider {
   readonly id = 'yahoo';
   private yf = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
+
+  async getHistory(symbol: string, range: HistoryRange): Promise<PricePoint[]> {
+    const { days, interval } = RANGES[range];
+    const res = (await this.yf.chart(
+      symbol,
+      { period1: new Date(Date.now() - days * 86_400_000), interval },
+      LOOSE,
+    )) as { quotes?: { date: Date | string; close?: number | null }[] };
+    return (res.quotes ?? [])
+      .filter((q) => n(q.close) != null)
+      .map((q) => ({ t: new Date(q.date).toISOString(), c: q.close! }));
+  }
 
   async getQuotes(symbols: string[]) {
     if (!symbols.length) return [];

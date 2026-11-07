@@ -1,6 +1,8 @@
 import type {
   AlertRecord,
   Backup,
+  HistoryRange,
+  PricePoint,
   Item,
   ItemInput,
   ItemPatch,
@@ -52,6 +54,10 @@ export const api = {
   fx: (currencies: string[]) =>
     request<Record<string, number>>('GET', `/api/market/fx?currencies=${encodeURIComponent(currencies.join(','))}`),
   quote: (symbol: string) => request<Quote>('GET', `/api/market/quote/${encodeURIComponent(symbol)}`),
+  history: (symbol: string, range: HistoryRange) =>
+    request<{ points: PricePoint[]; stale: boolean }>('GET', `/api/market/history/${encodeURIComponent(symbol)}?range=${range}`),
+  sparklines: (symbols: string[]) =>
+    request<Record<string, number[]>>('GET', `/api/market/sparklines?symbols=${encodeURIComponent(symbols.join(','))}`),
 
   alerts: () => request<AlertRecord[]>('GET', '/api/alerts'),
   importBackup: (data: Backup) => request<{ lists: number; items: number; savedTo: string | null }>('POST', '/api/backup', data),

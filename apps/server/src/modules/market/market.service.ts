@@ -1,9 +1,10 @@
-import type { AnalystTargets, Quote, SymbolSearchResult } from '@watchlist/shared';
+import type { AnalystTargets, HistoryRange, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
 import type { Db } from '../../db/database.ts';
 import { isinCandidates, isIsin } from './isin.ts';
 import type { MarketDataProvider } from './provider.ts';
 
-type Kind = 'quote' | 'targets';
+type Kind = string; // 'quote' | 'targets' | 'history-<periodo>'
+const HISTORY_TTL_MS = 60 * 60_000;
 interface Entry<T> {
   value: T;
   fetchedAt: number;
@@ -179,6 +180,35 @@ export class MarketService {
       .map((s) => quotes.get(s))
       .filter((q): q is Quote => !!q && !q.stale)
       .map((q) => ({ symbol: q.symbol, name: q.name ?? q.symbol, exchange: q.exchange, type: q.quoteType }));
+  }
+
+  /** Histórico de cierres (caché 1 h; sin conexión, el último guardado). */
+  async getHistory(symbol: string, range: HistoryRange): Promise<{ points: PricePoint[]; stale: boolean }> {
+    const kind = `history-${range}`;
+    const key = `${kind}:${symbol}`;
+    const hit = this.mem.get(key) as Entry<PricePoint[]> | undefined;
+    if (hit && Date.now() - hit.fetchedAt < HISTORY_TTL_MS) return { points: hit.value, stale: false };
+    if (!this.throttled) {
+      try {
+        const points = await this.provider.getHistory(symbol, range);
+        this.mem.set(key, { value: points, fetchedAt: Date.now() });
+        this.persist(kind, symbol, points);
+        return { points, stale: false };
+      } catch (err) {
+        this.onProviderError(err, `Sin histórico de ${symbol}`);
+      }
+    }
+    const stored = this.load<PricePoint[]>(kind, symbol);
+    return { points: stored?.value ?? [], stale: true };
+  }
+
+  /** Cierres de los últimos 3 meses de varios valores, para los minigráficos de la tabla. */
+  async getSparklines(symbols: string[]): Promise<Record<string, number[]>> {
+    const out: Record<string, number[]> = {};
+    await mapLimit([...new Set(symbols)], 4, async (sym) => {
+      out[sym] = (await this.getHistory(sym, '3m')).points.map((p) => p.c);
+    });
+    return out;
   }
 
   private persist(kind: Kind, symbol: string, value: unknown) {

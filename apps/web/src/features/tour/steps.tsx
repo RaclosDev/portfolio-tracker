@@ -115,6 +115,10 @@ export const TOUR_STEPS: TourStep[] = [
           tipo: ACC para acciones y ETF. Pulsa una etiqueta para ver solo esos valores.
         </p>
         <p>
+          <strong>Pulsa el nombre</strong> para abrir su ficha: gráfico de 1 mes a 5 años con tus niveles, la orden y los
+          objetivos dibujados, y todos sus datos.
+        </p>
+        <p>
           La franja de color a la izquierda resume la fila: <span className="tour-key tour-key--reached">verde</span> en
           zona de compra, <span className="tour-key tour-key--near">ámbar</span> cerca y{' '}
           <span className="tour-key tour-key--order">amarillo</span> con orden puesta.
@@ -129,6 +133,16 @@ export const TOUR_STEPS: TourStep[] = [
       <p>
         Última cotización y variación del día. Si aparece un triángulo de aviso junto al precio, es que no se pudo
         conectar y se muestra el último dato guardado.
+      </p>
+    ),
+  },
+  {
+    target: cell('trend'),
+    title: 'Tendencia de 3 meses',
+    body: (
+      <p>
+        Cómo ha ido el precio en los últimos 3 meses: verde si sube en el periodo, naranja si baja. La línea discontinua
+        es tu compra 1, para ver si se acerca o se aleja.
       </p>
     ),
   },
@@ -154,7 +168,8 @@ export const TOUR_STEPS: TourStep[] = [
     title: 'Precios de compra 1, 2 y 3',
     body: (
       <p>
-        Tu precio de entrada y cuánto tiene que caer la cotización para llegar (negativo = falta caída). Color:{' '}
+        Tu precio de entrada y cuánto tiene que caer la cotización para llegar (negativo = falta caída). Pulsa el precio
+        para cambiarlo ahí mismo (Enter guarda, Esc cancela). Color:{' '}
         <span className="pill pill--reached">✓ alcanzado</span> <span className="pill pill--near">cerca</span>{' '}
         <span className="pill pill--far">lejos</span> <span className="pill pill--veryFar">muy lejos</span>
       </p>
