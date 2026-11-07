@@ -24,7 +24,10 @@ try {
   execFileSync('git', ['archive', '--format=tar', '-o', tarball, 'HEAD'], { cwd: root });
   execFileSync(tar, ['-xf', tarball, '-C', dir]);
   const withSeed = fs.existsSync(path.join(root, seed));
-  if (withSeed) fs.copyFileSync(path.join(root, seed), path.join(dir, seed));
+  if (withSeed) {
+    fs.mkdirSync(path.dirname(path.join(dir, seed)), { recursive: true });
+    fs.copyFileSync(path.join(root, seed), path.join(dir, seed));
+  }
 
   fs.rmSync(out, { force: true });
   execFileSync(tar, ['-a', '-c', '-f', out, '-C', tmp, 'Watchlist']);
