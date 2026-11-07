@@ -29,7 +29,7 @@ export function localAppRoot() {
 export const CONFIG_FILE = 'watchlist.local.json';
 /** Nunca se copian ni se borran al sincronizar código. */
 // 'data' = base de datos del modo navegador de desarrollo (apps/server/data).
-const SKIP_DIRS = new Set(['node_modules', 'dist', 'datos', 'data', '.git', '.claude', '.vscode']);
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'datos', 'data', '.git', '.claude', '.vscode']);
 /** Con la versión compilada, las carpetas dist sí vienen en el paquete y se sincronizan. */
 const SKIP_DIRS_BUILD = new Set([...SKIP_DIRS].filter((d) => d !== 'dist'));
 const KEEP_FILES = new Set([CONFIG_FILE]);
@@ -60,6 +60,14 @@ function walk(root, skip, rel = '', out = []) {
   return out;
 }
 
+/** Borra las carpetas que se han quedado vacías (p. ej. el código fuente al pasar a la versión compilada). */
+function removeEmptyDirs(dir, skip, isRoot = true) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory() && !skip.has(entry.name)) removeEmptyDirs(path.join(dir, entry.name), skip, false);
+  }
+  if (!isRoot && fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
+}
+
 /**
  * Copia el código de `src` a `dst` y borra en `dst` lo que ya no existe (sin tocar dependencias ni datos).
  * `withBuild`: `src` es una versión compilada y también trae las carpetas dist.
@@ -87,6 +95,7 @@ export function mirror(src, dst, { withBuild = false } = {}) {
       removed++;
     }
   }
+  removeEmptyDirs(dst, skip);
   return { copied, removed };
 }
 
