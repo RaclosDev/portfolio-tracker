@@ -26,9 +26,10 @@ Si Windows avisa de que el archivo viene de internet, elige **Ejecutar de todas 
 La app busca versiones nuevas en la rama `main` de [`RaclosDev/portfolio-tracker`](https://github.com/RaclosDev/portfolio-tracker):
 
 - **Al abrirla**: si hay versión nueva se descarga e instala (aviso "Actualizando…") y luego se abre.
+- **Ya compilada**: la GitHub Action publica cada versión de `main` ya compilada (Release `build-<commit>`, menos de 1 MB). Los PCs solo descargan eso y Electron: no necesitan vite, esbuild ni TypeScript, ni compilan al actualizar. Si una versión no tiene compilación publicada, se descarga el código y se compila en el PC como antes.
 - **Al instante mientras está en marcha**: cada push a `main` dispara la GitHub Action `avisar-version.yml`, que publica un aviso en un canal de [ntfy.sh](https://ntfy.sh) (`pushTopic` en `watchlist.update.json`). La app mantiene abierta una conexión a ese canal; al recibir el aviso comprueba la versión en GitHub (el aviso por sí solo no instala nada). Si solo está en la bandeja, se actualiza y reinicia sola; si la ventana está abierta, avisa con una notificación y un botón **Actualizar ahora** (si no se pulsa, se instala al cerrar la ventana).
 - **Respaldo**: también comprueba al despertar el PC, cada 6 horas y desde el menú de la bandeja (**Buscar actualizaciones**). Las consultas a GitHub son condicionales (ETag): sin cambios no gastan cupo.
-- Sin conexión, sigue con la versión instalada. La versión se ve en ⚙ Ajustes → Copias de seguridad.
+- Sin conexión, sigue con la versión instalada. La versión se ve en ⚙ Ajustes → Copias y Excel.
 
 Para publicar cambios: haz commit y `git push` a `main`. Para trabajar sin que llegue todavía a los demás, usa otra rama y fusiónala en `main` cuando esté lista.
 

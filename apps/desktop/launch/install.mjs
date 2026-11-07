@@ -6,14 +6,15 @@ import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import {
-  buildApp,
   CONFIG_FILE,
-  depsHash,
-  electronPath,
+  downloadBuild,
+  latestCommit,
   localAppRoot,
+  log,
   watchlistHome,
   mirror,
-  npmInstall,
+  passedVerification,
+  prepareTree,
   readJson,
   writeJson,
 } from './common.mjs';
@@ -103,25 +104,39 @@ try {
     console.log('   Se cargarán los valores iniciales la primera vez que abras la app.');
   }
 
+  // Lo más ligero: la última versión ya compilada de GitHub (sin herramientas de compilación).
+  // Sin conexión o si no está disponible, se copia el código de esta carpeta y se compila aquí.
   step(2, 'Copiando el programa');
-  const { copied, removed } = mirror(src, dst);
-  console.log(`   ${copied} ficheros copiados, ${removed} eliminados.`);
+  let installed = { sha: previous.installedSha ?? null, date: previous.installedDate ?? null, mode: 'codigo' };
+  let pkg = null;
+  if (update.repo && !process.env.WATCHLIST_INSTALL_FROM_SOURCE) {
+    try {
+      const latest = await latestCommit(update);
+      if (latest && (await passedVerification(update, latest.sha))) {
+        pkg = await downloadBuild(update, latest.sha);
+        if (pkg) installed = { sha: latest.sha, date: latest.date, mode: 'compilada' };
+      }
+    } catch (err) {
+      log(`No se pudo descargar la versión compilada (${err instanceof Error ? err.message : err}); se instala desde esta carpeta.`);
+    }
+  }
+  const { copied, removed } = pkg ? mirror(pkg.dir, dst, { withBuild: true }) : mirror(src, dst);
+  pkg?.cleanup();
+  console.log(`   ${copied} ficheros copiados, ${removed} eliminados${pkg ? ' (versión ya compilada de GitHub)' : ''}.`);
 
-  step(3, 'Instalando dependencias (la primera vez tarda unos minutos)');
-  npmInstall(dst);
-  electronPath(dst); // descarga el motor de la ventana durante la instalación, no al abrir
-
+  step(3, pkg ? 'Instalando el motor de la ventana (Electron)' : 'Instalando dependencias (la primera vez tarda unos minutos)');
   step(4, 'Preparando la app');
-  buildApp(dst);
+  const deps = prepareTree(dst, { previousHash: null });
 
   writeJson(cfgFile, {
     dataDir,
     repo: update.repo ?? null,
     branch: update.branch ?? 'main',
-    installedSha: previous.installedSha ?? null,
-    installedDate: previous.installedDate ?? null,
-    depsHash: depsHash(dst),
+    installedSha: installed.sha,
+    installedDate: installed.date,
+    depsHash: deps,
     builtAt: new Date().toISOString(),
+    mode: installed.mode,
   });
 
   step(5, 'Creando el acceso directo');
