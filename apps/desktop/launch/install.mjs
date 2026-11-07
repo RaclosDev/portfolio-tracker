@@ -11,6 +11,7 @@ import {
   depsHash,
   electronPath,
   localAppRoot,
+  watchlistHome,
   mirror,
   npmInstall,
   readJson,
@@ -63,7 +64,9 @@ function createShortcut() {
     if (res.status !== 0) throw new Error('No se pudo crear el acceso directo');
     return;
   }
-  const launch = `cd "${dst}" && node apps/desktop/launch/launch.mjs >/tmp/watchlist-launch.log 2>&1`;
+  // Usa el mismo Node.js que ejecuta el instalador (el portátil que descarga instalar.sh).
+  const nodeBin = process.execPath;
+  const launch = `cd "${dst}" && PATH="${path.dirname(nodeBin)}:$PATH" "${nodeBin}" apps/desktop/launch/launch.mjs >/tmp/watchlist-launch.log 2>&1`;
   if (process.platform === 'darwin') {
     const file = path.join(os.homedir(), 'Desktop', 'Watchlist.command');
     fs.writeFileSync(file, `#!/bin/sh\n(${launch}) &\n`, { mode: 0o755 });
@@ -89,7 +92,7 @@ try {
     console.log(`   Se mantiene la carpeta de datos actual: ${dataDir}`);
     console.log('   (para cambiarla, borra el fichero ' + cfgFile + ' y vuelve a instalar)');
   } else {
-    dataDir = process.env.WATCHLIST_INSTALL_DATA_DIR || (await chooseDataDir(path.join(src, 'datos')));
+    dataDir = process.env.WATCHLIST_INSTALL_DATA_DIR || (await chooseDataDir(path.join(watchlistHome(), 'datos')));
   }
   fs.mkdirSync(dataDir, { recursive: true });
   console.log(`   Datos en: ${dataDir}`);
@@ -124,7 +127,8 @@ try {
   step(5, 'Creando el acceso directo');
   createShortcut();
 
-  console.log('\n  Listo. Abre "Watchlist" desde el escritorio o el menú Inicio.');
+  // En Windows el mensaje final lo da instalar.ps1, tras registrar la app.
+  if (process.platform !== 'win32') console.log('\n  Listo. Abre "Watchlist" desde el escritorio o el menú Inicio.');
   if (update.repo) console.log(`  La app se actualizará sola desde github.com/${update.repo} al abrirse.\n`);
 } catch (err) {
   console.error(`\n  ERROR: ${err instanceof Error ? err.message : err}\n`);

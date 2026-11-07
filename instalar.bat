@@ -1,26 +1,12 @@
 @echo off
-REM Instala la Watchlist en este PC y crea el acceso directo "Watchlist".
-REM Hazlo una vez en cada PC. Despues la app se actualiza sola desde GitHub al abrirse.
-cd /d "%~dp0"
+REM Instala Watchlist en este PC con un doble clic. No hace falta instalar nada antes:
+REM pregunta donde instalar, descarga lo necesario y crea los accesos directos.
+REM Despues la app se actualiza sola desde GitHub al abrirse.
 title Instalar Watchlist
-
-where node >nul 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0instalar.ps1"
 if errorlevel 1 (
   echo.
-  echo  Falta Node.js. Instala la version LTS desde https://nodejs.org
-  echo  y vuelve a ejecutar este fichero.
-  echo.
-  pause
-  exit /b 1
+  echo  Algo ha fallado. Revisa los mensajes de arriba.
 )
-
-node "%~dp0apps\desktop\launch\install.mjs" || goto :error
-pause
-exit /b 0
-
-:error
-echo.
-echo  Algo ha fallado. Revisa los mensajes de arriba.
 echo.
 pause
-exit /b 1

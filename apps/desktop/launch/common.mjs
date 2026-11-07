@@ -7,19 +7,29 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-/** Carpeta donde se instala el programa en este PC (fuera de cualquier carpeta sincronizada). */
-export function localAppRoot() {
-  if (process.env.WATCHLIST_APP_DIR) return path.resolve(process.env.WATCHLIST_APP_DIR); // pruebas
+/**
+ * Carpeta de instalación en este PC (fuera de cualquier carpeta sincronizada):
+ *   <home>/node  → Node.js propio de la app (lo descarga el instalador)
+ *   <home>/app   → el programa
+ * WATCHLIST_HOME permite cambiarla (pruebas).
+ */
+export function watchlistHome() {
+  if (process.env.WATCHLIST_HOME) return path.resolve(process.env.WATCHLIST_HOME);
   if (process.platform === 'win32') {
-    return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'Watchlist', 'app');
+    return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'Watchlist');
   }
-  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'Watchlist', 'app');
-  return path.join(os.homedir(), '.local', 'share', 'watchlist', 'app');
+  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'Watchlist');
+  return path.join(os.homedir(), '.local', 'share', 'watchlist');
+}
+
+export function localAppRoot() {
+  return path.join(watchlistHome(), 'app');
 }
 
 export const CONFIG_FILE = 'watchlist.local.json';
 /** Nunca se copian ni se borran al sincronizar código. */
-const SKIP_DIRS = new Set(['node_modules', 'dist', 'datos', '.git', '.claude', '.vscode']);
+// 'data' = base de datos del modo navegador de desarrollo (apps/server/data).
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'datos', 'data', '.git', '.claude', '.vscode']);
 const KEEP_FILES = new Set([CONFIG_FILE]);
 
 export function readJson(file, fallback = null) {
@@ -112,10 +122,25 @@ export function electronPath(root) {
   return createRequire(path.join(root, 'package.json'))('electron');
 }
 
-export function buildApp(root, opts) {
-  run('npm', ['run', 'build', '-w', '@watchlist/web'], root, opts);
-  run('npm', ['run', 'build', '-w', '@watchlist/desktop'], root, opts);
+/** Reintenta una vez: justo tras npm install, el antivirus a veces bloquea ficheros recién creados. */
+function runWithRetry(cmd, args, cwd, opts) {
+  try {
+    run(cmd, args, cwd, opts);
+  } catch {
+    log('Reintentando…');
+    spawnSync(process.platform === 'win32' ? 'timeout /t 3 /nobreak >nul' : 'sleep 3', { shell: true });
+    run(cmd, args, cwd, opts);
+  }
 }
+
+export function buildApp(root, opts) {
+  runWithRetry('npm', ['run', 'build', '-w', '@watchlist/web'], root, opts);
+  runWithRetry('npm', ['run', 'build', '-w', '@watchlist/desktop'], root, opts);
+}
+
+/** tar de Windows (bsdtar, sabe de .zip); evita el tar de Git si está antes en el PATH. */
+export const TAR =
+  process.platform === 'win32' ? path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
 
 /* ---------------- GitHub ---------------- */
 
@@ -145,7 +170,7 @@ export async function downloadCommit({ repo }, sha) {
   fs.mkdirSync(out);
   // tar (bsdtar) viene con Windows 10+ y macOS y descomprime .zip; en Linux se usa unzip.
   const unzip =
-    process.platform === 'linux' ? spawnSync('unzip', ['-q', zip, '-d', out]) : spawnSync('tar', ['-xf', zip, '-C', out]);
+    process.platform === 'linux' ? spawnSync('unzip', ['-q', zip, '-d', out]) : spawnSync(TAR, ['-xf', zip, '-C', out]);
   if (unzip.status !== 0) throw new Error('No se pudo descomprimir la actualización');
   const [folder] = fs.readdirSync(out);
   return { dir: path.join(out, folder), cleanup: () => fs.rmSync(tmp, { recursive: true, force: true }) };

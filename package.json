@@ -19,7 +19,8 @@
     "seed": "npm run seed -w @watchlist/server --",
     "test": "vitest run",
     "typecheck": "tsc -p packages/shared && tsc -p apps/server && tsc -p apps/web && tsc -p apps/desktop",
-    "desktop": "npm run build -w @watchlist/web && npm run start -w @watchlist/desktop"
+    "desktop": "npm run build -w @watchlist/web && npm run start -w @watchlist/desktop",
+    "empaquetar": "node scripts/empaquetar.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.0",
