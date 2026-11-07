@@ -8,6 +8,7 @@ export interface DesktopPrefs {
   notifyReached: boolean;
   notifyNear: boolean;
   notifyOrders: boolean;
+  notifySell: boolean;
   /** No comprobar en fin de semana (mercados cerrados). */
   skipWeekends: boolean;
   /** Al cerrar la ventana, seguir vigilando desde la bandeja del sistema. */

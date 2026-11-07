@@ -15,17 +15,21 @@ import {
   ALERT_HISTORY_FILE,
   emptyMemory,
   evaluateAlerts,
+  evaluateSellAlerts,
   isMuted,
   localToday,
   type Alert,
   type AlertMemory,
   type AlertPrefs,
   type AlertRecord,
+  type PortfolioRow,
   type WatchlistRow,
 } from '@watchlist/shared';
 import { migrate } from '../../server/src/db/database.ts';
 import { ItemsRepository } from '../../server/src/modules/items/items.repository.ts';
 import { ListsRepository } from '../../server/src/modules/lists/lists.repository.ts';
+import { PortfolioService } from '../../server/src/modules/portfolio/portfolio.service.ts';
+import { PositionsRepository } from '../../server/src/modules/portfolio/positions.repository.ts';
 import { MarketService } from '../../server/src/modules/market/market.service.ts';
 import { YahooProvider } from '../../server/src/modules/market/yahoo.provider.ts';
 import { SettingsRepository } from '../../server/src/modules/settings/settings.repository.ts';
@@ -39,6 +43,7 @@ const HISTORY_MAX = 300;
 export interface CheckResult {
   alerts: Alert[];
   rows: WatchlistRow[];
+  portfolio: PortfolioRow[];
   refreshSeconds: number | null;
 }
 
@@ -69,9 +74,9 @@ export class PriceWatcher {
     return fs.existsSync(this.dataDir) ? this.dataDir : this.stateDir;
   }
 
-  private async loadRows(): Promise<{ rows: WatchlistRow[]; refreshSeconds: number | null }> {
+  private async loadRows(): Promise<{ rows: WatchlistRow[]; portfolio: PortfolioRow[]; refreshSeconds: number | null }> {
     const file = path.join(this.dataDir, DB_FILE);
-    if (!fs.existsSync(file)) return { rows: [], refreshSeconds: null };
+    if (!fs.existsSync(file)) return { rows: [], portfolio: [], refreshSeconds: null };
     const db = new DatabaseSync(file, { readOnly: true });
     try {
       const lists = new ListsRepository(db);
@@ -79,12 +84,16 @@ export class PriceWatcher {
       const refreshSeconds = settings.get().refreshSeconds;
       const svc = new WatchlistService(lists, new ItemsRepository(db), settings, this.market);
       // view() lee la base de datos de forma síncrona antes de pedir cotizaciones.
-      const views = await Promise.all(lists.all().map((l) => svc.view(l.id)));
+      const portfolioSvc = new PortfolioService(new PositionsRepository(db), settings, this.market);
+      const [views, portfolio] = await Promise.all([
+        Promise.all(lists.all().map((l) => svc.view(l.id))),
+        portfolioSvc.view(),
+      ]);
       const seen = new Set<string>();
       const rows = views
         .flatMap((v) => v?.rows ?? [])
         .filter((r) => (seen.has(r.item.symbol) ? false : (seen.add(r.item.symbol), true)));
-      return { rows, refreshSeconds };
+      return { rows, portfolio: portfolio.rows, refreshSeconds };
     } finally {
       db.close();
     }
@@ -95,19 +104,23 @@ export class PriceWatcher {
    * y la frecuencia de actualización configurada en Ajustes → General.
    */
   async check(prefs: AlertPrefs, now = new Date()): Promise<CheckResult> {
-    const { rows, refreshSeconds } = await this.loadRows();
+    const { rows, portfolio, refreshSeconds } = await this.loadRows();
     const today = localToday(now);
     const watched = rows.filter((r) => !isMuted(r.item.mutedUntil, today));
+    const held = portfolio.filter((r) => !isMuted(r.position.mutedUntil, today));
 
     const folder = this.stateFolder();
     const memoryFile = path.join(folder, MEMORY_FILE);
     const before = readJson<AlertMemory>(memoryFile, emptyMemory());
-    const { alerts, memory } = evaluateAlerts(watched, before, prefs, now);
+    const buy = evaluateAlerts(watched, before, prefs, now);
+    const sell = evaluateSellAlerts(held, buy.memory, prefs, now);
+    const alerts = [...buy.alerts, ...sell.alerts];
+    const memory = sell.memory;
     // Solo se escribe si algo cambia: evita sincronizar la carpeta compartida cada minuto.
     const serialized = JSON.stringify(memory);
     if (serialized !== JSON.stringify({ ...emptyMemory(), ...before })) fs.writeFileSync(memoryFile, serialized);
     if (alerts.length) this.appendHistory(folder, alerts, now);
-    return { alerts, rows, refreshSeconds };
+    return { alerts, rows, portfolio, refreshSeconds };
   }
 
   private appendHistory(folder: string, alerts: Alert[], now: Date) {

@@ -6,6 +6,8 @@ import { ListsRepository } from './modules/lists/lists.repository.ts';
 import { MarketService } from './modules/market/market.service.ts';
 import type { MarketDataProvider } from './modules/market/provider.ts';
 import { YahooProvider } from './modules/market/yahoo.provider.ts';
+import { PortfolioService } from './modules/portfolio/portfolio.service.ts';
+import { PositionsRepository } from './modules/portfolio/positions.repository.ts';
 import { SettingsRepository } from './modules/settings/settings.repository.ts';
 import { WatchlistService } from './modules/watchlist/watchlist.service.ts';
 
@@ -30,9 +32,11 @@ export function createServices(
     opts.log,
   );
   const watchlist = new WatchlistService(lists, items, settings, market);
+  const positions = new PositionsRepository(db);
+  const portfolio = new PortfolioService(positions, settings, market);
   const dataDir = opts.dataDir ?? (opts.db ? null : config.dataDir);
-  const backup = new BackupService(db, lists, items, settings, dataDir);
-  return { db, dataDir, lists, items, settings, market, watchlist, backup };
+  const backup = new BackupService(db, lists, items, settings, positions, dataDir);
+  return { db, dataDir, lists, items, settings, market, watchlist, positions, portfolio, backup };
 }
 
 export type Services = ReturnType<typeof createServices>;

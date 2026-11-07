@@ -299,7 +299,7 @@ async function runCheck(manual = false): Promise<number> {
     if (p.quietHours && inTimeRange(hhmm(now), p.quietFrom, p.quietTo)) return 0;
   }
   try {
-    const res = await watcher.check({ reached: p.notifyReached, near: p.notifyNear, orders: p.notifyOrders });
+    const res = await watcher.check({ reached: p.notifyReached, near: p.notifyNear, orders: p.notifyOrders, sell: p.notifySell });
     if (res.refreshSeconds) refreshSeconds = res.refreshSeconds;
     lastCheck = new Date();
     updateTrayTooltip();
@@ -309,7 +309,7 @@ async function runCheck(manual = false): Promise<number> {
     // Resumen del día: una vez, a partir de la hora elegida (los días que se comprueba).
     const today = localToday(now);
     if (!manual && p.dailySummary && p.lastSummaryDate !== today && hhmm(now) >= p.dailySummaryAt) {
-      const summary = buildDailySummary(res.rows);
+      const summary = buildDailySummary(res.rows, now, res.portfolio);
       if (summary) notify(summary.title, summary.body);
       prefs.set({ lastSummaryDate: today });
     }

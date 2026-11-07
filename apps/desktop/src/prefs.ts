@@ -7,6 +7,7 @@ export interface DesktopPrefs {
   notifyReached: boolean;
   notifyNear: boolean;
   notifyOrders: boolean;
+  notifySell: boolean;
   skipWeekends: boolean;
   runInBackground: boolean;
   startWithWindows: boolean;
@@ -30,6 +31,7 @@ export const DEFAULT_PREFS: DesktopPrefs = {
   notifyReached: true,
   notifyNear: true,
   notifyOrders: true,
+  notifySell: true,
   skipWeekends: true,
   runInBackground: true,
   startWithWindows: false,

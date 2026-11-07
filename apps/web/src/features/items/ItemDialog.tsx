@@ -5,6 +5,7 @@ import { ApiError, api } from '../../api/client.ts';
 import { useDeleteItem, useSaveItem } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
 import { MINOR_CURRENCY, money, num, parseDecimal, pct, price, shortDate } from '../../lib/format.ts';
+import type { PositionDraft } from '../portfolio/PositionDialog.tsx';
 import { SymbolPicker } from './SymbolPicker.tsx';
 
 interface Props {
@@ -13,6 +14,8 @@ interface Props {
   settings: Settings;
   fx: Record<string, number>;
   onClose: () => void;
+  /** «Lo he comprado»: abre el alta en la cartera con los datos de la compra prevista. */
+  onBought?: (draft: PositionDraft) => void;
 }
 
 const str = (v: number | null | undefined) => (v == null ? '' : String(v).replace('.', ','));
@@ -28,7 +31,7 @@ function understood(raw: string, n: number | null) {
 
 const joinHelp = (...parts: string[]) => parts.filter(Boolean).join(' · ') || ' ';
 
-export function ItemDialog({ listId, row, settings, fx, onClose }: Props) {
+export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Props) {
   const item = row?.item;
   const [symbol, setSymbol] = useState(item?.symbol ?? '');
   const [checkedSymbol, setCheckedSymbol] = useState(item?.symbol ?? '');
@@ -128,6 +131,24 @@ export function ItemDialog({ listId, row, settings, fx, onClose }: Props) {
           {item && (
             <button type="button" className="btn btn--danger-ghost" onClick={remove} disabled={del.isPending}>
               Quitar de la lista
+            </button>
+          )}
+          {item && onBought && (
+            <button
+              type="button"
+              className="btn"
+              title="Pasar este valor a la cartera con la compra prevista"
+              onClick={() =>
+                onBought({
+                  symbol: item.symbol,
+                  name: item.name,
+                  shares: row?.metrics.shares ?? undefined,
+                  avgPrice: row?.metrics.entryPrice ?? undefined,
+                  buyDate: localToday(),
+                })
+              }
+            >
+              Lo he comprado
             </button>
           )}
           <span className="spacer" />

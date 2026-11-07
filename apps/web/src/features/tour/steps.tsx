@@ -27,6 +27,22 @@ export const TOUR_STEPS: TourStep[] = [
     ),
   },
   {
+    target: '[data-tour="portfolio"]',
+    title: 'Cartera',
+    body: (
+      <>
+        <p>
+          Lo que ya tienes comprado: acciones, precio medio, cuánto vale hoy, tu plusvalía y el peso de cada valor. Si le
+          pones un <strong>objetivo de venta</strong>, te aviso cuando el precio llegue o se acerque.
+        </p>
+        <p>
+          Cuando compres algo de esta lista, ábrelo con el lápiz y pulsa <strong>«Lo he comprado»</strong>: pasa a la
+          cartera con la compra prevista ya rellenada.
+        </p>
+      </>
+    ),
+  },
+  {
     target: '.chip',
     title: 'Tipo de cambio en vivo',
     body: (
