@@ -6,14 +6,18 @@ Se abre con un acceso directo, en su propia ventana; al cerrarla se detiene todo
 
 ## Instalar (una vez en cada PC)
 
-1. Instala **Node.js LTS** desde <https://nodejs.org> (siguiente, siguiente…).
-2. Descomprime donde quieras el ZIP que te hayan pasado (lo genera `npm run empaquetar` e incluye la lista inicial de valores) o, si no, el de GitHub: botón verde **Code → Download ZIP**.
-3. Doble clic en **`instalar.bat`** (macOS/Linux: `./instalar.sh`).
-   - Te pedirá la **carpeta de datos**. Si vas a usar la app en varios PCs (p. ej. trabajo y casa), elige en todos **la misma carpeta compartida** (OneDrive, Google Drive, Dropbox…).
-   - Crea el acceso directo **Watchlist** en el escritorio y en el menú Inicio.
-4. Abre **Watchlist** desde el acceso directo.
+No hace falta instalar nada antes, solo tener internet durante la instalación.
 
-El programa se instala en `%LOCALAPPDATA%\Watchlist\app` (fuera de la carpeta compartida). La carpeta descargada ya no hace falta, salvo la de datos si la dejaste dentro.
+1. Descomprime donde quieras el ZIP que te hayan pasado (lo genera `npm run empaquetar` e incluye la lista inicial de valores) o, si no, el de GitHub: botón verde **Code → Download ZIP**.
+2. Doble clic en **`instalar.bat`** (macOS/Linux: `./instalar.sh`). Tarda menos de un minuto:
+   - Descarga su propio **Node.js portátil** (no necesita permisos de administrador ni toca el sistema).
+   - Te pide la **carpeta de datos**. Si vas a usar la app en varios PCs (p. ej. trabajo y casa), elige en todos **la misma carpeta compartida** (OneDrive, Google Drive, Dropbox…).
+   - Crea el acceso directo **Watchlist** en el escritorio y en el menú Inicio.
+3. Abre **Watchlist** desde el acceso directo.
+
+Todo se instala en `%LOCALAPPDATA%\Watchlist` (`node` y `app`), fuera de la carpeta compartida. La carpeta descomprimida ya no hace falta, salvo la de datos si la dejaste dentro.
+
+Para desinstalar: borra el acceso directo y la carpeta `%LOCALAPPDATA%\Watchlist` (los datos están aparte, en la carpeta que elegiste).
 
 ## Actualizaciones
 
