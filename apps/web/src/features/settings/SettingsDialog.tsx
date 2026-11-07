@@ -51,10 +51,19 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
   };
 
   const onImport = async (file: File) => {
-    if (!confirm('Importar reemplaza TODAS las listas y valores actuales. ¿Continuar?')) return;
+    if (
+      !confirm(
+        'Importar REEMPLAZA todas las listas y valores de este PC por los del fichero.\n\n' +
+          'Antes se guarda automáticamente una copia de lo actual en la carpeta "copias".\n\n¿Continuar?',
+      )
+    )
+      return;
     try {
       const res = await importM.mutateAsync(JSON.parse(await file.text()));
-      setMsg(`Importadas ${res.lists} listas con ${res.items} valores.`);
+      setMsg(
+        `Importadas ${res.lists} listas con ${res.items} valores.` +
+          (res.savedTo ? ` Lo que había antes se ha guardado en ${res.savedTo}` : ''),
+      );
     } catch {
       setMsg('El fichero no es una copia válida.');
     }
