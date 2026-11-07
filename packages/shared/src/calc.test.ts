@@ -17,6 +17,7 @@ const item = (over: Partial<Item> = {}): Item => ({
   orderPrice: null,
   orderUntil: null,
   notes: null,
+  mutedUntil: null,
   createdAt: '',
   updatedAt: '',
   ...over,

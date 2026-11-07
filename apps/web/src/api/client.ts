@@ -1,4 +1,5 @@
 import type {
+  AlertRecord,
   Backup,
   Item,
   ItemInput,
@@ -52,5 +53,6 @@ export const api = {
     request<Record<string, number>>('GET', `/api/market/fx?currencies=${encodeURIComponent(currencies.join(','))}`),
   quote: (symbol: string) => request<Quote>('GET', `/api/market/quote/${encodeURIComponent(symbol)}`),
 
+  alerts: () => request<AlertRecord[]>('GET', '/api/alerts'),
   importBackup: (data: Backup) => request<{ lists: number; items: number; savedTo: string | null }>('POST', '/api/backup', data),
 };

@@ -48,4 +48,8 @@ export const migrations: string[] = [
 
   INSERT INTO lists (name) VALUES ('Vigilar nuevas');
   `,
+
+  /* 2 — silenciar avisos de un valor */ `
+  ALTER TABLE items ADD COLUMN muted_until TEXT;
+  `,
 ];

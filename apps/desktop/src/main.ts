@@ -15,12 +15,14 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, powerMonitor, shell, Tray } from 'electron';
-import { localToday, type Alert } from '@watchlist/shared';
+import { buildDailySummary, localToday, type Alert } from '@watchlist/shared';
 import { startServer, type RunningServer } from '../../server/src/server.ts';
 import { acquireLock, dailyBackup, findConflictCopies, migrateLegacyData, otherPcLock } from './data-folder.ts';
-import { PrefsStore, type DesktopPrefs } from './prefs.ts';
+import { inTimeRange, PrefsStore, type DesktopPrefs } from './prefs.ts';
 import { checkForUpdate, listenForReleases, relaunchThroughLauncher, updatesEnabled, type UpdateInfo } from './updater.ts';
 import { PriceWatcher } from './watcher.ts';
+import { Logbook } from './logbook.ts';
+import { fetchWhatsNew, type WhatsNew } from './whatsnew.ts';
 
 // dist/main.mjs → raíz del proyecto
 const ROOT = path.resolve(import.meta.dirname, '../../..');
@@ -56,8 +58,19 @@ let checkTimer: NodeJS.Timeout | undefined;
 let quitting = false;
 let pendingUpdate: UpdateInfo | null = null;
 
-const log = (msg: string, err?: unknown) =>
-  console.log(`[${new Date().toLocaleTimeString('es-ES')}] ${msg}${err ? `: ${err instanceof Error ? err.message : err}` : ''}`);
+/** Carpeta de registros: junto a la instalación, o la de Electron en desarrollo. */
+const LOG_DIR = INSTALLED ? path.resolve(ROOT, '..', 'registro') : path.join(app.getPath('userData'), 'registro');
+process.env.WATCHLIST_LOG_DIR = LOG_DIR;
+const logbook = new Logbook(LOG_DIR);
+
+const log = (msg: string, err?: unknown) => {
+  const line = `${msg}${err ? `: ${err instanceof Error ? err.message : err}` : ''}`;
+  console.log(`[${new Date().toLocaleTimeString('es-ES')}] ${line}`);
+  logbook.write(line);
+};
+
+/** Novedades pendientes de enseñar (tras una actualización). */
+let whatsNew: WhatsNew | null = null;
 
 function portIsFree(port: number) {
   return new Promise<boolean>((resolve) => {
@@ -273,10 +286,18 @@ function showAlerts(alerts: Alert[]) {
 let refreshSeconds = 60;
 let lastCheck: Date | null = null;
 
+const hhmm = (d: Date) => d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
+
 async function runCheck(manual = false): Promise<number> {
   const p = prefs.get();
-  const day = new Date().getDay();
-  if (!manual && (!p.notifications || (p.skipWeekends && (day === 0 || day === 6)))) return 0;
+  const now = new Date();
+  const day = now.getDay();
+  const weekend = day === 0 || day === 6;
+  if (!manual) {
+    if (!p.notifications || (p.skipWeekends && weekend)) return 0;
+    // En horas de silencio no se comprueba: lo que pase se avisa al terminar el silencio.
+    if (p.quietHours && inTimeRange(hhmm(now), p.quietFrom, p.quietTo)) return 0;
+  }
   try {
     const res = await watcher.check({ reached: p.notifyReached, near: p.notifyNear, orders: p.notifyOrders });
     if (res.refreshSeconds) refreshSeconds = res.refreshSeconds;
@@ -284,6 +305,14 @@ async function runCheck(manual = false): Promise<number> {
     updateTrayTooltip();
     if (res.alerts.length) log(`${res.alerts.length} aviso(s): ${res.alerts.map((a) => a.title).join(' | ')}`);
     showAlerts(res.alerts);
+
+    // Resumen del día: una vez, a partir de la hora elegida (los días que se comprueba).
+    const today = localToday(now);
+    if (!manual && p.dailySummary && p.lastSummaryDate !== today && hhmm(now) >= p.dailySummaryAt) {
+      const summary = buildDailySummary(res.rows);
+      if (summary) notify(summary.title, summary.body);
+      prefs.set({ lastSummaryDate: today });
+    }
     return res.alerts.length;
   } catch (err) {
     log('No se pudieron comprobar los precios', err);
@@ -436,6 +465,31 @@ function registerIpc() {
   handle('data:dir', () => DATA_DIR);
   handle('update:status', () => pendingUpdate);
   handle('update:apply', () => applyUpdate());
+  handle('logs:open', () => shell.openPath(LOG_DIR));
+  handle('whatsnew:get', () => whatsNew);
+  handle('whatsnew:seen', () => {
+    whatsNew = null;
+    if (process.env.WATCHLIST_SHA) prefs.set({ lastSeenSha: process.env.WATCHLIST_SHA });
+  });
+}
+
+/** Tras actualizar, prepara las novedades desde la última versión que se vio en este PC. */
+async function prepareWhatsNew() {
+  const sha = process.env.WATCHLIST_SHA;
+  const repo = process.env.WATCHLIST_REPO;
+  if (!sha || !repo) return;
+  const last = prefs.get().lastSeenSha;
+  if (!last) {
+    prefs.set({ lastSeenSha: sha }); // primera vez con esta función: nada que enseñar
+    return;
+  }
+  if (last === sha) return;
+  try {
+    whatsNew = await fetchWhatsNew(repo, last, sha);
+    if (!whatsNew) prefs.set({ lastSeenSha: sha });
+  } catch (err) {
+    log('No se pudieron leer las novedades', err);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -464,6 +518,8 @@ if (!app.requestSingleInstanceLock()) {
       prefs = new PrefsStore(app.getPath('userData'));
       watcher = new PriceWatcher(DATA_DIR, app.getPath('userData'), log);
       ensureStartMenuShortcut();
+      void prepareWhatsNew();
+      log(`Arranque (${process.env.WATCHLIST_VERSION ?? 'desarrollo'})${START_HIDDEN ? ' en la bandeja' : ''}`);
       applyLoginItem();
       registerIpc();
       createTray();

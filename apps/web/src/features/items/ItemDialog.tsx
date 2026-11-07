@@ -1,10 +1,10 @@
-import { MAX_BUY_LEVELS, roundUpShares, type ItemInput, type Settings, type WatchlistRow } from '@watchlist/shared';
+import { localToday, MAX_BUY_LEVELS, roundUpShares, type ItemInput, type Settings, type WatchlistRow } from '@watchlist/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { ApiError, api } from '../../api/client.ts';
 import { useDeleteItem, useSaveItem } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
-import { MINOR_CURRENCY, money, num, parseDecimal, pct, price } from '../../lib/format.ts';
+import { MINOR_CURRENCY, money, num, parseDecimal, pct, price, shortDate } from '../../lib/format.ts';
 import { SymbolPicker } from './SymbolPicker.tsx';
 
 interface Props {
@@ -44,6 +44,8 @@ export function ItemDialog({ listId, row, settings, fx, onClose }: Props) {
   const [orderPrice, setOrderPrice] = useState(str(item?.orderPrice));
   const [orderUntil, setOrderUntil] = useState(item?.orderUntil ?? '');
   const [notes, setNotes] = useState(item?.notes ?? '');
+  /** '' = avisos activados · 'always' · o una fecha AAAA-MM-DD hasta la que se silencian */
+  const [muted, setMuted] = useState<string>(item?.mutedUntil ?? '');
   const [error, setError] = useState<string | null>(null);
 
   const save = useSaveItem();
@@ -95,6 +97,7 @@ export function ItemDialog({ listId, row, settings, fx, onClose }: Props) {
       orderPrice: orderActive ? (parseDecimal(orderPrice) ?? buyPrices[0] ?? null) : null,
       orderUntil: orderActive && orderUntil ? orderUntil : null,
       notes: notes.trim() || null,
+      mutedUntil: (muted || null) as ItemInput['mutedUntil'],
     };
     if (!data.symbol) return setError('Indica el símbolo.');
     try {
@@ -281,6 +284,31 @@ export function ItemDialog({ listId, row, settings, fx, onClose }: Props) {
         <div className="field field--wide">
           <label htmlFor="notes">Notas</label>
           <textarea id="notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </div>
+
+        <div className="field field--wide">
+          <label htmlFor="muted">Avisos de este valor</label>
+          <select
+            id="muted"
+            className="select"
+            value={muted === '' || muted === 'always' ? muted : 'fecha'}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === '' || v === 'always') return setMuted(v);
+              if (v === 'fecha') return;
+              const d = new Date();
+              d.setDate(d.getDate() + Number(v) - 1);
+              setMuted(localToday(d));
+            }}
+          >
+            <option value="">Activados</option>
+            <option value="1">Silenciar hoy</option>
+            <option value="7">Silenciar una semana</option>
+            <option value="30">Silenciar un mes</option>
+            <option value="always">Silenciar hasta que los vuelva a activar</option>
+            {muted && muted !== 'always' && <option value="fecha">Silenciados hasta el {shortDate(muted)}</option>}
+          </select>
+          <span className="field__help">Sigue en la lista y en la tabla; solo deja de enviar notificaciones.</span>
         </div>
 
         {error && (

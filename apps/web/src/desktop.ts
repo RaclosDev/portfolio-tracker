@@ -14,6 +14,13 @@ export interface DesktopPrefs {
   runInBackground: boolean;
   /** Arrancar con Windows (oculta en la bandeja). */
   startWithWindows: boolean;
+  /** Horas de silencio ("HH:MM"). */
+  quietHours: boolean;
+  quietFrom: string;
+  quietTo: string;
+  /** Resumen diario a una hora ("HH:MM"). */
+  dailySummary: boolean;
+  dailySummaryAt: string;
 }
 
 export interface DesktopBridge {
@@ -26,11 +33,20 @@ export interface DesktopBridge {
   applyUpdate(): Promise<void>;
   /** Devuelve la función para dejar de escuchar. */
   onUpdateAvailable(cb: (info: UpdateInfo) => void): () => void;
+  openLogs(): Promise<string>;
+  whatsNew(): Promise<WhatsNew | null>;
+  markWhatsNewSeen(): Promise<void>;
 }
 
 export interface UpdateInfo {
   sha: string;
   date: string | null;
+}
+
+export interface WhatsNew {
+  from: string;
+  to: string;
+  items: { title: string; details: string[] }[];
 }
 
 export const desktop: DesktopBridge | undefined = (window as unknown as { watchlistDesktop?: DesktopBridge })

@@ -6,8 +6,49 @@ export type AlertKind = 'reached' | 'near' | 'orderTouched' | 'orderExpiring';
 export interface Alert {
   kind: AlertKind;
   itemId: number;
+  symbol: string;
   title: string;
   body: string;
+}
+
+/** Entrada del historial de avisos (se guarda en la carpeta de datos, compartida entre PCs). */
+export interface AlertRecord extends Alert {
+  at: string;
+  /** PC que mostró el aviso. */
+  host: string;
+}
+
+/** ¿Están silenciados los avisos de este valor hoy? (`mutedUntil` incluido) */
+export function isMuted(mutedUntil: string | null | undefined, today: string): boolean {
+  if (!mutedUntil) return false;
+  return mutedUntil === 'always' || mutedUntil >= today;
+}
+
+/** Texto del resumen diario (una sola notificación con lo importante). */
+export function buildDailySummary(rows: WatchlistRow[]): { title: string; body: string } | null {
+  if (!rows.length) return null;
+  const name = (r: WatchlistRow) => r.item.name ?? r.quote?.name ?? r.item.symbol;
+  const reached = rows.filter((r) => r.metrics.status === 'reached');
+  const near = rows.filter((r) => r.metrics.status === 'near');
+  const expiring = rows.filter((r) => r.item.orderActive && r.metrics.orderDaysLeft != null && r.metrics.orderDaysLeft <= 3);
+  const parts: string[] = [];
+  if (reached.length) parts.push(`En zona: ${reached.map(name).join(', ')}.`);
+  if (near.length) parts.push(`Cerca: ${near.map(name).join(', ')}.`);
+  if (expiring.length)
+    parts.push(
+      `Órdenes por caducar: ${expiring.map((r) => `${name(r)} (${r.metrics.orderDaysLeft! < 0 ? 'caducada' : `${r.metrics.orderDaysLeft} d`})`).join(', ')}.`,
+    );
+  if (!parts.length) {
+    const nearest = rows
+      .filter((r) => r.metrics.nearestDistancePct != null)
+      .sort((a, b) => b.metrics.nearestDistancePct! - a.metrics.nearestDistancePct!)[0];
+    parts.push(
+      nearest
+        ? `Nada en zona ni cerca. Lo más próximo: ${name(nearest)}, a un ${pctText(nearest.metrics.nearestDistancePct!)}.`
+        : 'Nada en zona ni cerca.',
+    );
+  }
+  return { title: 'Watchlist: resumen de hoy', body: parts.join(' ') };
 }
 
 export interface AlertPrefs {
@@ -60,13 +101,14 @@ export function evaluateAlerts(
 ): { alerts: Alert[]; memory: AlertMemory } {
   const next: AlertMemory = { levels: { ...memory.levels }, notified: { ...memory.notified } };
   const alerts: Alert[] = [];
+  const symbols = new Map(rows.map((r) => [r.item.id, r.item.symbol]));
   const recently = (key: string) => {
     const at = next.notified[key];
     return at != null && now.getTime() - Date.parse(at) < ALERT_COOLDOWN_MS;
   };
-  const push = (key: string, alert: Alert) => {
+  const push = (key: string, alert: Omit<Alert, 'symbol'>) => {
     next.notified[key] = now.toISOString();
-    alerts.push(alert);
+    alerts.push({ ...alert, symbol: symbols.get(alert.itemId) ?? '' });
   };
 
   for (const { item, quote, metrics } of rows) {
@@ -146,3 +188,6 @@ export function evaluateAlerts(
   }
   return { alerts, memory: next };
 }
+
+/** Fichero del historial de avisos dentro de la carpeta de datos. */
+export const ALERT_HISTORY_FILE = 'avisos-historial.json';

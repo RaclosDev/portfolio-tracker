@@ -2,11 +2,27 @@
  * Vigilancia de precios en segundo plano: abre la base de datos SOLO EN LECTURA un instante,
  * calcula el estado de cada valor y decide qué avisar. No bloquea la carpeta de datos, así que
  * la app puede seguir en la bandeja de un PC mientras se usa en otro.
+ *
+ * Lo ya avisado y el historial se guardan en la carpeta de datos (compartida): así, si la app está
+ * en la bandeja de dos PCs, un aviso sale una sola vez. Si la carpeta no está disponible, se usa la
+ * carpeta local de la app.
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { emptyMemory, evaluateAlerts, type Alert, type AlertMemory, type AlertPrefs, type WatchlistRow } from '@watchlist/shared';
+import {
+  ALERT_HISTORY_FILE,
+  emptyMemory,
+  evaluateAlerts,
+  isMuted,
+  localToday,
+  type Alert,
+  type AlertMemory,
+  type AlertPrefs,
+  type AlertRecord,
+  type WatchlistRow,
+} from '@watchlist/shared';
 import { migrate } from '../../server/src/db/database.ts';
 import { ItemsRepository } from '../../server/src/modules/items/items.repository.ts';
 import { ListsRepository } from '../../server/src/modules/lists/lists.repository.ts';
@@ -16,28 +32,41 @@ import { SettingsRepository } from '../../server/src/modules/settings/settings.r
 import { WatchlistService } from '../../server/src/modules/watchlist/watchlist.service.ts';
 import { DB_FILE } from './data-folder.ts';
 
+export const MEMORY_FILE = 'avisos-estado.json';
+export const HISTORY_FILE = ALERT_HISTORY_FILE;
+const HISTORY_MAX = 300;
+
+export interface CheckResult {
+  alerts: Alert[];
+  rows: WatchlistRow[];
+  refreshSeconds: number | null;
+}
+
+const readJson = <T>(file: string, fallback: T): T => {
+  try {
+    return { ...fallback, ...JSON.parse(fs.readFileSync(file, 'utf8')) } as T;
+  } catch {
+    return fallback;
+  }
+};
+
 export class PriceWatcher {
   private market: MarketService;
-  private memoryFile: string;
 
   constructor(
     private dataDir: string,
-    stateDir: string,
+    private stateDir: string,
     log: (msg: string, err?: unknown) => void,
   ) {
-    // Caché de cotizaciones en memoria: el watcher nunca escribe en la carpeta de datos.
+    // Caché de cotizaciones en memoria: el watcher nunca escribe en la base de datos.
     const cache = new DatabaseSync(':memory:');
     migrate(cache);
     this.market = new MarketService(new YahooProvider(), cache, { quoteTtlMs: 30_000, targetsTtlMs: 12 * 3_600_000 }, log);
-    this.memoryFile = path.join(stateDir, 'alertas.json');
   }
 
-  private readMemory(): AlertMemory {
-    try {
-      return { ...emptyMemory(), ...JSON.parse(fs.readFileSync(this.memoryFile, 'utf8')) };
-    } catch {
-      return emptyMemory();
-    }
+  /** Carpeta donde guardar estado e historial: la de datos si está disponible, si no la local. */
+  private stateFolder() {
+    return fs.existsSync(this.dataDir) ? this.dataDir : this.stateDir;
   }
 
   private async loadRows(): Promise<{ rows: WatchlistRow[]; refreshSeconds: number | null }> {
@@ -62,14 +91,35 @@ export class PriceWatcher {
   }
 
   /**
-   * Comprueba precios y devuelve los avisos nuevos (y recuerda lo avisado en este PC), junto con
-   * la frecuencia de actualización configurada en Ajustes → General para programar la siguiente.
+   * Comprueba precios y devuelve los avisos nuevos (y recuerda lo avisado), junto con los valores
+   * y la frecuencia de actualización configurada en Ajustes → General.
    */
-  async check(prefs: AlertPrefs, now = new Date()): Promise<{ alerts: Alert[]; refreshSeconds: number | null }> {
+  async check(prefs: AlertPrefs, now = new Date()): Promise<CheckResult> {
     const { rows, refreshSeconds } = await this.loadRows();
-    const { alerts, memory } = evaluateAlerts(rows, this.readMemory(), prefs, now);
-    fs.mkdirSync(path.dirname(this.memoryFile), { recursive: true });
-    fs.writeFileSync(this.memoryFile, JSON.stringify(memory));
-    return { alerts, refreshSeconds };
+    const today = localToday(now);
+    const watched = rows.filter((r) => !isMuted(r.item.mutedUntil, today));
+
+    const folder = this.stateFolder();
+    const memoryFile = path.join(folder, MEMORY_FILE);
+    const before = readJson<AlertMemory>(memoryFile, emptyMemory());
+    const { alerts, memory } = evaluateAlerts(watched, before, prefs, now);
+    // Solo se escribe si algo cambia: evita sincronizar la carpeta compartida cada minuto.
+    const serialized = JSON.stringify(memory);
+    if (serialized !== JSON.stringify({ ...emptyMemory(), ...before })) fs.writeFileSync(memoryFile, serialized);
+    if (alerts.length) this.appendHistory(folder, alerts, now);
+    return { alerts, rows, refreshSeconds };
+  }
+
+  private appendHistory(folder: string, alerts: Alert[], now: Date) {
+    const file = path.join(folder, HISTORY_FILE);
+    let history: AlertRecord[] = [];
+    try {
+      history = JSON.parse(fs.readFileSync(file, 'utf8')) as AlertRecord[];
+    } catch {
+      /* primer aviso */
+    }
+    const at = now.toISOString();
+    history.push(...alerts.map((a) => ({ ...a, at, host: os.hostname() })));
+    fs.writeFileSync(file, JSON.stringify(history.slice(-HISTORY_MAX), null, 1));
   }
 }

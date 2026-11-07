@@ -6,6 +6,7 @@ export const MAX_BUY_LEVELS = 3;
 
 const price = z.number().positive().finite();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha AAAA-MM-DD');
+const mutedSchema = z.union([isoDate, z.literal('always')]);
 
 export const itemInputSchema = z.object({
   listId: z.number().int().positive(),
@@ -25,6 +26,8 @@ export const itemInputSchema = z.object({
   orderPrice: price.nullable().default(null),
   orderUntil: isoDate.nullable().default(null),
   notes: z.string().max(2000).nullable().default(null),
+  /** Avisos silenciados hasta esta fecha (incluida) o 'always'. */
+  mutedUntil: mutedSchema.nullable().default(null),
 });
 export type ItemInput = z.input<typeof itemInputSchema>;
 export type ItemData = z.output<typeof itemInputSchema>;
@@ -48,6 +51,7 @@ export const itemPatchSchema = z.object({
   orderPrice: price.nullable(),
   orderUntil: isoDate.nullable(),
   notes: z.string().max(2000).nullable(),
+  mutedUntil: mutedSchema.nullable(),
 }).partial();
 export type ItemPatch = z.input<typeof itemPatchSchema>;
 

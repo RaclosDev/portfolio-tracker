@@ -15,6 +15,7 @@ interface ItemRow {
   order_price: number | null;
   order_until: string | null;
   notes: string | null;
+  muted_until: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -33,6 +34,7 @@ const toItem = (r: ItemRow): Item => ({
   orderPrice: r.order_price,
   orderUntil: r.order_until,
   notes: r.notes,
+  mutedUntil: (r.muted_until as Item['mutedUntil']) ?? null,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -50,6 +52,7 @@ const toParams = (d: ItemData) => ({
   order_price: d.orderPrice,
   order_until: d.orderUntil,
   notes: d.notes,
+  muted_until: d.mutedUntil,
 });
 
 const COLUMNS = Object.keys(toParams({} as ItemData));

@@ -14,7 +14,9 @@ home = fso.GetParentFolderName(root)
 nodeDir = home & "\node"
 If fso.FileExists(nodeDir & "\node.exe") Then env("PATH") = nodeDir & ";" & env("PATH")
 
-logFile = sh.ExpandEnvironmentStrings("%TEMP%") & "\watchlist-launch.log"
+' Registro del arranque junto a la instalación (se conserva; antes iba a %TEMP%).
+If Not fso.FolderExists(home & "\registro") Then fso.CreateFolder(home & "\registro")
+logFile = home & "\registro\arranque.log"
 sh.CurrentDirectory = root
 ' Opciones que se pasan a la app (p. ej. --oculta al iniciar con Windows).
 extra = ""

@@ -1,4 +1,13 @@
-import { itemInputSchema, itemPatchSchema, listInputSchema, settingsSchema } from '@watchlist/shared';
+import fs from 'node:fs';
+import path from 'node:path';
+import {
+  ALERT_HISTORY_FILE,
+  itemInputSchema,
+  itemPatchSchema,
+  listInputSchema,
+  settingsSchema,
+  type AlertRecord,
+} from '@watchlist/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Services } from './services.ts';
@@ -88,6 +97,17 @@ export async function registerRoutes(app: FastifyInstance, s: Services) {
   app.get('/api/market/fx', async (req) => {
     const { currencies } = z.object({ currencies: z.string().min(1).max(100) }).parse(req.query);
     return s.market.getFxRates(s.settings.get().baseCurrency, currencies.split(','));
+  });
+
+  // Historial de avisos (lo escribe la app de escritorio en la carpeta de datos)
+  app.get('/api/alerts', async () => {
+    if (!s.dataDir) return [];
+    try {
+      const all = JSON.parse(fs.readFileSync(path.join(s.dataDir, ALERT_HISTORY_FILE), 'utf8')) as AlertRecord[];
+      return all.slice(-200).reverse();
+    } catch {
+      return [];
+    }
   });
 
   // Copia de seguridad

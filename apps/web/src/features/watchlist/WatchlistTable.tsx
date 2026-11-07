@@ -1,4 +1,4 @@
-import { MAX_BUY_LEVELS, type LevelView, type WatchlistRow } from '@watchlist/shared';
+import { isMuted, localToday, MAX_BUY_LEVELS, type LevelView, type WatchlistRow } from '@watchlist/shared';
 import { useMemo, useState, type ReactNode } from 'react';
 import { MINOR_CURRENCY, money, num, pct, price, RECOMMENDATION_ES, shortDate } from '../../lib/format.ts';
 import { Icon } from '../../components/Icon.tsx';
@@ -75,6 +75,14 @@ const columns: Column[] = [
               title={`${MINOR_CURRENCY[quote.currency] ? MINOR_CURRENCY[quote.currency] + '. ' : ''}Pulsa para ver solo ${quote.currency}`}
               onTag={onTag}
             />
+          )}
+          {isMuted(item.mutedUntil, localToday()) && (
+            <span
+              className="badge badge--muted"
+              title={item.mutedUntil === 'always' ? 'Avisos silenciados' : `Avisos silenciados hasta el ${shortDate(item.mutedUntil)}`}
+            >
+              Sin avisos
+            </span>
           )}
           {(quote?.quoteType === 'ETF' || quote?.quoteType === 'EQUITY') && (
             <TagButton
