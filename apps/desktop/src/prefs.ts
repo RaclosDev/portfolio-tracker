@@ -7,7 +7,6 @@ export interface DesktopPrefs {
   notifyReached: boolean;
   notifyNear: boolean;
   notifyOrders: boolean;
-  checkMinutes: number;
   skipWeekends: boolean;
   runInBackground: boolean;
   startWithWindows: boolean;
@@ -20,7 +19,6 @@ export const DEFAULT_PREFS: DesktopPrefs = {
   notifyReached: true,
   notifyNear: true,
   notifyOrders: true,
-  checkMinutes: 15,
   skipWeekends: true,
   runInBackground: true,
   startWithWindows: false,
@@ -51,7 +49,6 @@ export class PrefsStore {
       Object.entries(patch).filter(([k, v]) => k in DEFAULT_PREFS && typeof v === typeof DEFAULT_PREFS[k as keyof DesktopPrefs]),
     );
     this.data = { ...this.data, ...clean };
-    this.data.checkMinutes = Math.min(240, Math.max(5, Math.round(this.data.checkMinutes)));
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
     fs.writeFileSync(this.file, JSON.stringify(this.data, null, 2));
     return this.get();

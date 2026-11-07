@@ -14,12 +14,12 @@
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, powerMonitor, shell, Tray } from 'electron';
 import { localToday, type Alert } from '@watchlist/shared';
 import { startServer, type RunningServer } from '../../server/src/server.ts';
 import { acquireLock, dailyBackup, findConflictCopies, migrateLegacyData, otherPcLock } from './data-folder.ts';
 import { PrefsStore, type DesktopPrefs } from './prefs.ts';
-import { checkForUpdate, relaunchThroughLauncher, updatesEnabled, type UpdateInfo } from './updater.ts';
+import { checkForUpdate, listenForReleases, relaunchThroughLauncher, updatesEnabled, type UpdateInfo } from './updater.ts';
 import { PriceWatcher } from './watcher.ts';
 
 // dist/main.mjs → raíz del proyecto
@@ -39,7 +39,8 @@ const START_HIDDEN = process.argv.includes('--oculta');
 const APP_ID = INSTALLED ? 'com.raclosdev.watchlist' : 'com.raclosdev.watchlist.dev';
 /** Puerto fijo: así las preferencias del navegador interno (tour visto, lista abierta) se conservan. */
 const PREFERRED_PORT = INSTALLED ? 5175 : 5176;
-const UPDATE_EVERY_MS = 60 * 60_000;
+/** Respaldo por si el canal de avisos instantáneos no llega (red corporativa, caída de ntfy…). */
+const UPDATE_FALLBACK_MS = 6 * 60 * 60_000;
 
 // En desarrollo usa otro nombre: no choca con la app instalada (preferencias, instancia única).
 app.setName(INSTALLED ? 'Watchlist' : 'Watchlist (desarrollo)');
@@ -268,24 +269,41 @@ function showAlerts(alerts: Alert[]) {
   }
 }
 
+/** Frecuencia de Ajustes → General (la misma que con la ventana abierta). */
+let refreshSeconds = 60;
+let lastCheck: Date | null = null;
+
 async function runCheck(manual = false): Promise<number> {
   const p = prefs.get();
   const day = new Date().getDay();
   if (!manual && (!p.notifications || (p.skipWeekends && (day === 0 || day === 6)))) return 0;
   try {
-    const alerts = await watcher.check({ reached: p.notifyReached, near: p.notifyNear, orders: p.notifyOrders });
-    if (alerts.length) log(`${alerts.length} aviso(s): ${alerts.map((a) => a.title).join(' | ')}`);
-    showAlerts(alerts);
-    return alerts.length;
+    const res = await watcher.check({ reached: p.notifyReached, near: p.notifyNear, orders: p.notifyOrders });
+    if (res.refreshSeconds) refreshSeconds = res.refreshSeconds;
+    lastCheck = new Date();
+    updateTrayTooltip();
+    if (res.alerts.length) log(`${res.alerts.length} aviso(s): ${res.alerts.map((a) => a.title).join(' | ')}`);
+    showAlerts(res.alerts);
+    return res.alerts.length;
   } catch (err) {
     log('No se pudieron comprobar los precios', err);
     return 0;
   }
 }
 
-function scheduleChecks() {
-  clearInterval(checkTimer);
-  checkTimer = setInterval(() => void runCheck(), prefs.get().checkMinutes * 60_000);
+/** Bucle de vigilancia: tras cada comprobación programa la siguiente con la frecuencia vigente. */
+function scheduleChecks(delayMs = refreshSeconds * 1000) {
+  clearTimeout(checkTimer);
+  checkTimer = setTimeout(async () => {
+    await runCheck();
+    scheduleChecks();
+  }, delayMs);
+}
+
+function updateTrayTooltip() {
+  if (!tray) return;
+  const when = lastCheck ? ` · comprobado a las ${lastCheck.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}` : '';
+  tray.setToolTip(pendingUpdate ? 'Watchlist · hay una actualización' : `Watchlist · vigilando precios${when}`);
 }
 
 function rebuildTrayMenu() {
@@ -302,15 +320,16 @@ function rebuildTrayMenu() {
         checked: p.notifications,
         click: (item) => {
           prefs.set({ notifications: item.checked });
-          scheduleChecks();
+          scheduleChecks(5_000);
         },
       },
       { type: 'separator' },
       ...(pendingUpdate ? [{ label: 'Instalar la actualización y reiniciar', click: () => applyUpdate() }] : []),
+      { label: 'Buscar actualizaciones', click: () => void checkUpdates('manual') },
       { label: 'Salir', click: quitApp },
     ]),
   );
-  tray.setToolTip(pendingUpdate ? 'Watchlist · hay una actualización' : 'Watchlist · vigilando precios');
+  updateTrayTooltip();
 }
 
 function createTray() {
@@ -324,12 +343,20 @@ function createTray() {
 /* Actualizaciones                                                     */
 /* ------------------------------------------------------------------ */
 
-async function checkUpdates() {
+let checkingUpdates = false;
+
+async function checkUpdates(reason: string) {
+  if (checkingUpdates) return;
+  checkingUpdates = true;
   try {
     const info = await checkForUpdate();
-    if (!info || pendingUpdate?.sha === info.sha) return;
+    if (!info) {
+      if (reason === 'manual') notify('Watchlist está al día', 'No hay ninguna versión nueva.');
+      return;
+    }
+    if (pendingUpdate?.sha === info.sha) return;
     pendingUpdate = info;
-    log(`Versión nueva disponible: ${info.sha.slice(0, 7)}`);
+    log(`Versión nueva disponible (${reason}): ${info.sha.slice(0, 7)}`);
     rebuildTrayMenu();
     if (!win) {
       // Solo en la bandeja: se actualiza y reinicia sin molestar.
@@ -344,6 +371,8 @@ async function checkUpdates() {
     notify('Nueva versión de Watchlist', 'Se instalará al cerrar la ventana, o pulsa «Actualizar ahora» en la app.');
   } catch (err) {
     log('No se pudo comprobar si hay actualizaciones', err);
+  } finally {
+    checkingUpdates = false;
   }
 }
 
@@ -398,8 +427,8 @@ function registerIpc() {
   handle('prefs:set', (patch: Partial<DesktopPrefs>) => {
     const p = prefs.set(patch ?? {});
     applyLoginItem();
-    scheduleChecks();
     rebuildTrayMenu();
+    scheduleChecks(2_000);
     return p;
   });
   handle('notify:test', () => notify('Notificación de prueba', 'Así se verán los avisos de Watchlist.'));
@@ -438,11 +467,12 @@ if (!app.requestSingleInstanceLock()) {
       applyLoginItem();
       registerIpc();
       createTray();
-      scheduleChecks();
-      setTimeout(() => void runCheck(), 20_000);
+      scheduleChecks(15_000); // primera comprobación de precios a los 15 s, luego con la frecuencia de Ajustes
       if (updatesEnabled()) {
-        setTimeout(() => void checkUpdates(), 2 * 60_000);
-        setInterval(() => void checkUpdates(), UPDATE_EVERY_MS);
+        // Aviso instantáneo (canal push) + respaldo: al despertar el PC y cada pocas horas.
+        listenForReleases((reason) => void checkUpdates(reason), log);
+        powerMonitor.on('resume', () => setTimeout(() => void checkUpdates('reanudar'), 15_000));
+        setInterval(() => void checkUpdates('periódica'), UPDATE_FALLBACK_MS);
       }
       if (!START_HIDDEN) await openWindow();
     })

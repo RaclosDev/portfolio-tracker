@@ -8,8 +8,6 @@ export interface DesktopPrefs {
   notifyReached: boolean;
   notifyNear: boolean;
   notifyOrders: boolean;
-  /** Cada cuántos minutos se comprueban los precios. */
-  checkMinutes: number;
   /** No comprobar en fin de semana (mercados cerrados). */
   skipWeekends: boolean;
   /** Al cerrar la ventana, seguir vigilando desde la bandeja del sistema. */

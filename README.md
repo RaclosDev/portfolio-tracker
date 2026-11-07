@@ -26,14 +26,15 @@ Si Windows avisa de que el archivo viene de internet, elige **Ejecutar de todas 
 La app busca versiones nuevas en la rama `main` de [`RaclosDev/portfolio-tracker`](https://github.com/RaclosDev/portfolio-tracker):
 
 - **Al abrirla**: si hay versión nueva se descarga e instala (aviso "Actualizando…") y luego se abre.
-- **Cada hora mientras está en marcha**: si solo está en la bandeja, se actualiza y reinicia sola; si la ventana está abierta, avisa con una notificación y un botón **Actualizar ahora** (si no se pulsa, se instala al cerrar la ventana).
+- **Al instante mientras está en marcha**: cada push a `main` dispara la GitHub Action `avisar-version.yml`, que publica un aviso en un canal de [ntfy.sh](https://ntfy.sh) (`pushTopic` en `watchlist.update.json`). La app mantiene abierta una conexión a ese canal; al recibir el aviso comprueba la versión en GitHub (el aviso por sí solo no instala nada). Si solo está en la bandeja, se actualiza y reinicia sola; si la ventana está abierta, avisa con una notificación y un botón **Actualizar ahora** (si no se pulsa, se instala al cerrar la ventana).
+- **Respaldo**: también comprueba al despertar el PC, cada 6 horas y desde el menú de la bandeja (**Buscar actualizaciones**). Las consultas a GitHub son condicionales (ETag): sin cambios no gastan cupo.
 - Sin conexión, sigue con la versión instalada. La versión se ve en ⚙ Ajustes → Copias de seguridad.
 
 Para publicar cambios: haz commit y `git push` a `main`. Para trabajar sin que llegue todavía a los demás, usa otra rama y fusiónala en `main` cuando esté lista.
 
 ## Notificaciones y segundo plano
 
-Al cerrar la ventana, Watchlist sigue en la **bandeja del sistema** (junto al reloj) y comprueba los precios cada 15 minutos (configurable). Avisa con notificaciones de Windows cuando:
+Al cerrar la ventana, Watchlist sigue en la **bandeja del sistema** (junto al reloj) y comprueba los precios con la misma frecuencia que con la ventana abierta (Ajustes → General, por defecto cada 60 s). Avisa con notificaciones de Windows cuando:
 
 - un valor entra en **zona de compra** o se pone **cerca** de un nivel,
 - el precio toca tu **orden** puesta en el banco,

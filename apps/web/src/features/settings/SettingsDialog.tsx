@@ -133,7 +133,7 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
       const res = await update.mutateAsync(next);
       saved.current = res;
       if (desktop && prefs) {
-        await desktop.setPrefs({ ...prefs, checkMinutes: Math.min(240, Math.max(5, Math.round(prefs.checkMinutes))) });
+        await desktop.setPrefs(prefs);
       }
       onClose();
     } catch {
@@ -319,13 +319,13 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
           <Row label="Órdenes" hint="El precio toca tu orden puesta o la orden está a punto de caducar.">
             <Switch label="Avisar de órdenes" checked={prefs.notifyOrders} onChange={(v) => setPref('notifyOrders', v)} />
           </Row>
-          <Row label="Comprobar precios cada" hint="Entre 5 y 240 minutos.">
-            <NumberInput
-              label="Minutos entre comprobaciones"
-              value={String(prefs.checkMinutes)}
-              onChange={(v) => setPref('checkMinutes', parseDecimal(v) ?? prefs.checkMinutes)}
-              suffix="minutos"
-            />
+          <Row
+            label="Frecuencia"
+            hint={`Los precios se comprueban cada ${refresh || settings.refreshSeconds} segundos, también en segundo plano. Se cambia en General.`}
+          >
+            <button type="button" className="btn btn--small" onClick={() => setSection('general')}>
+              Ir a General
+            </button>
           </Row>
           <Row label="No comprobar en fin de semana" hint="Los mercados están cerrados.">
             <Switch label="Saltar fin de semana" checked={prefs.skipWeekends} onChange={(v) => setPref('skipWeekends', v)} />

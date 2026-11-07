@@ -40,30 +40,36 @@ export class PriceWatcher {
     }
   }
 
-  private async loadRows(): Promise<WatchlistRow[]> {
+  private async loadRows(): Promise<{ rows: WatchlistRow[]; refreshSeconds: number | null }> {
     const file = path.join(this.dataDir, DB_FILE);
-    if (!fs.existsSync(file)) return [];
+    if (!fs.existsSync(file)) return { rows: [], refreshSeconds: null };
     const db = new DatabaseSync(file, { readOnly: true });
     try {
       const lists = new ListsRepository(db);
-      const svc = new WatchlistService(lists, new ItemsRepository(db), new SettingsRepository(db), this.market);
+      const settings = new SettingsRepository(db);
+      const refreshSeconds = settings.get().refreshSeconds;
+      const svc = new WatchlistService(lists, new ItemsRepository(db), settings, this.market);
       // view() lee la base de datos de forma síncrona antes de pedir cotizaciones.
       const views = await Promise.all(lists.all().map((l) => svc.view(l.id)));
       const seen = new Set<string>();
-      return views
+      const rows = views
         .flatMap((v) => v?.rows ?? [])
         .filter((r) => (seen.has(r.item.symbol) ? false : (seen.add(r.item.symbol), true)));
+      return { rows, refreshSeconds };
     } finally {
       db.close();
     }
   }
 
-  /** Comprueba precios y devuelve los avisos nuevos (y recuerda lo avisado en este PC). */
-  async check(prefs: AlertPrefs, now = new Date()): Promise<Alert[]> {
-    const rows = await this.loadRows();
+  /**
+   * Comprueba precios y devuelve los avisos nuevos (y recuerda lo avisado en este PC), junto con
+   * la frecuencia de actualización configurada en Ajustes → General para programar la siguiente.
+   */
+  async check(prefs: AlertPrefs, now = new Date()): Promise<{ alerts: Alert[]; refreshSeconds: number | null }> {
+    const { rows, refreshSeconds } = await this.loadRows();
     const { alerts, memory } = evaluateAlerts(rows, this.readMemory(), prefs, now);
     fs.mkdirSync(path.dirname(this.memoryFile), { recursive: true });
     fs.writeFileSync(this.memoryFile, JSON.stringify(memory));
-    return alerts;
+    return { alerts, refreshSeconds };
   }
 }

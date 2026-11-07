@@ -1,0 +1,26 @@
+# Avisa al instante a las apps instaladas de que hay una versión nueva en main.
+# Publica un mensaje en el canal de ntfy.sh indicado en watchlist.update.json; las apps lo
+# escuchan y, al recibirlo, comprueban la versión en GitHub (el mensaje no instala nada por sí solo).
+name: Avisar de versión nueva
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  avisar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: watchlist.update.json
+          sparse-checkout-cone-mode: false
+      - name: Publicar aviso
+        run: |
+          TOPIC=$(jq -r '.pushTopic // empty' watchlist.update.json)
+          if [ -z "$TOPIC" ]; then echo "Sin pushTopic: no se avisa"; exit 0; fi
+          curl -fsS --retry 3 -H "Title: Watchlist" -d "version ${GITHUB_SHA}" "https://ntfy.sh/${TOPIC}"
