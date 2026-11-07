@@ -30,6 +30,8 @@ export const CONFIG_FILE = 'watchlist.local.json';
 /** Nunca se copian ni se borran al sincronizar código. */
 // 'data' = base de datos del modo navegador de desarrollo (apps/server/data).
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'datos', 'data', '.git', '.claude', '.vscode']);
+/** Con la versión compilada, las carpetas dist sí vienen en el paquete y se sincronizan. */
+const SKIP_DIRS_BUILD = new Set([...SKIP_DIRS].filter((d) => d !== 'dist'));
 const KEEP_FILES = new Set([CONFIG_FILE]);
 
 export function readJson(file, fallback = null) {
@@ -46,11 +48,11 @@ export function writeJson(file, data) {
 
 export const log = (...args) => console.log(`[${new Date().toLocaleTimeString('es-ES')}]`, ...args);
 
-function walk(root, rel = '', out = []) {
+function walk(root, skip, rel = '', out = []) {
   for (const entry of fs.readdirSync(path.join(root, rel), { withFileTypes: true })) {
     const r = rel ? `${rel}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {
-      if (!SKIP_DIRS.has(entry.name)) walk(root, r, out);
+      if (!skip.has(entry.name)) walk(root, skip, r, out);
     } else if (entry.isFile() && !KEEP_FILES.has(r)) {
       out.push(r);
     }
@@ -58,10 +60,14 @@ function walk(root, rel = '', out = []) {
   return out;
 }
 
-/** Copia el código de `src` a `dst` y borra en `dst` lo que ya no existe (sin tocar dependencias ni datos). */
-export function mirror(src, dst) {
+/**
+ * Copia el código de `src` a `dst` y borra en `dst` lo que ya no existe (sin tocar dependencias ni datos).
+ * `withBuild`: `src` es una versión compilada y también trae las carpetas dist.
+ */
+export function mirror(src, dst, { withBuild = false } = {}) {
+  const skip = withBuild ? SKIP_DIRS_BUILD : SKIP_DIRS;
   fs.mkdirSync(dst, { recursive: true });
-  const srcFiles = walk(src);
+  const srcFiles = walk(src, skip);
   const keep = new Set(srcFiles);
   let copied = 0;
   for (const rel of srcFiles) {
@@ -75,7 +81,7 @@ export function mirror(src, dst) {
     copied++;
   }
   let removed = 0;
-  for (const rel of walk(dst)) {
+  for (const rel of walk(dst, skip)) {
     if (!keep.has(rel)) {
       fs.rmSync(path.join(dst, rel), { force: true });
       removed++;
@@ -115,6 +121,31 @@ export function run(cmd, args, cwd, { quiet = false } = {}) {
 
 export function npmInstall(root, opts) {
   run('npm', ['install', '--no-audit', '--no-fund'], root, opts);
+}
+
+/** Versión compilada: solo dependencias de ejecución (Electron); borra las de compilación que hubiera. */
+export function runtimeInstall(root, opts) {
+  run('npm', ['install', '--omit=dev', '--no-audit', '--no-fund'], root, opts);
+}
+
+/** ¿La carpeta tiene una versión compilada (descargada de GitHub) en vez del código fuente? */
+export const isBuildTree = (root) => fs.existsSync(path.join(root, 'build-info.json'));
+
+/** ¿Está todo lo necesario para abrir la app? */
+export const hasBuild = (root) =>
+  fs.existsSync(path.join(root, 'apps/web/dist/index.html')) && fs.existsSync(path.join(root, 'apps/desktop/dist/main.mjs'));
+
+/** Instala las dependencias que pida esa versión y deja la app lista para abrir. Devuelve su huella. */
+export function prepareTree(root, { quiet = false, previousHash = null } = {}) {
+  const deps = depsHash(root);
+  const build = isBuildTree(root);
+  if (deps !== previousHash || !fs.existsSync(path.join(root, 'node_modules'))) {
+    log(build ? 'Instalando el motor de la ventana (Electron)…' : 'Las dependencias han cambiado: npm install…');
+    (build ? runtimeInstall : npmInstall)(root, { quiet });
+  }
+  electronPath(root); // descarga el binario de Electron ahora si falta, no al abrir
+  if (!build) buildApp(root, { quiet });
+  return deps;
 }
 
 /** Ruta del ejecutable de Electron; si aún no se ha descargado (~100 MB), lo descarga ahora. */
@@ -188,6 +219,47 @@ export async function downloadCommit({ repo }, sha) {
   if (unzip.status !== 0) throw new Error('No se pudo descomprimir la actualización');
   const [folder] = fs.readdirSync(out);
   return { dir: path.join(out, folder), cleanup: () => fs.rmSync(tmp, { recursive: true, force: true }) };
+}
+
+/** Nombre de la versión compilada de un commit en GitHub Releases (la publica la CI). */
+export const BUILD_ASSET = 'watchlist-app.zip';
+export const buildTag = (sha) => `build-${sha.slice(0, 12)}`;
+
+/**
+ * Descarga la versión compilada de un commit. Devuelve null si no existe (versiones antiguas o si
+ * la CI no la publicó): entonces se usa el código fuente y se compila en el PC como antes.
+ */
+export async function downloadBuild({ repo }, sha) {
+  const res = await fetch(`https://github.com/${repo}/releases/download/${buildTag(sha)}/${BUILD_ASSET}`, {
+    headers: { 'User-Agent': 'watchlist-desktop-app' },
+    signal: AbortSignal.timeout(120_000),
+    redirect: 'follow',
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`descarga fallida (${res.status})`);
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'watchlist-build-'));
+  const cleanup = () => fs.rmSync(tmp, { recursive: true, force: true });
+  const zip = path.join(tmp, BUILD_ASSET);
+  fs.writeFileSync(zip, Buffer.from(await res.arrayBuffer()));
+  const out = path.join(tmp, 'app');
+  fs.mkdirSync(out);
+  const unzip =
+    process.platform === 'linux' ? spawnSync('unzip', ['-q', zip, '-d', out]) : spawnSync(TAR, ['-xf', zip, '-C', out]);
+  if (unzip.status !== 0 || !hasBuild(out) || !isBuildTree(out)) {
+    cleanup();
+    throw new Error('el paquete descargado no es válido');
+  }
+  return { dir: out, cleanup };
+}
+
+/** Descarga un commit: la versión compilada si existe; si no, el código fuente. */
+export async function downloadRelease(cfg, sha) {
+  const build = await downloadBuild(cfg, sha).catch((err) => {
+    log(`Sin versión compilada (${err.message}); se usa el código fuente.`);
+    return null;
+  });
+  if (build) return { ...build, withBuild: true };
+  return { ...(await downloadCommit(cfg, sha)), withBuild: false };
 }
 
 /* ---------------- Aviso visual mientras se actualiza (Windows) ---------------- */

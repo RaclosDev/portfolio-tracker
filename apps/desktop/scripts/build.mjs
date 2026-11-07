@@ -1,12 +1,10 @@
-// Compila el proceso principal de Electron (TypeScript → un único main.mjs).
-// Nuestro código (servidor + shared) va dentro; las librerías npm se cargan de node_modules.
+// Compila el proceso principal de Electron (TypeScript → un único main.mjs autosuficiente).
+// Todo va dentro (nuestro código y las librerías npm del servidor) salvo Electron: así la app
+// instalada solo necesita el paquete electron en node_modules, no las herramientas de compilación.
 import { build } from 'esbuild';
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
-const serverPkg = JSON.parse(readFileSync(path.join(root, '../server/package.json'), 'utf8'));
-const external = ['electron', ...Object.keys(serverPkg.dependencies).filter((d) => !d.startsWith('@watchlist/'))];
 
 await build({
   entryPoints: [path.join(root, 'src/main.ts')],
@@ -15,7 +13,10 @@ await build({
   platform: 'node',
   format: 'esm',
   target: 'node22',
-  external,
-  sourcemap: 'inline',
+  external: ['electron'],
+  // Algunas librerías son CommonJS y usan require(): en un módulo ESM hay que crearlo.
+  banner: { js: "import { createRequire as __wlCreateRequire } from 'node:module'; const require = __wlCreateRequire(import.meta.url);" },
+  sourcemap: 'linked',
+  legalComments: 'none',
   logLevel: 'warning',
 });

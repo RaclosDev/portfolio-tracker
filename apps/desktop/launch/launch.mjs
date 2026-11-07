@@ -3,19 +3,18 @@
 //   2. Abre la ventana de la app con la carpeta de datos elegida al instalar.
 // Si no hay conexión o algo falla al actualizar, abre la versión que ya está instalada.
 import { spawn } from 'node:child_process';
-import fs from 'node:fs';
 import path from 'node:path';
 import {
-  buildApp,
   CONFIG_FILE,
-  depsHash,
-  downloadCommit,
+  downloadRelease,
   electronPath,
+  hasBuild,
+  isBuildTree,
   latestCommit,
   log,
   mirror,
   passedVerification,
-  npmInstall,
+  prepareTree,
   readJson,
   showUpdatingNotice,
   writeJson,
@@ -29,7 +28,7 @@ if (!cfg?.dataDir) {
   process.exit(1);
 }
 
-async function updateIfNeeded() {
+async function updateIfNeeded({ force = false } = {}) {
   if (!cfg.repo || process.env.WATCHLIST_NO_UPDATE) return;
   let latest;
   try {
@@ -38,7 +37,7 @@ async function updateIfNeeded() {
     log(`Sin comprobar actualizaciones (${err.message}). Se abre la versión instalada.`);
     return;
   }
-  if (!latest || latest.sha === cfg.installedSha) {
+  if (!latest || (!force && latest.sha === cfg.installedSha)) {
     log(`Versión al día (${(cfg.installedSha ?? '').slice(0, 7)}).`);
     return;
   }
@@ -51,16 +50,18 @@ async function updateIfNeeded() {
   const hideNotice = showUpdatingNotice();
   let pkg;
   try {
-    pkg = await downloadCommit(cfg, latest.sha);
-    const { copied, removed } = mirror(pkg.dir, root);
-    log(`${copied} ficheros actualizados, ${removed} eliminados.`);
-    const deps = depsHash(root);
-    if (deps !== cfg.depsHash || !fs.existsSync(path.join(root, 'node_modules'))) {
-      log('Las dependencias han cambiado: npm install…');
-      npmInstall(root, { quiet: true });
-    }
-    buildApp(root, { quiet: true });
-    Object.assign(cfg, { installedSha: latest.sha, installedDate: latest.date, depsHash: deps, builtAt: new Date().toISOString() });
+    // Normalmente llega ya compilada (la publica la CI); si no, el código fuente y se compila aquí.
+    pkg = await downloadRelease(cfg, latest.sha);
+    const { copied, removed } = mirror(pkg.dir, root, { withBuild: pkg.withBuild });
+    log(`${pkg.withBuild ? 'Versión compilada' : 'Código fuente'}: ${copied} ficheros actualizados, ${removed} eliminados.`);
+    const deps = prepareTree(root, { quiet: true, previousHash: cfg.depsHash });
+    Object.assign(cfg, {
+      installedSha: latest.sha,
+      installedDate: latest.date,
+      depsHash: deps,
+      builtAt: new Date().toISOString(),
+      mode: pkg.withBuild ? 'compilada' : 'codigo',
+    });
     writeJson(cfgFile, cfg);
     log('Actualización completada.');
   } catch (err) {
@@ -78,10 +79,16 @@ if (args.includes('--esperar')) await new Promise((r) => setTimeout(r, 4000));
 
 await updateIfNeeded();
 
-// Si por lo que sea falta la compilación (p. ej. una actualización a medias), se rehace.
-if (!fs.existsSync(path.join(root, 'apps/web/dist/index.html')) || !fs.existsSync(path.join(root, 'apps/desktop/dist/main.mjs'))) {
-  log('Compilando la app…');
-  buildApp(root, { quiet: true });
+// Si por lo que sea falta algo (p. ej. una actualización a medias), se repara: con la versión
+// compilada se vuelve a descargar; con el código fuente, se compila.
+if (!hasBuild(root)) {
+  if (isBuildTree(root)) {
+    log('Faltan ficheros de la app: se vuelve a descargar.');
+    await updateIfNeeded({ force: true });
+  } else {
+    log('Compilando la app…');
+    prepareTree(root, { quiet: true, previousHash: cfg.depsHash });
+  }
 }
 
 const electron = electronPath(root);
