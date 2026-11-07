@@ -21,8 +21,8 @@ jobs:
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1' # no hace falta el binario de Electron para compilar
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           sparse-checkout: watchlist.update.json
           sparse-checkout-cone-mode: false
