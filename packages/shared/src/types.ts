@@ -1,4 +1,4 @@
-import type { ItemData, Settings } from './schemas.ts';
+import type { ItemData, PositionData, Settings } from './schemas.ts';
 
 export interface WatchList {
   id: number;
@@ -115,4 +115,58 @@ export const HISTORY_RANGES: { id: HistoryRange; label: string }[] = [
 export interface PricePoint {
   t: string;
   c: number;
+}
+
+export interface Position extends PositionData {
+  id: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Estado de una posición frente a su objetivo de venta. */
+export type SellStatus = 'reached' | 'near' | 'below' | 'none';
+
+export interface PositionMetrics {
+  fxRate: number | null;
+  /** Valor de mercado: acciones × precio actual. */
+  valueNative: number | null;
+  valueBase: number | null;
+  /** Coste: acciones × precio medio (o lo pagado en divisa base si se indicó). */
+  costNative: number;
+  costBase: number | null;
+  pnlBase: number | null;
+  pnlPct: number | null;
+  /** Lo que ha ganado o perdido hoy la posición, en divisa base. */
+  dayChangeBase: number | null;
+  /** (objetivo − actual) / actual. Positivo = le falta subir. */
+  sellDistancePct: number | null;
+  sellStatus: SellStatus;
+  /** Peso en la cartera (0-1) según el valor de mercado. */
+  weight: number | null;
+}
+
+export interface PortfolioRow {
+  position: Position;
+  quote: Quote | null;
+  targets: AnalystTargets | null;
+  metrics: PositionMetrics;
+}
+
+export interface PortfolioTotals {
+  valueBase: number;
+  costBase: number;
+  pnlBase: number;
+  pnlPct: number | null;
+  dayChangeBase: number;
+  /** Posiciones sin cotización o sin cambio de divisa (no suman en los totales). */
+  missing: number;
+}
+
+export interface PortfolioView {
+  settings: Settings;
+  rows: PortfolioRow[];
+  totals: PortfolioTotals;
+  fx: Record<string, number>;
+  generatedAt: string;
+  throttledUntil?: string | null;
 }

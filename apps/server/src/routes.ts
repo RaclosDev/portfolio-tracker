@@ -5,6 +5,8 @@ import {
   itemInputSchema,
   itemPatchSchema,
   listInputSchema,
+  positionInputSchema,
+  positionPatchSchema,
   settingsSchema,
   type AlertRecord,
 } from '@watchlist/shared';
@@ -14,6 +16,10 @@ import type { Services } from './services.ts';
 
 const idParam = z.object({ id: z.coerce.number().int().positive() });
 const forceQuery = z.object({ force: z.enum(['1', 'true']).optional() });
+const tradeSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('buy'), shares: z.number().positive(), price: z.number().positive(), costBase: z.number().positive().nullable().default(null) }),
+  z.object({ type: z.literal('sell'), shares: z.number().positive() }),
+]);
 
 class HttpError extends Error {
   constructor(
@@ -78,6 +84,60 @@ export async function registerRoutes(app: FastifyInstance, s: Services) {
   app.delete('/api/items/:id', async (req, reply) => {
     const { id } = idParam.parse(req.params);
     if (!s.items.delete(id)) throw notFound('Valor');
+    reply.code(204);
+  });
+
+  // Cartera real
+  app.get('/api/portfolio', async (req) => {
+    const { force } = forceQuery.parse(req.query);
+    return s.portfolio.view({ force: !!force });
+  });
+  app.post('/api/positions', async (req, reply) => {
+    const data = positionInputSchema.parse(req.body);
+    if (s.positions.bySymbol(data.symbol)) {
+      throw new HttpError(409, `${data.symbol} ya está en la cartera: usa «Añadir compra» en su fila.`);
+    }
+    reply.code(201);
+    return s.positions.create(data);
+  });
+  app.patch('/api/positions/:id', async (req) => {
+    const { id } = idParam.parse(req.params);
+    const current = s.positions.byId(id);
+    if (!current) throw notFound('Posición');
+    const patch = positionPatchSchema.parse(req.body);
+    const { id: _id, createdAt, updatedAt, ...rest } = current;
+    const next = positionInputSchema.parse({ ...rest, ...patch });
+    const clash = s.positions.bySymbol(next.symbol);
+    if (clash && clash.id !== id) throw new HttpError(409, `${next.symbol} ya está en la cartera.`);
+    return s.positions.update(id, next);
+  });
+  /** Compra o venta sobre una posición: recalcula acciones y precio medio. Si se vende todo, se borra. */
+  app.post('/api/positions/:id/trade', async (req) => {
+    const { id } = idParam.parse(req.params);
+    const current = s.positions.byId(id);
+    if (!current) throw notFound('Posición');
+    const t = tradeSchema.parse(req.body);
+    const { id: _id, createdAt, updatedAt, ...rest } = current;
+    if (t.type === 'sell') {
+      if (t.shares > current.shares + 1e-9) throw new HttpError(400, `Solo tienes ${current.shares} acciones.`);
+      const left = current.shares - t.shares;
+      if (left < 1e-9) {
+        s.positions.delete(id);
+        return { deleted: true };
+      }
+      // El precio medio no cambia al vender; el coste en divisa base, en proporción.
+      const costBase = current.costBase != null ? (current.costBase * left) / current.shares : null;
+      return s.positions.update(id, positionInputSchema.parse({ ...rest, shares: left, costBase }));
+    }
+    const shares = current.shares + t.shares;
+    const avgPrice = (current.shares * current.avgPrice + t.shares * t.price) / shares;
+    // El coste en divisa base solo se mantiene si se conoce el de las dos compras.
+    const costBase = current.costBase != null && t.costBase != null ? current.costBase + t.costBase : null;
+    return s.positions.update(id, positionInputSchema.parse({ ...rest, shares, avgPrice, costBase }));
+  });
+  app.delete('/api/positions/:id', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    if (!s.positions.delete(id)) throw notFound('Posición');
     reply.code(204);
   });
 

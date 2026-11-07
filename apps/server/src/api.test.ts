@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { WatchlistView } from '@watchlist/shared';
+import type { PortfolioView, WatchlistView } from '@watchlist/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from './app.ts';
 import { migrate } from './db/database.ts';
@@ -144,5 +144,52 @@ describe('históricos', () => {
     expect((await get('/api/market/history/AAA.MC?range=10y')).statusCode).toBe(400);
     const s = (await get('/api/market/sparklines?symbols=AAA.MC,BBB')).json() as Record<string, number[]>;
     expect(Object.keys(s).sort()).toEqual(['AAA.MC', 'BBB']);
+  });
+});
+
+describe('cartera', () => {
+  it('calcula valor, plusvalía, peso y estado del objetivo de venta', async () => {
+    expect((await send('POST', '/api/positions', { symbol: 'aaa.mc', shares: 100, avgPrice: 8, sellTarget: 10.2 })).statusCode).toBe(201);
+    // 10 acciones de BBB a 44 USD (pagaste 400 € en total); hoy cotiza a 50 USD con el cambio a 1,1.
+    expect((await send('POST', '/api/positions', { symbol: 'BBB', shares: 10, avgPrice: 44, costBase: 400 })).statusCode).toBe(201);
+    expect((await send('POST', '/api/positions', { symbol: 'BBB', shares: 1, avgPrice: 1 })).statusCode).toBe(409);
+
+    const view = (await get('/api/portfolio')).json() as PortfolioView;
+    const aaa = view.rows.find((r) => r.position.symbol === 'AAA.MC')!;
+    expect(aaa.metrics.valueBase).toBeCloseTo(1000);
+    expect(aaa.metrics.pnlBase).toBeCloseTo(200);
+    expect(aaa.metrics.pnlPct).toBeCloseTo(0.25);
+    expect(aaa.metrics.sellStatus).toBe('near'); // le falta un 2 % (umbral por defecto 3 %)
+    const bbb = view.rows.find((r) => r.position.symbol === 'BBB')!;
+    expect(bbb.metrics.valueBase).toBeCloseTo(500 / 1.1);
+    expect(bbb.metrics.pnlBase).toBeCloseTo(500 / 1.1 - 400);
+    expect(view.totals.valueBase).toBeCloseTo(1000 + 500 / 1.1);
+    expect(aaa.metrics.weight! + bbb.metrics.weight!).toBeCloseTo(1);
+  });
+
+  it('una compra nueva recalcula el precio medio y vender todo borra la posición', async () => {
+    const pos = (await send('POST', '/api/positions', { symbol: 'AAA.MC', shares: 100, avgPrice: 8 })).json() as { id: number };
+    const after = (await send('POST', `/api/positions/${pos.id}/trade`, { type: 'buy', shares: 100, price: 10 })).json() as {
+      shares: number;
+      avgPrice: number;
+    };
+    expect(after.shares).toBe(200);
+    expect(after.avgPrice).toBeCloseTo(9);
+    expect((await send('POST', `/api/positions/${pos.id}/trade`, { type: 'sell', shares: 500 })).statusCode).toBe(400);
+    const sold = (await send('POST', `/api/positions/${pos.id}/trade`, { type: 'sell', shares: 50 })).json() as { shares: number; avgPrice: number };
+    expect(sold.shares).toBe(150);
+    expect(sold.avgPrice).toBeCloseTo(9);
+    expect((await send('POST', `/api/positions/${pos.id}/trade`, { type: 'sell', shares: 150 })).json()).toEqual({ deleted: true });
+    expect(((await get('/api/portfolio')).json() as PortfolioView).rows).toHaveLength(0);
+  });
+
+  it('la copia de seguridad incluye la cartera y una copia antigua no la borra', async () => {
+    await send('POST', '/api/positions', { symbol: 'AAA.MC', shares: 5, avgPrice: 9 });
+    const backup = (await get('/api/backup')).json() as { positions: unknown[] };
+    expect(backup.positions).toHaveLength(1);
+    await send('POST', '/api/backup', { version: 1, lists: [{ name: 'Vieja', items: [] }] });
+    expect(((await get('/api/portfolio')).json() as PortfolioView).rows).toHaveLength(1);
+    await send('POST', '/api/backup', { ...backup, positions: [] });
+    expect(((await get('/api/portfolio')).json() as PortfolioView).rows).toHaveLength(0);
   });
 });

@@ -6,12 +6,18 @@ import type {
   Item,
   ItemInput,
   ItemPatch,
+  PortfolioView,
+  Position,
+  PositionInput,
+  PositionPatch,
   Quote,
   Settings,
   SymbolSearchResult,
   WatchList,
   WatchlistView,
 } from '@watchlist/shared';
+
+export type Trade = { type: 'buy'; shares: number; price: number; costBase: number | null } | { type: 'sell'; shares: number };
 
 export class ApiError extends Error {
   constructor(
@@ -50,6 +56,12 @@ export const api = {
   updateItem: (id: number, patch: ItemPatch) => request<Item>('PATCH', `/api/items/${id}`, patch),
   deleteItem: (id: number) => request<void>('DELETE', `/api/items/${id}`),
 
+  portfolio: (force = false) => request<PortfolioView>('GET', `/api/portfolio${force ? '?force=1' : ''}`),
+  createPosition: (data: PositionInput) => request<Position>('POST', '/api/positions', data),
+  updatePosition: (id: number, patch: PositionPatch) => request<Position>('PATCH', `/api/positions/${id}`, patch),
+  deletePosition: (id: number) => request<void>('DELETE', `/api/positions/${id}`),
+  trade: (id: number, t: Trade) => request<Position | { deleted: true }>('POST', `/api/positions/${id}/trade`, t),
+
   search: (q: string) => request<SymbolSearchResult[]>('GET', `/api/market/search?q=${encodeURIComponent(q)}`),
   fx: (currencies: string[]) =>
     request<Record<string, number>>('GET', `/api/market/fx?currencies=${encodeURIComponent(currencies.join(','))}`),
@@ -60,5 +72,5 @@ export const api = {
     request<Record<string, number[]>>('GET', `/api/market/sparklines?symbols=${encodeURIComponent(symbols.join(','))}`),
 
   alerts: () => request<AlertRecord[]>('GET', '/api/alerts'),
-  importBackup: (data: Backup) => request<{ lists: number; items: number; savedTo: string | null }>('POST', '/api/backup', data),
+  importBackup: (data: Backup) => request<{ lists: number; items: number; positions: number; savedTo: string | null }>('POST', '/api/backup', data),
 };

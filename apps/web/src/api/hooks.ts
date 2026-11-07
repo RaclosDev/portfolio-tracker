@@ -1,11 +1,12 @@
-import type { ItemInput, ItemPatch, Settings } from '@watchlist/shared';
+import type { ItemInput, ItemPatch, PositionInput, PositionPatch, Settings } from '@watchlist/shared';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from './client.ts';
+import { api, type Trade } from './client.ts';
 
 export const keys = {
   settings: ['settings'] as const,
   lists: ['lists'] as const,
   watchlist: (id: number) => ['watchlist', id] as const,
+  portfolio: ['portfolio'] as const,
 };
 
 export const useSettings = () => useQuery({ queryKey: keys.settings, queryFn: api.settings });
@@ -69,4 +70,27 @@ export function useListMutations() {
 export function useImportBackup() {
   const invalidate = useInvalidateAll();
   return useMutation({ mutationFn: api.importBackup, onSuccess: invalidate });
+}
+
+export function usePortfolio(refreshSeconds: number, enabled = true) {
+  return useQuery({
+    queryKey: keys.portfolio,
+    queryFn: () => api.portfolio(),
+    enabled,
+    refetchInterval: refreshSeconds * 1000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function usePositionMutations() {
+  const invalidate = useInvalidateAll();
+  return {
+    save: useMutation({
+      mutationFn: ({ id, data }: { id?: number; data: PositionInput | PositionPatch }) =>
+        id ? api.updatePosition(id, data) : api.createPosition(data as PositionInput),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({ mutationFn: api.deletePosition, onSuccess: invalidate }),
+    trade: useMutation({ mutationFn: ({ id, t }: { id: number; t: Trade }) => api.trade(id, t), onSuccess: invalidate }),
+  };
 }

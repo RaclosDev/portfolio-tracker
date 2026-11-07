@@ -82,6 +82,7 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
   const [refresh, setRefresh] = useState(String(settings.refreshSeconds));
   const [near, setNear] = useState(str(settings.nearThresholdPct));
   const [far, setFar] = useState(str(settings.farThresholdPct));
+  const [sellNear, setSellNear] = useState(str(settings.sellNearPct));
   const [blink, setBlink] = useState(settings.blinkReached);
   const [theme, setTheme] = useState(settings.theme);
   const [density, setDensity] = useState(settings.density);
@@ -123,6 +124,7 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
       refreshSeconds: Math.min(3600, Math.max(15, Math.round(parseDecimal(refresh) ?? settings.refreshSeconds))),
       nearThresholdPct: nearN,
       farThresholdPct: farN,
+      sellNearPct: Math.min(100, Math.max(0, parseDecimal(sellNear) ?? settings.sellNearPct)),
       blinkReached: blink,
       theme,
       density,
@@ -207,6 +209,9 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
           <span className="pill pill--far">Lejos: hasta −{str(farN)} %</span>
           <span className="pill pill--veryFar">Muy lejos: más de −{str(farN)} %</span>
         </div>
+        <Row label="Cerca del objetivo de venta" hint="Cartera: te aviso cuando al precio le falte subir como mucho este porcentaje.">
+          <NumberInput label="Umbral cerca de vender" value={sellNear} onChange={setSellNear} suffix="%" />
+        </Row>
       </>
     ),
     aspecto: (
@@ -338,6 +343,9 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
           </Row>
           <Row label="Órdenes" hint="El precio toca tu orden puesta o la orden está a punto de caducar.">
             <Switch label="Avisar de órdenes" checked={prefs.notifyOrders} onChange={(v) => setPref('notifyOrders', v)} />
+          </Row>
+          <Row label="Objetivo de venta" hint="Un valor de tu cartera llega a su objetivo de venta o se queda cerca.">
+            <Switch label="Avisar del objetivo de venta" checked={prefs.notifySell} onChange={(v) => setPref('notifySell', v)} />
           </Row>
           <Row
             label="Frecuencia"

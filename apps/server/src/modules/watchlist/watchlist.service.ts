@@ -4,7 +4,7 @@ import type { ListsRepository } from '../lists/lists.repository.ts';
 import type { MarketService } from '../market/market.service.ts';
 import type { SettingsRepository } from '../settings/settings.repository.ts';
 
-const NO_ANALYST_COVERAGE = new Set(['ETF', 'MUTUALFUND', 'INDEX', 'CURRENCY', 'CRYPTOCURRENCY', 'FUTURE']);
+export const NO_ANALYST_COVERAGE = new Set(['ETF', 'MUTUALFUND', 'INDEX', 'CURRENCY', 'CRYPTOCURRENCY', 'FUTURE']);
 
 export class WatchlistService {
   constructor(

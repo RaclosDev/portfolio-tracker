@@ -52,4 +52,22 @@ export const migrations: string[] = [
   /* 2 — silenciar avisos de un valor */ `
   ALTER TABLE items ADD COLUMN muted_until TEXT;
   `,
+
+  /* 3 — cartera real */ `
+  CREATE TABLE positions (
+    id          INTEGER PRIMARY KEY,
+    symbol      TEXT NOT NULL UNIQUE,
+    name        TEXT,
+    shares      REAL NOT NULL,
+    avg_price   REAL NOT NULL,
+    cost_base   REAL,
+    buy_date    TEXT,
+    sell_target REAL,
+    notes       TEXT,
+    muted_until TEXT,
+    position    INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  `,
 ];

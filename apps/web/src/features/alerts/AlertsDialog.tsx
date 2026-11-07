@@ -9,9 +9,18 @@ const KIND_LABEL = {
   near: 'Cerca',
   orderTouched: 'Orden',
   orderExpiring: 'Caducidad',
+  sellReached: 'Venta',
+  sellNear: 'Cerca venta',
 } as const;
 
-const PILL = { reached: 'pill--reached', near: 'pill--near', orderTouched: 'badge--order', orderExpiring: 'badge--danger' } as const;
+const PILL = {
+  reached: 'pill--reached',
+  near: 'pill--near',
+  orderTouched: 'badge--order',
+  orderExpiring: 'badge--danger',
+  sellReached: 'pill--reached',
+  sellNear: 'pill--near',
+} as const;
 
 function when(iso: string) {
   const d = new Date(iso);
