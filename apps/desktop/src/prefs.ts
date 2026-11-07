@@ -17,6 +17,8 @@ export interface DesktopPrefs {
   /** Una notificación con el resumen del día a la hora indicada ("HH:MM"). */
   dailySummary: boolean;
   dailySummaryAt: string;
+  /** Interno: última versión cuyas novedades se enseñaron. */
+  lastSeenSha: string;
   /** Interno: último día en que se mandó el resumen (AAAA-MM-DD). */
   lastSummaryDate: string;
   /** Interno: ya se explicó que la app sigue en la bandeja al cerrar la ventana. */
@@ -37,6 +39,7 @@ export const DEFAULT_PREFS: DesktopPrefs = {
   dailySummary: true,
   dailySummaryAt: '09:15',
   lastSummaryDate: '',
+  lastSeenSha: '',
   trayHintShown: false,
 };
 

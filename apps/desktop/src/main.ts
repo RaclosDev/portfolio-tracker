@@ -21,6 +21,8 @@ import { acquireLock, dailyBackup, findConflictCopies, migrateLegacyData, otherP
 import { inTimeRange, PrefsStore, type DesktopPrefs } from './prefs.ts';
 import { checkForUpdate, listenForReleases, relaunchThroughLauncher, updatesEnabled, type UpdateInfo } from './updater.ts';
 import { PriceWatcher } from './watcher.ts';
+import { Logbook } from './logbook.ts';
+import { fetchWhatsNew, type WhatsNew } from './whatsnew.ts';
 
 // dist/main.mjs → raíz del proyecto
 const ROOT = path.resolve(import.meta.dirname, '../../..');
@@ -56,8 +58,19 @@ let checkTimer: NodeJS.Timeout | undefined;
 let quitting = false;
 let pendingUpdate: UpdateInfo | null = null;
 
-const log = (msg: string, err?: unknown) =>
-  console.log(`[${new Date().toLocaleTimeString('es-ES')}] ${msg}${err ? `: ${err instanceof Error ? err.message : err}` : ''}`);
+/** Carpeta de registros: junto a la instalación, o la de Electron en desarrollo. */
+const LOG_DIR = INSTALLED ? path.resolve(ROOT, '..', 'registro') : path.join(app.getPath('userData'), 'registro');
+process.env.WATCHLIST_LOG_DIR = LOG_DIR;
+const logbook = new Logbook(LOG_DIR);
+
+const log = (msg: string, err?: unknown) => {
+  const line = `${msg}${err ? `: ${err instanceof Error ? err.message : err}` : ''}`;
+  console.log(`[${new Date().toLocaleTimeString('es-ES')}] ${line}`);
+  logbook.write(line);
+};
+
+/** Novedades pendientes de enseñar (tras una actualización). */
+let whatsNew: WhatsNew | null = null;
 
 function portIsFree(port: number) {
   return new Promise<boolean>((resolve) => {
@@ -452,6 +465,31 @@ function registerIpc() {
   handle('data:dir', () => DATA_DIR);
   handle('update:status', () => pendingUpdate);
   handle('update:apply', () => applyUpdate());
+  handle('logs:open', () => shell.openPath(LOG_DIR));
+  handle('whatsnew:get', () => whatsNew);
+  handle('whatsnew:seen', () => {
+    whatsNew = null;
+    if (process.env.WATCHLIST_SHA) prefs.set({ lastSeenSha: process.env.WATCHLIST_SHA });
+  });
+}
+
+/** Tras actualizar, prepara las novedades desde la última versión que se vio en este PC. */
+async function prepareWhatsNew() {
+  const sha = process.env.WATCHLIST_SHA;
+  const repo = process.env.WATCHLIST_REPO;
+  if (!sha || !repo) return;
+  const last = prefs.get().lastSeenSha;
+  if (!last) {
+    prefs.set({ lastSeenSha: sha }); // primera vez con esta función: nada que enseñar
+    return;
+  }
+  if (last === sha) return;
+  try {
+    whatsNew = await fetchWhatsNew(repo, last, sha);
+    if (!whatsNew) prefs.set({ lastSeenSha: sha });
+  } catch (err) {
+    log('No se pudieron leer las novedades', err);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -480,6 +518,8 @@ if (!app.requestSingleInstanceLock()) {
       prefs = new PrefsStore(app.getPath('userData'));
       watcher = new PriceWatcher(DATA_DIR, app.getPath('userData'), log);
       ensureStartMenuShortcut();
+      void prepareWhatsNew();
+      log(`Arranque (${process.env.WATCHLIST_VERSION ?? 'desarrollo'})${START_HIDDEN ? ' en la bandeja' : ''}`);
       applyLoginItem();
       registerIpc();
       createTray();

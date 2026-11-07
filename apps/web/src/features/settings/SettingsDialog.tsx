@@ -451,6 +451,14 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
         <p className="muted small" style={{ marginTop: 18 }}>
           Versión: {health.data?.version ?? '–'}
         </p>
+        {desktop && (
+          <div className="row-actions">
+            <button type="button" className="btn btn--small" onClick={() => void desktop!.openLogs()}>
+              Abrir carpeta de registros
+            </button>
+            <span className="muted small">Para revisar qué ha pasado si algo falla.</span>
+          </div>
+        )}
       </>
     ),
   };

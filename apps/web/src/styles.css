@@ -523,3 +523,5 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .field select, select.select { height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
 .setting-row input[type='time'] { height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
 .setting-row input[type='time']:disabled { opacity: 0.5; }
+.whatsnew { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 10px; font-size: 13.5px; }
+.whatsnew ul { margin: 4px 0 0; padding-left: 18px; color: var(--text-2); font-size: 13px; }

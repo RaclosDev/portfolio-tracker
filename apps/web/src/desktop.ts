@@ -33,11 +33,20 @@ export interface DesktopBridge {
   applyUpdate(): Promise<void>;
   /** Devuelve la función para dejar de escuchar. */
   onUpdateAvailable(cb: (info: UpdateInfo) => void): () => void;
+  openLogs(): Promise<string>;
+  whatsNew(): Promise<WhatsNew | null>;
+  markWhatsNewSeen(): Promise<void>;
 }
 
 export interface UpdateInfo {
   sha: string;
   date: string | null;
+}
+
+export interface WhatsNew {
+  from: string;
+  to: string;
+  items: { title: string; details: string[] }[];
 }
 
 export const desktop: DesktopBridge | undefined = (window as unknown as { watchlistDesktop?: DesktopBridge })

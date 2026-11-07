@@ -146,7 +146,9 @@ export function relaunchThroughLauncher(hidden: boolean) {
   if (!updatesEnabled()) return false;
   try {
     // Registro propio: el del arranque (watchlist-launch.log) lo tiene abierto el lanzador actual.
-    const out = fs.openSync(path.join(os.tmpdir(), 'watchlist-actualizacion.log'), 'a');
+    const dir = process.env.WATCHLIST_LOG_DIR ?? os.tmpdir();
+    fs.mkdirSync(dir, { recursive: true });
+    const out = fs.openSync(path.join(dir, 'actualizacion.log'), 'a');
     const args = [env.launcher!, '--esperar', ...(hidden ? ['--oculta'] : [])];
     spawn(env.node!, args, {
       cwd: path.resolve(path.dirname(env.launcher!), '../../..'),

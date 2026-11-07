@@ -14,4 +14,7 @@ contextBridge.exposeInMainWorld('watchlistDesktop', {
     ipcRenderer.on('update:available', listener);
     return () => ipcRenderer.removeListener('update:available', listener);
   },
+  openLogs: () => ipcRenderer.invoke('logs:open'),
+  whatsNew: () => ipcRenderer.invoke('whatsnew:get'),
+  markWhatsNewSeen: () => ipcRenderer.invoke('whatsnew:seen'),
 });
