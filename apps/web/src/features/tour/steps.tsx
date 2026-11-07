@@ -110,7 +110,10 @@ export const TOUR_STEPS: TourStep[] = [
     title: 'Valor',
     body: (
       <>
-        <p>Nombre, ticker y bolsa. Las etiquetas indican si cotiza en otra divisa (p. ej. USD, en azul) o si es un ETF.</p>
+        <p>
+          Nombre, ticker y bolsa. Las etiquetas indican la divisa (EUR, USD…; las que no son euros van en color) y el
+          tipo: ACC para acciones y ETF. Pulsa una etiqueta para ver solo esos valores.
+        </p>
         <p>
           La franja de color a la izquierda resume la fila: <span className="tour-key tour-key--reached">verde</span> en
           zona de compra, <span className="tour-key tour-key--near">ámbar</span> cerca y{' '}

@@ -67,16 +67,22 @@ const columns: Column[] = [
         <span className="sub">
           <span className="ticker">{item.symbol}</span>
           {quote?.exchange && <> · {quote.exchange}</>}
-          {quote?.currency && quote.currency !== base && (
+          {/* Etiquetas de divisa y tipo en todas las filas; la divisa distinta de la base lleva color. */}
+          {quote?.currency && (
             <TagButton
               tag={{ kind: 'currency', value: quote.currency }}
-              className="badge--fx"
+              className={quote.currency !== base ? 'badge--fx' : ''}
               title={`${MINOR_CURRENCY[quote.currency] ? MINOR_CURRENCY[quote.currency] + '. ' : ''}Pulsa para ver solo ${quote.currency}`}
               onTag={onTag}
             />
           )}
-          {quote?.quoteType === 'ETF' && (
-            <TagButton tag={{ kind: 'type', value: 'ETF' }} className="" title="Pulsa para ver solo ETF" onTag={onTag} />
+          {(quote?.quoteType === 'ETF' || quote?.quoteType === 'EQUITY') && (
+            <TagButton
+              tag={{ kind: 'type', value: quote.quoteType }}
+              className=""
+              title={`Pulsa para ver solo ${quote.quoteType === 'ETF' ? 'ETF' : 'acciones'}`}
+              onTag={onTag}
+            />
           )}
         </span>
       </div>
