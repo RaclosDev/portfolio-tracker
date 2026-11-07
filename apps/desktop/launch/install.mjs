@@ -11,6 +11,7 @@ import {
   depsHash,
   electronPath,
   localAppRoot,
+  watchlistHome,
   mirror,
   npmInstall,
   readJson,
@@ -91,7 +92,7 @@ try {
     console.log(`   Se mantiene la carpeta de datos actual: ${dataDir}`);
     console.log('   (para cambiarla, borra el fichero ' + cfgFile + ' y vuelve a instalar)');
   } else {
-    dataDir = process.env.WATCHLIST_INSTALL_DATA_DIR || (await chooseDataDir(path.join(src, 'datos')));
+    dataDir = process.env.WATCHLIST_INSTALL_DATA_DIR || (await chooseDataDir(path.join(watchlistHome(), 'datos')));
   }
   fs.mkdirSync(dataDir, { recursive: true });
   console.log(`   Datos en: ${dataDir}`);
