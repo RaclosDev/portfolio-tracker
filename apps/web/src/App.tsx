@@ -21,7 +21,6 @@ import { applyAppearance, applyColors } from './lib/theme.ts';
 import { usePrompt } from './components/usePrompt.tsx';
 import { UpdateBanner } from './components/UpdateBanner.tsx';
 import { AlertsDialog } from './features/alerts/AlertsDialog.tsx';
-import { WhatsNewDialog } from './components/WhatsNewDialog.tsx';
 
 const LS_LIST = 'watchlist.listId';
 const LS_TOUR = 'watchlist.tourSeen';
@@ -409,7 +408,6 @@ export function App() {
       )}
       {trading && <TradeDialog row={trading.row} type={trading.type} base={base} onClose={() => setTrading(null)} />}
       {promptEl}
-      <WhatsNewDialog />
       {tourOpen && <Tour steps={TOUR_STEPS} onClose={closeTour} />}
       {showSettings && <SettingsDialog settings={settings} lists={lists} onClose={() => setShowSettings(false)} />}
       {showAlerts && (

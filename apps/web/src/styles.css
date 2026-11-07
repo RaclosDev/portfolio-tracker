@@ -637,3 +637,17 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .import-preview .wl-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
 .import-symbol { width: 9.5em; font-family: var(--font-mono, ui-monospace, monospace); text-transform: uppercase; }
 .row--missing td { background: var(--expired-bg); }
+
+/* Entrada con contraseña */
+.login { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
+.login__card {
+  width: min(360px, 100%); display: flex; flex-direction: column; gap: 10px;
+  padding: 28px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+}
+.login__card .brand { margin-bottom: 8px; }
+.login__card input {
+  height: 40px; padding: 0 12px; border: 1px solid var(--text-2); border-radius: 8px; background: var(--bg);
+}
+.login__card label { font-weight: 600; font-size: 13px; }
+.login-loading { margin-top: 30vh; }
+.snapshot-list li { flex-wrap: wrap; gap: 6px 12px; }

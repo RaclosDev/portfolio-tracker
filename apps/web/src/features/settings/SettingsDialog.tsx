@@ -1,14 +1,14 @@
 import { COLOR_DEFS, DEFAULT_COLORS, DEFAULT_SETTINGS, type Colors, type Settings, type WatchList } from '@watchlist/shared';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../api/client.ts';
 import { useImportBackup, useListMutations, useUpdateSettings } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
 import { usePrompt } from '../../components/usePrompt.tsx';
-import { desktop, type DesktopPrefs } from '../../desktop.ts';
 import { exportExcel, readSpreadsheet, type ReadSheet } from '../../lib/excel.ts';
 import { parseDecimal } from '../../lib/format.ts';
 import { ImportDialog } from '../import/ImportDialog.tsx';
+import { NotificationsPanel } from './NotificationsPanel.tsx';
 import { applyAppearance, applyColors } from '../../lib/theme.ts';
 import { COLUMN_OPTIONS } from '../watchlist/WatchlistTable.tsx';
 
@@ -67,6 +67,7 @@ const str = (n: number) => String(n).replace('.', ',');
 export function SettingsDialog({ settings, lists, onClose }: Props) {
   const [section, setSection] = useState<Section>('general');
   const update = useUpdateSettings();
+  const qc = useQueryClient();
   const listsM = useListMutations();
   const importM = useImportBackup();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -106,12 +107,11 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
     [],
   );
 
-  // --- Preferencias de este PC (solo app de escritorio)
-  const [prefs, setPrefs] = useState<DesktopPrefs | null>(null);
-  useEffect(() => {
-    void desktop?.getPrefs().then(setPrefs);
-  }, []);
-  const setPref = <K extends keyof DesktopPrefs>(k: K, v: DesktopPrefs[K]) => setPrefs((p) => (p ? { ...p, [k]: v } : p));
+  // --- Avisos (los manda el servidor; valen para todos los dispositivos)
+  const [notif, setNotif] = useState(settings.notifications ?? DEFAULT_SETTINGS.notifications);
+
+  // --- Copias guardadas en el servidor
+  const snapshots = useQuery({ queryKey: ['snapshots'], queryFn: api.snapshots, enabled: section === 'copias' });
 
   const save = async () => {
     setError(null);
@@ -132,6 +132,7 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
       theme,
       density,
       fontSize,
+      notifications: notif,
       hiddenColumns: hidden,
       extraColumns: extra,
       colors,
@@ -139,9 +140,6 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
     try {
       const res = await update.mutateAsync(next);
       saved.current = res;
-      if (desktop && prefs) {
-        await desktop.setPrefs(prefs);
-      }
       onClose();
     } catch {
       setError('No se pudieron guardar los ajustes.');
@@ -210,8 +208,20 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
             ))}
           </select>
         </Row>
-        <Row label="Actualizar cotizaciones cada" hint="Con la app abierta (mínimo 15 s).">
+        <Row label="Actualizar cotizaciones cada" hint="Con la web abierta (mínimo 15 s). Los avisos se comprueban como mucho cada minuto.">
           <NumberInput label="Segundos entre actualizaciones" value={refresh} onChange={setRefresh} suffix="segundos" />
+        </Row>
+        <Row label="Sesión" hint="Cierra la sesión en este dispositivo. Para entrar otra vez hará falta la contraseña.">
+          <button
+            type="button"
+            className="btn btn--small"
+            onClick={async () => {
+              await api.logout();
+              location.reload();
+            }}
+          >
+            Cerrar sesión
+          </button>
         </Row>
       </>
     ),
@@ -355,86 +365,15 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
         </div>
       </>
     ),
-    notificaciones: desktop ? (
-      prefs ? (
-        <>
-          <h3>Notificaciones</h3>
-          <p className="intro">Avisos de Windows cuando un precio llega a donde quieres. Se configuran en cada PC.</p>
-          <Row label="Activar notificaciones">
-            <Switch label="Activar notificaciones" checked={prefs.notifications} onChange={(v) => setPref('notifications', v)} />
-          </Row>
-          <Row label="En zona de compra" hint="El precio baja de alguno de tus niveles de compra.">
-            <Switch label="Avisar en zona de compra" checked={prefs.notifyReached} onChange={(v) => setPref('notifyReached', v)} />
-          </Row>
-          <Row label="Cerca de un nivel" hint="Según el umbral de «cerca» de Estados y umbrales.">
-            <Switch label="Avisar cerca" checked={prefs.notifyNear} onChange={(v) => setPref('notifyNear', v)} />
-          </Row>
-          <Row label="Órdenes" hint="El precio toca tu orden puesta o la orden está a punto de caducar.">
-            <Switch label="Avisar de órdenes" checked={prefs.notifyOrders} onChange={(v) => setPref('notifyOrders', v)} />
-          </Row>
-          <Row label="Objetivo de venta" hint="Un valor de tu cartera llega a su objetivo de venta o se queda cerca.">
-            <Switch label="Avisar del objetivo de venta" checked={prefs.notifySell} onChange={(v) => setPref('notifySell', v)} />
-          </Row>
-          <Row
-            label="Frecuencia"
-            hint={`Los precios se comprueban cada ${refresh || settings.refreshSeconds} segundos, también en segundo plano. Se cambia en General.`}
-          >
-            <button type="button" className="btn btn--small" onClick={() => setSection('general')}>
-              Ir a General
-            </button>
-          </Row>
-          <Row label="No comprobar en fin de semana" hint="Los mercados están cerrados.">
-            <Switch label="Saltar fin de semana" checked={prefs.skipWeekends} onChange={(v) => setPref('skipWeekends', v)} />
-          </Row>
-          <Row label="Horas de silencio" hint="Sin avisos en ese tramo; lo que pase se avisa al terminar.">
-            <span className="input-suffix">
-              <Switch label="Horas de silencio" checked={prefs.quietHours} onChange={(v) => setPref('quietHours', v)} />
-              <input type="time" aria-label="Silencio desde" value={prefs.quietFrom} disabled={!prefs.quietHours} onChange={(e) => setPref('quietFrom', e.target.value)} />
-              a
-              <input type="time" aria-label="Silencio hasta" value={prefs.quietTo} disabled={!prefs.quietHours} onChange={(e) => setPref('quietTo', e.target.value)} />
-            </span>
-          </Row>
-          <Row label="Resumen diario" hint="Una notificación con lo que está en zona, cerca y las órdenes por caducar.">
-            <span className="input-suffix">
-              <Switch label="Resumen diario" checked={prefs.dailySummary} onChange={(v) => setPref('dailySummary', v)} />
-              <input type="time" aria-label="Hora del resumen" value={prefs.dailySummaryAt} disabled={!prefs.dailySummary} onChange={(e) => setPref('dailySummaryAt', e.target.value)} />
-            </span>
-          </Row>
-          <Row label="Seguir en segundo plano al cerrar" hint="La ventana se cierra pero la app queda en la bandeja del sistema (junto al reloj) vigilando precios.">
-            <Switch label="Segundo plano" checked={prefs.runInBackground} onChange={(v) => setPref('runInBackground', v)} />
-          </Row>
-          <Row label="Iniciar con Windows" hint="Arranca oculta en la bandeja al encender el PC.">
-            <Switch label="Iniciar con Windows" checked={prefs.startWithWindows} onChange={(v) => setPref('startWithWindows', v)} />
-          </Row>
-          <div className="row-actions" style={{ marginTop: 12 }}>
-            <button type="button" className="btn" onClick={() => void desktop!.testNotification()}>
-              Enviar notificación de prueba
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={async () => {
-                const r = await desktop!.checkNow();
-                setMsg(r.alerts ? `${r.alerts} aviso(s) nuevo(s).` : 'Comprobado: nada nuevo que avisar.');
-              }}
-            >
-              Comprobar ahora
-            </button>
-          </div>
-          {msg && section === 'notificaciones' && (
-            <p className="small" role="status">
-              {msg}
-            </p>
-          )}
-        </>
-      ) : (
-        <p className="muted">Cargando…</p>
-      )
-    ) : (
-      <>
-        <h3>Notificaciones</h3>
-        <p className="intro">Las notificaciones solo funcionan en la app de escritorio (acceso directo «Watchlist»).</p>
-      </>
+    notificaciones: (
+      <NotificationsPanel
+        value={notif}
+        onChange={setNotif}
+        refreshSeconds={Number(refresh) || settings.refreshSeconds}
+        onGoGeneral={() => setSection('general')}
+        Row={Row}
+        Switch={Switch}
+      />
     ),
     listas: (
       <>
@@ -477,8 +416,8 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
       <>
         <h3>Copias de seguridad y Excel</h3>
         <p className="intro">
-          La app guarda una copia automática cada día (carpeta «copias» dentro de la de datos) y otra antes de cada
-          importación. Aquí puedes exportar tus datos a un fichero o cargar uno.
+          Cada día se guarda una copia completa en el servidor, y otra antes de cada importación. También puedes descargar
+          tus datos a un fichero o cargar uno.
         </p>
         <h4 className="settings-sub">Excel</h4>
         <p className="muted small">
@@ -504,6 +443,41 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
             }}
           />
         </div>
+        <h4 className="settings-sub">Copias en el servidor</h4>
+        {snapshots.isPending && <p className="muted small">Cargando…</p>}
+        {snapshots.data?.length === 0 && <p className="muted small">Aún no hay copias: la primera se hace hoy.</p>}
+        {snapshots.data && snapshots.data.length > 0 && (
+          <ul className="list-admin snapshot-list">
+            {snapshots.data.slice(0, 10).map((c) => (
+              <li key={c.id}>
+                <span>
+                  {new Date(c.createdAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}
+                  <span className="muted small">
+                    {' '}
+                    · {c.reason} · {c.items} valores{c.positions ? `, ${c.positions} posiciones` : ''}
+                  </span>
+                </span>
+                <span className="list-admin__actions">
+                  <a className="btn btn--small" href={`/api/snapshots/${c.id}`} download>
+                    Descargar
+                  </a>
+                  <button
+                    type="button"
+                    className="btn btn--small"
+                    onClick={async () => {
+                      if (!confirm('Restaurar esta copia REEMPLAZA las listas, valores y cartera actuales (antes se guarda una copia de lo actual). ¿Continuar?')) return;
+                      const r = await api.restoreSnapshot(c.id);
+                      await qc.invalidateQueries();
+                      setMsg(`Restaurada: ${r.lists} listas, ${r.items} valores y ${r.positions} posiciones.`);
+                    }}
+                  >
+                    Restaurar
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
         <h4 className="settings-sub">Copia completa (JSON)</h4>
         <div className="row-actions">
           <a className="btn" href="/api/backup" download>
@@ -532,14 +506,6 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
         <p className="muted small" style={{ marginTop: 18 }}>
           Versión: {health.data?.version ?? '–'}
         </p>
-        {desktop && (
-          <div className="row-actions">
-            <button type="button" className="btn btn--small" onClick={() => void desktop!.openLogs()}>
-              Abrir carpeta de registros
-            </button>
-            <span className="muted small">Para revisar qué ha pasado si algo falla.</span>
-          </div>
-        )}
       </>
     ),
   };

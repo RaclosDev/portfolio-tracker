@@ -15,10 +15,10 @@ export class WatchlistService {
   ) {}
 
   async view(listId: number, { force = false } = {}): Promise<WatchlistView | undefined> {
-    const list = this.lists.byId(listId);
+    const list = await this.lists.byId(listId);
     if (!list) return undefined;
-    const settings = this.settings.get();
-    const items = this.items.byList(listId);
+    const settings = await this.settings.get();
+    const items = await this.items.byList(listId);
     const symbols = items.map((i) => i.symbol);
 
     const quotes = await this.market.getQuotes(symbols, { force });

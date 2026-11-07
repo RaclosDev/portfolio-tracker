@@ -1,0 +1,45 @@
+# Comprueba cada cambio y, si todo está bien en main, despliega la web en Render.
+#  1. comprobar: tipos, tests y compilación. Si algo falla, no se despliega.
+#  2. desplegar: llama al «Deploy Hook» de Render (secreto RENDER_DEPLOY_HOOK del repositorio).
+#     Render descarga el último commit de main, lo compila y lo pone en marcha sin cortar el servicio.
+name: Comprobar y desplegar
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  comprobar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Tipos
+        run: npm run typecheck
+      - name: Tests
+        run: npm test
+      - name: Compilación
+        run: npm run build
+
+  desplegar:
+    needs: comprobar
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Desplegar en Render
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "Sin RENDER_DEPLOY_HOOK: no se despliega."; exit 0; fi
+          curl -fsS --retry 3 -X POST "$HOOK" > /dev/null
+          echo "Despliegue solicitado."

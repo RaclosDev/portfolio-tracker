@@ -1,45 +1,60 @@
+import fastifyHelmet from '@fastify/helmet';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { registerAuth, type AuthOptions } from './modules/auth/auth.ts';
 import { errorHandler, registerRoutes } from './routes.ts';
 import type { Services } from './services.ts';
 
-/** Carpeta con el frontend compilado (apps/web/dist). */
-export type WebSource = { kind: 'dir'; root: string };
-
-/**
- * Nombres con los que se puede llegar a la API. Cualquier otro se rechaza: así una web externa no
- * puede usar un ataque de "DNS rebinding" para leer o cambiar los datos aunque la app esté abierta.
- * WATCHLIST_ALLOWED_HOSTS añade otros (p. ej. la IP del PC si algún día se abre a la red de casa).
- */
-const ALLOWED_HOSTS = new Set([
-  'localhost',
-  '127.0.0.1',
-  '[::1]',
-  ...(process.env.WATCHLIST_ALLOWED_HOSTS ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean),
-]);
-
-export function isAllowedHost(hostHeader: string | undefined) {
-  const host = (hostHeader ?? '').toLowerCase().replace(/:\d+$/, '');
-  return ALLOWED_HOSTS.has(host);
+export interface AppOptions {
+  logLevel?: string;
+  /** Carpeta con el frontend compilado (apps/web/dist). */
+  webRoot?: string | null;
+  auth?: AuthOptions;
 }
 
-export async function buildApp(services: Services, { logLevel = 'warn', web = null as WebSource | null } = {}) {
-  const app = Fastify({ logger: { level: logLevel }, bodyLimit: 5 * 1024 * 1024 });
-  app.addHook('onRequest', async (req, reply) => {
-    if (!isAllowedHost(req.headers.host)) return reply.code(403).send({ error: 'Origen no permitido' });
+export async function buildApp(services: Services, { logLevel = 'warn', webRoot = null, auth }: AppOptions = {}) {
+  // trustProxy: en Render la petición llega a través de su proxy (IP real en X-Forwarded-For).
+  const app = Fastify({ logger: { level: logLevel }, bodyLimit: 5 * 1024 * 1024, trustProxy: true });
+  await app.register(fastifyHelmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        // React usa estilos en línea (style={...}) para anchos y posiciones calculados.
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:'],
+        connectSrc: ["'self'"],
+        workerSrc: ["'self'"],
+        manifestSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+      },
+    },
+    // Las notificaciones abren la app desde el service worker: no hace falta aislar más.
+    crossOriginEmbedderPolicy: false,
   });
   app.setErrorHandler(errorHandler);
+  registerAuth(app, auth ?? { password: null, secret: null, secure: false });
   await registerRoutes(app, services);
-  if (web) await serveDir(app, web.root);
+  if (webRoot) await serveDir(app, webRoot);
   return app;
 }
 
 /** Rutas de la SPA → index.html; API o ficheros inexistentes → 404 real. */
 async function serveDir(app: FastifyInstance, root: string) {
-  await app.register(fastifyStatic, { root });
+  await app.register(fastifyStatic, {
+    root,
+    // Los ficheros con hash (assets/) no cambian nunca; index.html y el service worker, siempre frescos.
+    setHeaders: (res, file) => {
+      res.header('Cache-Control', /[\\/]assets[\\/]/.test(file) ? 'public, max-age=31536000, immutable' : 'no-cache');
+    },
+  });
   app.setNotFoundHandler((req, reply) => {
     const p = req.url.split('?')[0]!;
     if (p.startsWith('/api/') || /\.[a-z0-9]+$/i.test(p)) return reply.code(404).send({ error: 'No encontrado' });
+    reply.header('Cache-Control', 'no-cache');
     return reply.sendFile('index.html');
   });
 }

@@ -13,8 +13,8 @@ export class PortfolioService {
   ) {}
 
   async view({ force = false } = {}): Promise<PortfolioView> {
-    const settings = this.settings.get();
-    const positions = this.positions.all();
+    const settings = await this.settings.get();
+    const positions = await this.positions.all();
     const symbols = positions.map((p) => p.symbol);
     const quotes = await this.market.getQuotes(symbols, { force });
     const equity = symbols.filter((s) => !NO_ANALYST_COVERAGE.has(quotes.get(s)?.quoteType ?? ''));

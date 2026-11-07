@@ -4,37 +4,36 @@ import type { Db } from '../../db/database.ts';
 export class ListsRepository {
   constructor(private db: Db) {}
 
-  all(): WatchList[] {
-    return this.db
-      .prepare(
-        `SELECT l.id, l.name, COUNT(i.id) AS itemCount
-         FROM lists l LEFT JOIN items i ON i.list_id = l.id
-         GROUP BY l.id ORDER BY l.position, l.id`,
-      )
-      .all() as unknown as WatchList[];
+  all(): Promise<WatchList[]> {
+    return this.db.query<WatchList>(
+      `SELECT l.id, l.name, COUNT(i.id)::int AS "itemCount"
+       FROM lists l LEFT JOIN items i ON i.list_id = l.id
+       GROUP BY l.id ORDER BY l.position, l.id`,
+    );
   }
 
-  byId(id: number): WatchList | undefined {
-    return this.all().find((l) => l.id === id);
+  async byId(id: number): Promise<WatchList | undefined> {
+    return (await this.all()).find((l) => l.id === id);
   }
 
-  create(name: string): WatchList {
-    const { lastInsertRowid } = this.db
-      .prepare('INSERT INTO lists (name, position) VALUES (?, (SELECT COALESCE(MAX(position), 0) + 1 FROM lists))')
-      .run(name);
-    return this.byId(Number(lastInsertRowid))!;
+  async create(name: string): Promise<WatchList> {
+    const row = await this.db.one<{ id: number }>(
+      'INSERT INTO lists (name, position) VALUES ($1, (SELECT COALESCE(MAX(position), 0) + 1 FROM lists)) RETURNING id',
+      [name],
+    );
+    return (await this.byId(row!.id))!;
   }
 
-  rename(id: number, name: string): WatchList | undefined {
-    this.db.prepare('UPDATE lists SET name = ? WHERE id = ?').run(name, id);
+  async rename(id: number, name: string): Promise<WatchList | undefined> {
+    await this.db.query('UPDATE lists SET name = $1 WHERE id = $2', [name, id]);
     return this.byId(id);
   }
 
-  delete(id: number): boolean {
-    return this.db.prepare('DELETE FROM lists WHERE id = ?').run(id).changes > 0;
+  async delete(id: number): Promise<boolean> {
+    return (await this.db.query('DELETE FROM lists WHERE id = $1 RETURNING id', [id])).length > 0;
   }
 
-  count(): number {
-    return (this.db.prepare('SELECT COUNT(*) AS n FROM lists').get() as { n: number }).n;
+  async count(): Promise<number> {
+    return (await this.db.one<{ n: number }>('SELECT COUNT(*)::int AS n FROM lists'))!.n;
   }
 }

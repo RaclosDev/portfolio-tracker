@@ -104,18 +104,20 @@ export class MarketService {
       }
     }
     const bySymbol = new Map(fetched.map((q) => [q.symbol.toUpperCase(), q]));
-    for (const sym of missing) {
-      const q = bySymbol.get(sym.toUpperCase());
-      if (q) {
-        const quote: Quote = { ...q, symbol: sym, stale: false };
-        this.mem.set(`quote:${sym}`, { value: quote, fetchedAt: now });
-        this.persist('quote', sym, quote);
-        out.set(sym, quote);
-      } else {
-        const stored = this.load<Quote>('quote', sym);
-        if (stored) out.set(sym, { ...stored.value, stale: true });
-      }
-    }
+    await Promise.all(
+      missing.map(async (sym) => {
+        const q = bySymbol.get(sym.toUpperCase());
+        if (q) {
+          const quote: Quote = { ...q, symbol: sym, stale: false };
+          this.mem.set(`quote:${sym}`, { value: quote, fetchedAt: now });
+          await this.persist('quote', sym, quote);
+          out.set(sym, quote);
+        } else {
+          const stored = await this.load<Quote>('quote', sym);
+          if (stored) out.set(sym, { ...stored.value, stale: true });
+        }
+      }),
+    );
     return out;
   }
 
@@ -124,7 +126,7 @@ export class MarketService {
     await mapLimit([...new Set(symbols)], 4, async (sym) => {
       const key = `${TARGETS_KIND}:${sym}`;
       const cached =
-        (this.mem.get(key) as Entry<AnalystTargets | null> | undefined) ?? this.load<AnalystTargets | null>(TARGETS_KIND, sym);
+        (this.mem.get(key) as Entry<AnalystTargets | null> | undefined) ?? (await this.load<AnalystTargets | null>(TARGETS_KIND, sym));
       if ((!force && cached && Date.now() - cached.fetchedAt < this.opts.targetsTtlMs) || this.throttled) {
         if (cached) this.mem.set(key, cached);
         out.set(sym, cached?.value ?? null);
@@ -135,7 +137,7 @@ export class MarketService {
         const value = t ? { ...t, fetchedAt: new Date().toISOString() } : null;
         const entry = { value, fetchedAt: Date.now() };
         this.mem.set(key, entry);
-        this.persist(TARGETS_KIND, sym, value);
+        await this.persist(TARGETS_KIND, sym, value);
         out.set(sym, value);
       } catch (err) {
         this.onProviderError(err, `Sin consenso para ${sym}`);
@@ -194,13 +196,13 @@ export class MarketService {
       try {
         const points = await this.provider.getHistory(symbol, range);
         this.mem.set(key, { value: points, fetchedAt: Date.now() });
-        this.persist(kind, symbol, points);
+        await this.persist(kind, symbol, points);
         return { points, stale: false };
       } catch (err) {
         this.onProviderError(err, `Sin histórico de ${symbol}`);
       }
     }
-    const stored = this.load<PricePoint[]>(kind, symbol);
+    const stored = await this.load<PricePoint[]>(kind, symbol);
     return { points: stored?.value ?? [], stale: true };
   }
 
@@ -213,19 +215,28 @@ export class MarketService {
     return out;
   }
 
-  private persist(kind: Kind, symbol: string, value: unknown) {
-    this.db
-      .prepare(
-        `INSERT INTO market_cache (kind, symbol, data, fetched_at) VALUES (?, ?, ?, ?)
-         ON CONFLICT(kind, symbol) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at`,
-      )
-      .run(kind, symbol, JSON.stringify(value), new Date().toISOString());
+  /** Guarda el último dato (si falla la base de datos, se sigue con la memoria). */
+  private async persist(kind: Kind, symbol: string, value: unknown) {
+    try {
+      await this.db.query(
+        `INSERT INTO market_cache (kind, symbol, data, fetched_at) VALUES ($1, $2, $3::jsonb, now())
+         ON CONFLICT (kind, symbol) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at`,
+        [kind, symbol, JSON.stringify(value)],
+      );
+    } catch (err) {
+      this.log(`No se pudo guardar ${kind} de ${symbol}`, err);
+    }
   }
 
-  private load<T>(kind: Kind, symbol: string): Entry<T> | undefined {
-    const row = this.db
-      .prepare('SELECT data, fetched_at FROM market_cache WHERE kind = ? AND symbol = ?')
-      .get(kind, symbol) as { data: string; fetched_at: string } | undefined;
-    return row ? { value: JSON.parse(row.data) as T, fetchedAt: Date.parse(row.fetched_at) } : undefined;
+  private async load<T>(kind: Kind, symbol: string): Promise<Entry<T> | undefined> {
+    try {
+      const row = await this.db.one<{ data: T; fetched_at: Date | string }>(
+        'SELECT data, fetched_at FROM market_cache WHERE kind = $1 AND symbol = $2',
+        [kind, symbol],
+      );
+      return row ? { value: row.data, fetchedAt: new Date(row.fetched_at).getTime() } : undefined;
+    } catch {
+      return undefined;
+    }
   }
 }

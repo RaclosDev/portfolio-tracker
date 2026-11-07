@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client.ts';
 import { Dialog } from '../../components/Dialog.tsx';
-import { desktop } from '../../desktop.ts';
 import { goToRow } from '../watchlist/Highlights.tsx';
 
 const KIND_LABEL = {
@@ -30,7 +29,7 @@ function when(iso: string) {
     : d.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-/** Historial de los avisos enviados (los guarda la app de escritorio en la carpeta de datos). */
+/** Historial de los avisos que ha detectado el servidor. */
 export function AlertsDialog({ itemIds, onClose }: { itemIds: Map<string, number>; onClose: () => void }) {
   const q = useQuery({ queryKey: ['alerts'], queryFn: api.alerts, refetchInterval: 30_000 });
 
@@ -41,9 +40,8 @@ export function AlertsDialog({ itemIds, onClose }: { itemIds: Map<string, number
       {q.data && q.data.length === 0 && (
         <p className="muted">
           Todavía no hay avisos.{' '}
-          {desktop
-            ? 'Aparecerán aquí cuando un valor entre en zona de compra, se acerque a un nivel o toque una orden.'
-            : 'Los avisos los envía la app de escritorio (acceso directo «Watchlist»).'}
+Aparecerán aquí cuando un valor entre en zona de compra, se acerque a un nivel, toque una orden o llegue a
+          su objetivo de venta. Para recibirlos también como notificación, actívalas en Ajustes → Notificaciones.
         </p>
       )}
       {q.data && q.data.length > 0 && (

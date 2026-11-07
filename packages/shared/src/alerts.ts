@@ -263,3 +263,12 @@ export function evaluateSellAlerts(
 
 /** Fichero del historial de avisos dentro de la carpeta de datos. */
 export const ALERT_HISTORY_FILE = 'avisos-historial.json';
+
+/** ¿Está la hora "HH:MM" dentro del tramo [from, to)? Admite tramos que cruzan la medianoche. */
+export function inTimeRange(hhmm: string, from: string, to: string) {
+  if (from === to) return false;
+  return from < to ? hhmm >= from && hhmm < to : hhmm >= from || hhmm < to;
+}
+
+/** Hora local "HH:MM". */
+export const hhmmOf = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;

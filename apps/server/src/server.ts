@@ -1,60 +1,41 @@
 import fs from 'node:fs';
-import { buildApp, type WebSource } from './app.ts';
-import type { JournalMode } from './db/database.ts';
+import { buildApp } from './app.ts';
 import { config } from './config.ts';
 import { createServices } from './services.ts';
 
-export interface StartOptions {
-  host?: string;
-  port?: number;
-  dataDir?: string;
-  journalMode?: JournalMode;
-  web?: WebSource | null;
-  /** Si la base de datos está vacía, carga este fichero de copia (primer arranque). */
-  seedFile?: string;
-  quiet?: boolean;
-}
-
-export interface RunningServer {
-  url: string;
-  port: number;
-  close: () => Promise<void>;
-}
-
-/** Arranca la API (y el frontend si se indica). Lo usan `npm start` y la app de escritorio. */
-export async function startServer(opts: StartOptions = {}): Promise<RunningServer> {
-  const dataDir = opts.dataDir ?? config.dataDir;
-  const services = createServices({
-    dataDir,
-    journalMode: opts.journalMode,
-    log: (msg, err) => console.warn(`[mercado] ${msg}: ${err instanceof Error ? err.message : (err ?? '')}`),
+/** Arranca la web completa: API, frontend y la vigilancia de precios con sus avisos. */
+export async function startServer() {
+  if (config.production && !config.appPassword) {
+    throw new Error('Falta APP_PASSWORD: sin contraseña la web quedaría abierta a cualquiera.');
+  }
+  const services = await createServices({
+    log: (msg, err) => console.warn(`[watchlist] ${msg}${err ? `: ${err instanceof Error ? err.message : err}` : ''}`),
   });
 
-  if (opts.seedFile && fs.existsSync(opts.seedFile) && services.lists.all().every((l) => l.itemCount === 0)) {
-    services.backup.import(JSON.parse(fs.readFileSync(opts.seedFile, 'utf8')));
+  // Primer arranque en local: si hay datos de ejemplo y la base está vacía, se cargan.
+  if (fs.existsSync(config.seedFile) && (await services.lists.all()).every((l) => l.itemCount === 0)) {
+    await services.backup.import(JSON.parse(fs.readFileSync(config.seedFile, 'utf8')));
   }
 
-  const app = await buildApp(services, { web: opts.web ?? null });
-  const host = opts.host ?? config.host;
-  await app.listen({ host, port: opts.port ?? config.port });
-  const address = app.server.address();
-  const port = typeof address === 'object' && address ? address.port : (opts.port ?? config.port);
-  const url = `http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`;
+  const app = await buildApp(services, {
+    logLevel: config.production ? 'info' : 'warn',
+    webRoot: fs.existsSync(config.webDist) ? config.webDist : null,
+    auth: { password: config.appPassword, secret: config.sessionSecret, secure: config.production },
+  });
+  await app.listen({ host: config.host, port: config.port });
+  services.alerts.start();
 
-  if (!opts.quiet) {
-    console.log(`\n  Watchlist en marcha → ${opts.web ? url : `${url}/api (frontend: http://localhost:5173)`}`);
-    console.log(`  Datos: ${dataDir}\n`);
-  }
+  console.log(`\n  Watchlist en marcha → http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}`);
+  console.log(`  Base de datos: ${config.databaseUrl ? 'PostgreSQL (DATABASE_URL)' : `PGlite en ${config.dataDir}`}`);
+  if (!config.appPassword) console.log('  Sin APP_PASSWORD: no se pide contraseña (solo para desarrollo).');
+  if (!services.push.enabled) console.log('  Sin claves VAPID: las notificaciones están desactivadas (npm run claves-push).');
+  console.log('');
 
-  let closed = false;
   return {
-    url,
-    port,
     close: async () => {
-      if (closed) return;
-      closed = true;
+      services.alerts.stop();
       await app.close();
-      services.db.close();
+      await services.db.close();
     },
   };
 }

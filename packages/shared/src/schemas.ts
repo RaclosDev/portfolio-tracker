@@ -122,6 +122,27 @@ export const colorsSchema = z.object(
 export type Colors = z.output<typeof colorsSchema>;
 export const DEFAULT_COLORS: Colors = colorsSchema.parse({});
 
+const hhmm = z.string().regex(/^\d{2}:\d{2}$/, 'Hora HH:MM');
+
+/** Avisos que manda el servidor (a todos los dispositivos con las notificaciones activadas). */
+export const notificationSettingsSchema = z.object({
+  enabled: z.boolean().default(true),
+  reached: z.boolean().default(true),
+  near: z.boolean().default(true),
+  orders: z.boolean().default(true),
+  sell: z.boolean().default(true),
+  /** No comprobar sábados y domingos (las bolsas están cerradas). */
+  skipWeekends: z.boolean().default(true),
+  /** Sin avisos entre quietFrom y quietTo (hora de España). */
+  quietHours: z.boolean().default(true),
+  quietFrom: hhmm.default('22:00'),
+  quietTo: hhmm.default('08:00'),
+  /** Un aviso con el resumen del día a esta hora. */
+  dailySummary: z.boolean().default(true),
+  dailySummaryAt: hhmm.default('09:15'),
+});
+export type NotificationSettings = z.output<typeof notificationSettingsSchema>;
+
 export const settingsSchema = z.object({
   baseCurrency: z.string().length(3).default('EUR'),
   defaultInvest: price.default(2500),
@@ -143,6 +164,7 @@ export const settingsSchema = z.object({
   sellNearPct: z.number().min(0).max(100).default(3),
   /** Columnas opcionales activadas (datos fundamentales y fechas clave). */
   extraColumns: z.array(z.string().max(30)).max(30).default([]),
+  notifications: notificationSettingsSchema.default(notificationSettingsSchema.parse({})),
 });
 export type Settings = z.output<typeof settingsSchema>;
 export const DEFAULT_SETTINGS: Settings = settingsSchema.parse({});

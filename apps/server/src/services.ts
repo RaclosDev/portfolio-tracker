@@ -1,5 +1,7 @@
 import { config } from './config.ts';
-import { openDatabase, type Db, type JournalMode } from './db/database.ts';
+import { openDatabase, type Db } from './db/database.ts';
+import { AlertsService } from './modules/alerts/alerts.service.ts';
+import { PushService } from './modules/alerts/push.service.ts';
 import { BackupService } from './modules/backup/backup.service.ts';
 import { ItemsRepository } from './modules/items/items.repository.ts';
 import { ListsRepository } from './modules/lists/lists.repository.ts';
@@ -8,35 +10,41 @@ import type { MarketDataProvider } from './modules/market/provider.ts';
 import { YahooProvider } from './modules/market/yahoo.provider.ts';
 import { PortfolioService } from './modules/portfolio/portfolio.service.ts';
 import { PositionsRepository } from './modules/portfolio/positions.repository.ts';
-import { SettingsRepository } from './modules/settings/settings.repository.ts';
+import { SettingsRepository, StateRepository } from './modules/settings/settings.repository.ts';
 import { WatchlistService } from './modules/watchlist/watchlist.service.ts';
 
 /** Composición de dependencias: único sitio donde se cablea todo. */
-export function createServices(
+export function createServicesFromDb(
+  db: Db,
   opts: {
-    db?: Db;
-    dataDir?: string;
-    journalMode?: JournalMode;
     provider?: MarketDataProvider;
+    vapid?: { publicKey: string | null; privateKey: string | null; subject: string };
     log?: (msg: string, err?: unknown) => void;
   } = {},
 ) {
-  const db = opts.db ?? openDatabase(opts.dataDir ?? config.dataDir, { journalMode: opts.journalMode });
+  const log = opts.log ?? (() => {});
   const lists = new ListsRepository(db);
   const items = new ItemsRepository(db);
   const settings = new SettingsRepository(db);
+  const state = new StateRepository(db);
   const market = new MarketService(
     opts.provider ?? new YahooProvider(),
     db,
     { quoteTtlMs: config.quoteTtlMs, targetsTtlMs: config.targetsTtlMs },
-    opts.log,
+    log,
   );
   const watchlist = new WatchlistService(lists, items, settings, market);
   const positions = new PositionsRepository(db);
   const portfolio = new PortfolioService(positions, settings, market);
-  const dataDir = opts.dataDir ?? (opts.db ? null : config.dataDir);
-  const backup = new BackupService(db, lists, items, settings, positions, dataDir);
-  return { db, dataDir, lists, items, settings, market, watchlist, positions, portfolio, backup };
+  const backup = new BackupService(db);
+  const push = new PushService(db, opts.vapid ?? { publicKey: null, privateKey: null, subject: 'mailto:avisos@raclos.es' }, log);
+  const alerts = new AlertsService(db, lists, settings, state, watchlist, portfolio, push, backup, log);
+  return { db, lists, items, settings, state, market, watchlist, positions, portfolio, backup, push, alerts };
 }
 
-export type Services = ReturnType<typeof createServices>;
+export async function createServices(opts: Parameters<typeof createServicesFromDb>[1] = {}) {
+  const db = await openDatabase({ url: config.databaseUrl, dataDir: config.dataDir });
+  return createServicesFromDb(db, { vapid: config.vapid, ...opts });
+}
+
+export type Services = ReturnType<typeof createServicesFromDb>;

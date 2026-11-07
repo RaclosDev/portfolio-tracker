@@ -20,6 +20,24 @@ import type {
 
 export type Trade = { type: 'buy'; shares: number; price: number; costBase: number | null } | { type: 'sell'; shares: number };
 
+export const SESSION_LOST = 'watchlist:sin-sesion';
+
+export interface PushDevice {
+  id: number;
+  label: string | null;
+  createdAt: string;
+  lastOkAt: string | null;
+  endpointHost: string;
+}
+
+export interface SnapshotInfo {
+  id: number;
+  createdAt: string;
+  reason: string;
+  items: number;
+  positions: number;
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -38,11 +56,31 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   });
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
+  // Sesión caducada o cerrada en otro sitio: la app vuelve a la pantalla de entrada.
+  if (res.status === 401 && !url.startsWith('/api/login')) window.dispatchEvent(new Event(SESSION_LOST));
   if (!res.ok) throw new ApiError(res.status, data.error ?? `Error ${res.status}`, data.issues);
   return data as T;
 }
 
 export const api = {
+  health: () => request<{ ok: boolean; version: string }>('GET', '/api/health'),
+  session: () => request<{ authRequired: boolean; authenticated: boolean }>('GET', '/api/session'),
+  login: (password: string) => request<{ ok: true }>('POST', '/api/login', { password }),
+  logout: () => request<{ ok: true }>('POST', '/api/logout', {}),
+
+  pushKey: () => request<{ publicKey: string | null; enabled: boolean }>('GET', '/api/push/key'),
+  pushSubscribe: (subscription: { endpoint: string; keys: { p256dh: string; auth: string } }, label: string) =>
+    request<{ ok: true }>('POST', '/api/push/subscribe', { subscription, label }),
+  pushUnsubscribe: (endpoint: string) => request<{ ok: true }>('POST', '/api/push/unsubscribe', { endpoint }),
+  pushDevices: () => request<PushDevice[]>('GET', '/api/push/devices'),
+  removeDevice: (id: number) => request<void>('DELETE', `/api/push/devices/${id}`),
+  pushTest: () => request<{ sent: number; failed: number }>('POST', '/api/push/test', {}),
+  checkAlerts: () => request<{ alerts: number }>('POST', '/api/alerts/check', {}),
+
+  snapshots: () => request<SnapshotInfo[]>('GET', '/api/snapshots'),
+  restoreSnapshot: (id: number) =>
+    request<{ lists: number; items: number; positions: number; savedTo: string | null }>('POST', `/api/snapshots/${id}/restore`, {}),
+
   settings: () => request<Settings>('GET', '/api/settings'),
   updateSettings: (patch: Partial<Settings>) => request<Settings>('PUT', '/api/settings', patch),
 
