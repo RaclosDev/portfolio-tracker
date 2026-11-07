@@ -193,3 +193,27 @@ describe('cartera', () => {
     expect(((await get('/api/portfolio')).json() as PortfolioView).rows).toHaveLength(0);
   });
 });
+
+describe('importar desde Excel/CSV', () => {
+  it('crea los nuevos y en los existentes solo cambia lo que trae el fichero', async () => {
+    await send('POST', '/api/items', { listId: 1, symbol: 'AAA.MC', buyPrices: [9], notes: 'mi nota' });
+    const res = await send('POST', '/api/lists/1/import', {
+      items: [
+        { symbol: 'AAA.MC', buyPrices: [8.5, 7.6], brokerTarget: 14 },
+        { symbol: 'bbb', investAmount: 3000, orderActive: true, orderUntil: '2026-12-31' },
+      ],
+    });
+    expect(res.json()).toEqual({ created: 1, updated: 1 });
+    const view = (await get('/api/lists/1/watchlist')).json() as WatchlistView;
+    const aaa = view.rows.find((r) => r.item.symbol === 'AAA.MC')!.item;
+    expect(aaa.buyPrices).toEqual([8.5, 7.6]);
+    expect(aaa.notes).toBe('mi nota');
+    expect(view.rows.find((r) => r.item.symbol === 'BBB')!.item.orderUntil).toBe('2026-12-31');
+  });
+
+  it('si una fila no es válida no importa nada', async () => {
+    const res = await send('POST', '/api/lists/1/import', { items: [{ symbol: 'AAA.MC' }, { symbol: 'BBB', buyPrices: [-1] }] });
+    expect(res.statusCode).toBe(400);
+    expect(((await get('/api/lists/1/watchlist')).json() as WatchlistView).rows).toHaveLength(0);
+  });
+});

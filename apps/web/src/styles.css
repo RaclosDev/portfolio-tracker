@@ -630,3 +630,10 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .pf-table .row-actions { justify-content: flex-start; }
   .weight { align-items: flex-start; }
 }
+
+/* Importar desde Excel/CSV */
+.settings-sub { font-size: 13px; margin: 14px 0 6px; }
+.import-preview { max-height: 46vh; overflow: auto; margin-top: 8px; border: 1px solid var(--border); border-radius: var(--radius); }
+.import-preview .wl-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.import-symbol { width: 9.5em; font-family: var(--font-mono, ui-monospace, monospace); text-transform: uppercase; }
+.row--missing td { background: var(--expired-bg); }

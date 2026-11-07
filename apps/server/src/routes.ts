@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   ALERT_HISTORY_FILE,
+  importRequestSchema,
   itemInputSchema,
   itemPatchSchema,
   listInputSchema,
@@ -12,6 +13,7 @@ import {
 } from '@watchlist/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { transaction } from './db/database.ts';
 import type { Services } from './services.ts';
 
 const idParam = z.object({ id: z.coerce.number().int().positive() });
@@ -64,6 +66,34 @@ export async function registerRoutes(app: FastifyInstance, s: Services) {
     const { id } = idParam.parse(req.params);
     const { force } = forceQuery.parse(req.query);
     return (await s.watchlist.view(id, { force: !!force })) ?? Promise.reject(notFound('Lista'));
+  });
+
+  /**
+   * Importación desde Excel/CSV a una lista: si el valor ya está, se actualizan solo los campos que
+   * trae el fichero; si no, se crea. Todo o nada.
+   */
+  app.post('/api/lists/:id/import', async (req) => {
+    const { id } = idParam.parse(req.params);
+    if (!s.lists.byId(id)) throw notFound('Lista');
+    const { items } = importRequestSchema.parse(req.body);
+    const existing = new Map(s.items.byList(id).map((i) => [i.symbol, i]));
+    let created = 0;
+    let updated = 0;
+    transaction(s.db, () => {
+      for (const row of items) {
+        const current = existing.get(row.symbol);
+        if (current) {
+          const { id: itemId, createdAt, updatedAt, ...rest } = current;
+          s.items.update(itemId, itemInputSchema.parse({ ...rest, ...row, listId: id }));
+          updated++;
+        } else {
+          const item = s.items.create(itemInputSchema.parse({ ...row, listId: id }));
+          existing.set(item.symbol, item);
+          created++;
+        }
+      }
+    });
+    return { created, updated };
   });
 
   // Valores
@@ -152,6 +182,13 @@ export async function registerRoutes(app: FastifyInstance, s: Services) {
     const quote = (await s.market.getQuotes([sym])).get(sym);
     if (!quote) throw new HttpError(404, `Símbolo ${sym} no encontrado en ${s.market.providerId}`);
     return quote;
+  });
+
+  /** Varias cotizaciones de una vez (los símbolos que no existen no vienen en la respuesta). */
+  app.get('/api/market/quotes', async (req) => {
+    const { symbols } = z.object({ symbols: z.string().min(1).max(4000) }).parse(req.query);
+    const list = [...new Set(symbols.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean))].slice(0, 300);
+    return [...(await s.market.getQuotes(list)).values()];
   });
 
   app.get('/api/market/fx', async (req) => {
