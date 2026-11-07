@@ -63,7 +63,9 @@ function createShortcut() {
     if (res.status !== 0) throw new Error('No se pudo crear el acceso directo');
     return;
   }
-  const launch = `cd "${dst}" && node apps/desktop/launch/launch.mjs >/tmp/watchlist-launch.log 2>&1`;
+  // Usa el mismo Node.js que ejecuta el instalador (el portátil que descarga instalar.sh).
+  const nodeBin = process.execPath;
+  const launch = `cd "${dst}" && PATH="${path.dirname(nodeBin)}:$PATH" "${nodeBin}" apps/desktop/launch/launch.mjs >/tmp/watchlist-launch.log 2>&1`;
   if (process.platform === 'darwin') {
     const file = path.join(os.homedir(), 'Desktop', 'Watchlist.command');
     fs.writeFileSync(file, `#!/bin/sh\n(${launch}) &\n`, { mode: 0o755 });

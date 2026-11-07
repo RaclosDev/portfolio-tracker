@@ -7,14 +7,23 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-/** Carpeta donde se instala el programa en este PC (fuera de cualquier carpeta sincronizada). */
-export function localAppRoot() {
-  if (process.env.WATCHLIST_APP_DIR) return path.resolve(process.env.WATCHLIST_APP_DIR); // pruebas
+/**
+ * Carpeta de instalación en este PC (fuera de cualquier carpeta sincronizada):
+ *   <home>/node  → Node.js propio de la app (lo descarga el instalador)
+ *   <home>/app   → el programa
+ * WATCHLIST_HOME permite cambiarla (pruebas).
+ */
+export function watchlistHome() {
+  if (process.env.WATCHLIST_HOME) return path.resolve(process.env.WATCHLIST_HOME);
   if (process.platform === 'win32') {
-    return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'Watchlist', 'app');
+    return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'Watchlist');
   }
-  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'Watchlist', 'app');
-  return path.join(os.homedir(), '.local', 'share', 'watchlist', 'app');
+  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'Watchlist');
+  return path.join(os.homedir(), '.local', 'share', 'watchlist');
+}
+
+export function localAppRoot() {
+  return path.join(watchlistHome(), 'app');
 }
 
 export const CONFIG_FILE = 'watchlist.local.json';
