@@ -1,0 +1,60 @@
+# Portfolio Tracker · Watchlist
+
+Web para vigilar acciones y ETF en los que quieres entrar y para llevar la cartera: hasta 3 precios de compra y la distancia a cada uno, objetivo de tu bróker y consenso de analistas, tamaño de la compra con conversión de divisa, órdenes puestas en el banco, posiciones con plusvalías y objetivo de venta.
+
+Está en **https://cartera.raclos.es**, protegida con contraseña. Funciona en el PC, el móvil y la tablet. El servidor vigila los precios todo el día y avisa con **notificaciones** (zona de compra, cerca de un nivel, órdenes, objetivo de venta y un resumen diario). Las cotizaciones vienen de Yahoo Finance.
+
+## Uso
+
+La primera vez se abre una **guía** que explica cada parte (botón **Guía** para repetirla).
+
+- **Listas** en pestañas y la **Cartera** con lo ya comprado.
+- **Mapa de precios**: rango de 52 semanas, precio actual, tus niveles de compra, el objetivo del bróker y el consenso.
+- **Compra 1/2/3**: precio y distancia (%); se editan pulsando en la celda.
+- **Acciones / Importe / Ahorro**: en euros aunque el valor cotice en otra divisa. Las acciones se redondean siempre hacia arriba.
+- **Ajustes**: umbrales, colores y columnas, notificaciones, listas, copias de seguridad y Excel.
+
+**En el móvil o la tablet:** abre la web y añádela a la pantalla de inicio (Chrome: menú ⋮ → Añadir a pantalla de inicio; iPhone/iPad: Compartir → Añadir a pantalla de inicio). Después, **Ajustes → Notificaciones → Activar en este dispositivo**. Hay que activarlas en cada dispositivo donde se quieran recibir.
+
+Símbolos: los de Yahoo Finance (el buscador acepta nombre, ticker o ISIN). Sufijos: `.MC` Madrid, `.PA` París, `.AS` Ámsterdam, `.DE` Xetra, `.MI` Milán, `.L` Londres, sin sufijo para EE. UU.
+
+## Puesta en marcha (una vez)
+
+Todo en planes gratuitos: **Neon** (base de datos), **Render** (servidor), **UptimeRobot** (lo mantiene despierto) y el DNS de `raclos.es`.
+
+1. **Neon** → crea un proyecto en la región *AWS Europe Central 1 (Frankfurt)* y copia la cadena de conexión (*Connection string*, con `?sslmode=require`).
+2. **Claves de las notificaciones**: en este repositorio ejecuta `npm run claves-push` y guarda las dos claves.
+3. **Render** → *New → Blueprint* con este repositorio (`render.yaml`). Rellena:
+   - `DATABASE_URL`: la cadena de Neon.
+   - `APP_PASSWORD`: la contraseña para entrar en la web.
+   - `VAPID_PUBLIC_KEY` y `VAPID_PRIVATE_KEY`: las del paso 2.
+4. **Despliegue automático**: en Render, *Settings → Deploy Hook*, copia la URL y guárdala en GitHub como secreto del repositorio `RENDER_DEPLOY_HOOK` (*Settings → Secrets and variables → Actions*). Desde entonces, cada push a `main` se despliega solo si pasan los tests.
+5. **Dominio**: en el DNS de `raclos.es` crea un `CNAME` `cartera` → `<servicio>.onrender.com` (el que muestra Render en *Settings → Custom Domains*). Render pone el certificado HTTPS solo.
+6. **UptimeRobot** → monitor HTTP(s) a `https://cartera.raclos.es/api/health` cada 5 minutos. Así no se duerme y los avisos funcionan siempre.
+7. **Datos**: entra en la web, *Ajustes → Copias y Excel → Importar JSON…* con una copia exportada antes (o importa el Excel con *Importar desde Excel o CSV…*).
+
+El servidor solo arranca en producción si `APP_PASSWORD` está definida. Cambiar `APP_PASSWORD` cierra la sesión en todos los dispositivos.
+
+## Copias de seguridad
+
+- Cada día se guarda una copia completa en la propia base de datos (las 40 últimas) y otra antes de cada importación. Se descargan o restauran en *Ajustes → Copias y Excel*.
+- *Exportar JSON* descarga todo (listas, cartera y ajustes); *Exportar a Excel* genera un .xlsx con una hoja por lista y otra con la cartera.
+
+## Desarrollo
+
+```bash
+npm install
+npm run dev        # API :5174 + Vite :5173 con recarga al instante
+npm start          # web compilada en http://localhost:5174 (antes: npm run build)
+npm test           # tests (la base de datos de los tests es un PostgreSQL en memoria)
+npm run typecheck
+npm run seed -- copia.json --force   # carga una copia en la base de datos local
+```
+
+En local no hace falta PostgreSQL: sin `DATABASE_URL` se usa **PGlite** (PostgreSQL en WebAssembly) en `apps/server/data/pg`. Sin `APP_PASSWORD` no se pide contraseña y sin claves VAPID no hay notificaciones.
+
+Variables de entorno: `DATABASE_URL`, `APP_PASSWORD`, `SESSION_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `PUBLIC_URL`, `TZ` (Europe/Madrid), `PORT` (5174), `HOST`, `DATA_DIR`, `QUOTE_TTL_SECONDS` (45), `TARGETS_TTL_HOURS` (12).
+
+Estructura: `apps/server` (API, avisos y notificaciones), `apps/web` (interfaz, PWA), `packages/shared` (tipos y cálculos). Arquitectura y decisiones: [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
+
+> Los datos de Yahoo Finance pueden llevar retraso y no son asesoramiento de inversión.

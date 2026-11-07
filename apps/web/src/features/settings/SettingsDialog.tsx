@@ -1,0 +1,570 @@
+import { COLOR_DEFS, DEFAULT_COLORS, DEFAULT_SETTINGS, type Colors, type Settings, type WatchList } from '@watchlist/shared';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { api } from '../../api/client.ts';
+import { useImportBackup, useListMutations, useUpdateSettings } from '../../api/hooks.ts';
+import { Dialog } from '../../components/Dialog.tsx';
+import { usePrompt } from '../../components/usePrompt.tsx';
+import { exportExcel, readSpreadsheet, type ReadSheet } from '../../lib/excel.ts';
+import { parseDecimal } from '../../lib/format.ts';
+import { ImportDialog } from '../import/ImportDialog.tsx';
+import { NotificationsPanel } from './NotificationsPanel.tsx';
+import { applyAppearance, applyColors } from '../../lib/theme.ts';
+import { COLUMN_OPTIONS } from '../watchlist/WatchlistTable.tsx';
+
+type Section = 'general' | 'estados' | 'aspecto' | 'notificaciones' | 'listas' | 'copias';
+
+const SECTIONS: { id: Section; label: string }[] = [
+  { id: 'general', label: 'General' },
+  { id: 'estados', label: 'Estados y umbrales' },
+  { id: 'aspecto', label: 'Aspecto' },
+  { id: 'notificaciones', label: 'Notificaciones' },
+  { id: 'listas', label: 'Listas' },
+  { id: 'copias', label: 'Copias y Excel' },
+];
+
+const COLOR_GROUPS = [...new Set(COLOR_DEFS.map((c) => c.group))];
+const CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF'];
+
+interface Props {
+  settings: Settings;
+  lists: WatchList[];
+  onClose: () => void;
+}
+
+function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  return (
+    <div className="setting-row">
+      <div className="setting-row__label">
+        <strong>{label}</strong>
+        {hint && <span>{hint}</span>}
+      </div>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <label className="switch" title={label}>
+      <input type="checkbox" role="switch" aria-label={label} checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span />
+    </label>
+  );
+}
+
+function NumberInput({ value, onChange, suffix, label }: { value: string; onChange: (v: string) => void; suffix: string; label: string }) {
+  return (
+    <span className="input-suffix">
+      <input inputMode="decimal" aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} />
+      {suffix}
+    </span>
+  );
+}
+
+const str = (n: number) => String(n).replace('.', ',');
+
+export function SettingsDialog({ settings, lists, onClose }: Props) {
+  const [section, setSection] = useState<Section>('general');
+  const update = useUpdateSettings();
+  const qc = useQueryClient();
+  const listsM = useListMutations();
+  const importM = useImportBackup();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [ask, promptEl] = usePrompt();
+  const [msg, setMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const health = useQuery({
+    queryKey: ['health'],
+    queryFn: () => fetch('/api/health').then((r) => r.json() as Promise<{ version?: string }>),
+    staleTime: Infinity,
+  });
+
+  // --- Borrador de los ajustes guardados en la base de datos (compartidos entre PCs)
+  const [invest, setInvest] = useState(str(settings.defaultInvest));
+  const [baseCurrency, setBaseCurrency] = useState(settings.baseCurrency);
+  const [refresh, setRefresh] = useState(String(settings.refreshSeconds));
+  const [near, setNear] = useState(str(settings.nearThresholdPct));
+  const [far, setFar] = useState(str(settings.farThresholdPct));
+  const [sellNear, setSellNear] = useState(str(settings.sellNearPct));
+  const [blink, setBlink] = useState(settings.blinkReached);
+  const [theme, setTheme] = useState(settings.theme);
+  const [density, setDensity] = useState(settings.density);
+  const [fontSize, setFontSize] = useState(settings.fontSize);
+  const [hidden, setHidden] = useState<string[]>(settings.hiddenColumns);
+  const [extra, setExtra] = useState<string[]>(settings.extraColumns ?? []);
+  const [colors, setColors] = useState<Colors>({ ...DEFAULT_COLORS, ...settings.colors });
+
+  // Vista previa en vivo del aspecto; si se cancela, se vuelve a lo guardado.
+  const saved = useRef(settings);
+  useEffect(() => applyColors(colors), [colors]);
+  useEffect(() => applyAppearance({ theme, density, fontSize }), [theme, density, fontSize]);
+  useEffect(
+    () => () => {
+      applyColors(saved.current.colors);
+      applyAppearance(saved.current);
+    },
+    [],
+  );
+
+  // --- Avisos (los manda el servidor; valen para todos los dispositivos)
+  const [notif, setNotif] = useState(settings.notifications ?? DEFAULT_SETTINGS.notifications);
+
+  // --- Copias guardadas en el servidor
+  const snapshots = useQuery({ queryKey: ['snapshots'], queryFn: api.snapshots, enabled: section === 'copias' });
+
+  const save = async () => {
+    setError(null);
+    const nearN = parseDecimal(near) ?? settings.nearThresholdPct;
+    const farN = parseDecimal(far) ?? settings.farThresholdPct;
+    if (farN < nearN) {
+      setSection('estados');
+      return setError('El umbral de "lejos" tiene que ser mayor o igual que el de "cerca".');
+    }
+    const next: Partial<Settings> = {
+      defaultInvest: parseDecimal(invest) ?? settings.defaultInvest,
+      baseCurrency,
+      refreshSeconds: Math.min(3600, Math.max(15, Math.round(parseDecimal(refresh) ?? settings.refreshSeconds))),
+      nearThresholdPct: nearN,
+      farThresholdPct: farN,
+      sellNearPct: Math.min(100, Math.max(0, parseDecimal(sellNear) ?? settings.sellNearPct)),
+      blinkReached: blink,
+      theme,
+      density,
+      fontSize,
+      notifications: notif,
+      hiddenColumns: hidden,
+      extraColumns: extra,
+      colors,
+    };
+    try {
+      const res = await update.mutateAsync(next);
+      saved.current = res;
+      onClose();
+    } catch {
+      setError('No se pudieron guardar los ajustes.');
+    }
+  };
+
+  // --- Excel
+  const tableRef = useRef<HTMLInputElement>(null);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState<{ fileName: string; sheets: ReadSheet[] } | null>(null);
+  const onExportExcel = async () => {
+    setExporting(true);
+    setMsg(null);
+    try {
+      const [views, portfolio] = await Promise.all([Promise.all(lists.map((l) => api.watchlist(l.id))), api.portfolio()]);
+      await exportExcel(views, portfolio);
+    } catch {
+      setMsg('No se pudo crear el Excel.');
+    } finally {
+      setExporting(false);
+    }
+  };
+  const onPickTable = async (file: File) => {
+    setMsg(null);
+    try {
+      setImporting({ fileName: file.name, sheets: await readSpreadsheet(file) });
+    } catch {
+      setMsg('No se pudo leer el fichero. Tiene que ser un Excel .xlsx o un CSV.');
+    }
+  };
+
+  const onImport = async (file: File) => {
+    if (
+      !confirm(
+        'Importar REEMPLAZA todas las listas y valores de este PC por los del fichero.\n\n' +
+          'Antes se guarda automáticamente una copia de lo actual en la carpeta "copias".\n\n¿Continuar?',
+      )
+    )
+      return;
+    try {
+      const res = await importM.mutateAsync(JSON.parse(await file.text()));
+      setMsg(
+        `Importadas ${res.lists} listas con ${res.items} valores.` +
+          (res.savedTo ? ` Lo que había antes se ha guardado en ${res.savedTo}` : ''),
+      );
+    } catch {
+      setMsg('El fichero no es una copia válida.');
+    }
+  };
+
+  const nearN = parseDecimal(near) ?? 0;
+  const farN = parseDecimal(far) ?? 0;
+
+  const panels: Record<Section, ReactNode> = {
+    general: (
+      <>
+        <h3>General</h3>
+        <p className="intro">Cálculos y actualización de precios. Se guardan con tus datos y valen para todos los PCs.</p>
+        <Row label="Importe a invertir por defecto" hint="Se usa en los valores que no tienen un importe propio.">
+          <NumberInput label="Importe por defecto" value={invest} onChange={setInvest} suffix={baseCurrency} />
+        </Row>
+        <Row label="Divisa base" hint="Importes y diferencias se muestran convertidos a esta divisa.">
+          <select aria-label="Divisa base" value={baseCurrency} onChange={(e) => setBaseCurrency(e.target.value)}>
+            {CURRENCIES.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+        </Row>
+        <Row label="Actualizar cotizaciones cada" hint="Con la web abierta (mínimo 15 s). Los avisos se comprueban como mucho cada minuto.">
+          <NumberInput label="Segundos entre actualizaciones" value={refresh} onChange={setRefresh} suffix="segundos" />
+        </Row>
+        <Row label="Sesión" hint="Cierra la sesión en este dispositivo. Para entrar otra vez hará falta la contraseña.">
+          <button
+            type="button"
+            className="btn btn--small"
+            onClick={async () => {
+              await api.logout();
+              location.reload();
+            }}
+          >
+            Cerrar sesión
+          </button>
+        </Row>
+      </>
+    ),
+    estados: (
+      <>
+        <h3>Estados y umbrales</h3>
+        <p className="intro">
+          Cómo se clasifica cada nivel de compra según lo que le falta caer al precio. Afecta a los colores, las tarjetas,
+          los filtros y las notificaciones.
+        </p>
+        <Row label="Cerca" hint="Le falta caer como mucho este porcentaje.">
+          <NumberInput label="Umbral cerca" value={near} onChange={setNear} suffix="%" />
+        </Row>
+        <Row label="Lejos" hint="Hasta este porcentaje; por encima es «muy lejos».">
+          <NumberInput label="Umbral lejos" value={far} onChange={setFar} suffix="%" />
+        </Row>
+        <Row label="Parpadear los valores en zona de compra" hint="Para que no se te pasen. Se desactiva si Windows tiene reducidas las animaciones.">
+          <Switch label="Parpadeo" checked={blink} onChange={setBlink} />
+        </Row>
+        <div className="threshold-preview" aria-label="Ejemplo">
+          <span className="pill pill--reached">✓ En zona</span>
+          <span className="pill pill--near">Cerca: hasta −{str(nearN)} %</span>
+          <span className="pill pill--far">Lejos: hasta −{str(farN)} %</span>
+          <span className="pill pill--veryFar">Muy lejos: más de −{str(farN)} %</span>
+        </div>
+        <Row label="Cerca del objetivo de venta" hint="Cartera: te aviso cuando al precio le falte subir como mucho este porcentaje.">
+          <NumberInput label="Umbral cerca de vender" value={sellNear} onChange={setSellNear} suffix="%" />
+        </Row>
+      </>
+    ),
+    aspecto: (
+      <>
+        <h3>Aspecto</h3>
+        <p className="intro">Los cambios se ven al momento; si cancelas, se deshacen.</p>
+        <Row label="Tema">
+          <select aria-label="Tema" value={theme} onChange={(e) => setTheme(e.target.value as Settings['theme'])}>
+            <option value="system">Como Windows</option>
+            <option value="light">Claro</option>
+            <option value="dark">Oscuro</option>
+          </select>
+        </Row>
+        <Row label="Densidad de la tabla">
+          <select aria-label="Densidad" value={density} onChange={(e) => setDensity(e.target.value as Settings['density'])}>
+            <option value="compact">Compacta</option>
+            <option value="normal">Normal</option>
+            <option value="comfortable">Amplia</option>
+          </select>
+        </Row>
+        <Row label="Tamaño de letra">
+          <select aria-label="Tamaño de letra" value={fontSize} onChange={(e) => setFontSize(e.target.value as Settings['fontSize'])}>
+            <option value="small">Pequeña</option>
+            <option value="normal">Normal</option>
+            <option value="large">Grande</option>
+          </select>
+        </Row>
+        <div className="setting-row" style={{ display: 'block' }}>
+          <div className="setting-row__label">
+            <strong>Columnas visibles</strong>
+            <span>Desmarca las que no uses. «Valor» siempre se muestra.</span>
+          </div>
+          <div className="columns-grid">
+            {COLUMN_OPTIONS.filter((c) => !c.optional).map((c) => (
+              <label key={c.id}>
+                <input
+                  type="checkbox"
+                  checked={!hidden.includes(c.id)}
+                  onChange={(e) => setHidden((h) => (e.target.checked ? h.filter((x) => x !== c.id) : [...h, c.id]))}
+                />
+                {c.label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="setting-row" style={{ display: 'block' }}>
+          <div className="setting-row__label">
+            <strong>Columnas de datos</strong>
+            <span>Opcionales, vienen de Yahoo Finance y se renuevan cada 12 h. Los ETF no suelen tenerlos.</span>
+          </div>
+          <div className="columns-grid">
+            {COLUMN_OPTIONS.filter((c) => c.optional).map((c) => (
+              <label key={c.id}>
+                <input
+                  type="checkbox"
+                  checked={extra.includes(c.id)}
+                  onChange={(e) => setExtra((x) => (e.target.checked ? [...x, c.id] : x.filter((y) => y !== c.id)))}
+                />
+                {c.label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="setting-row" style={{ display: 'block' }}>
+          <div className="setting-row__label">
+            <strong>Colores</strong>
+            <span>Eliges uno por estado; la app ajusta fondos y textos para que se lean bien en claro y oscuro.</span>
+          </div>
+          <div className="color-groups" style={{ marginTop: 10 }}>
+            {COLOR_GROUPS.map((group) => (
+              <div key={group} className="color-group">
+                <h4>{group}</h4>
+                <div className="color-grid">
+                  {COLOR_DEFS.filter((c) => c.group === group).map((c) => (
+                    <label key={c.key} className="color-field">
+                      <input
+                        type="color"
+                        value={colors[c.key]}
+                        onChange={(e) => setColors((prev) => ({ ...prev, [c.key]: e.target.value }))}
+                      />
+                      {c.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="color-preview" aria-label="Vista previa">
+            <span className="pill pill--reached">✓ -1,2 %</span>
+            <span className="pill pill--near">-3,4 %</span>
+            <span className="pill pill--far">-11,0 %</span>
+            <span className="pill pill--veryFar">-24,0 %</span>
+            <span className="badge badge--order">Activa @ 64,20</span>
+            <span className="badge badge--danger">Caducada</span>
+            <span className="badge badge--fx">USD</span>
+            <span className="delta up">+1,25 %</span>
+            <span className="delta down">-0,80 %</span>
+            <span className="spacer" />
+            <button
+              type="button"
+              className="btn btn--small btn--ghost"
+              onClick={() => {
+                setColors(DEFAULT_COLORS);
+                setTheme(DEFAULT_SETTINGS.theme);
+                setDensity(DEFAULT_SETTINGS.density);
+                setFontSize(DEFAULT_SETTINGS.fontSize);
+                setHidden([]);
+              }}
+            >
+              Restablecer aspecto
+            </button>
+          </div>
+        </div>
+      </>
+    ),
+    notificaciones: (
+      <NotificationsPanel
+        value={notif}
+        onChange={setNotif}
+        refreshSeconds={Number(refresh) || settings.refreshSeconds}
+        onGoGeneral={() => setSection('general')}
+        Row={Row}
+        Switch={Switch}
+      />
+    ),
+    listas: (
+      <>
+        <h3>Listas</h3>
+        <p className="intro">Para crear una lista nueva usa «+ Lista» junto a las pestañas.</p>
+        <ul className="list-admin">
+          {lists.map((l) => (
+            <li key={l.id}>
+              <span>
+                {l.name} <span className="muted">({l.itemCount})</span>
+              </span>
+              <span className="list-admin__actions">
+                <button
+                  type="button"
+                  className="btn btn--small"
+                  onClick={async () => {
+                    const name = await ask('Renombrar lista', 'Nuevo nombre', l.name);
+                    if (name) listsM.rename.mutate({ id: l.id, name });
+                  }}
+                >
+                  Renombrar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--small btn--danger-ghost"
+                  disabled={lists.length <= 1}
+                  onClick={() => {
+                    if (confirm(`¿Borrar la lista "${l.name}" y sus ${l.itemCount} valores?`)) listsM.remove.mutate(l.id);
+                  }}
+                >
+                  Borrar
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </>
+    ),
+    copias: (
+      <>
+        <h3>Copias de seguridad y Excel</h3>
+        <p className="intro">
+          Cada día se guarda una copia completa en el servidor, y otra antes de cada importación. También puedes descargar
+          tus datos a un fichero o cargar uno.
+        </p>
+        <h4 className="settings-sub">Excel</h4>
+        <p className="muted small">
+          Exporta todas las listas y la cartera a un .xlsx (filas amarillas con orden puesta, en azul las de otra divisa). Al
+          importar un Excel o CSV se añaden o actualizan valores en la lista que elijas, sin borrar nada.
+        </p>
+        <div className="row-actions" style={{ justifyContent: 'flex-start', marginBottom: 18 }}>
+          <button type="button" className="btn" onClick={onExportExcel} disabled={exporting}>
+            {exporting ? 'Preparando…' : 'Exportar a Excel'}
+          </button>
+          <button type="button" className="btn" onClick={() => tableRef.current?.click()}>
+            Importar desde Excel o CSV…
+          </button>
+          <input
+            ref={tableRef}
+            type="file"
+            accept=".xlsx,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void onPickTable(f);
+              e.target.value = '';
+            }}
+          />
+        </div>
+        <h4 className="settings-sub">Copias en el servidor</h4>
+        {snapshots.isPending && <p className="muted small">Cargando…</p>}
+        {snapshots.data?.length === 0 && <p className="muted small">Aún no hay copias: la primera se hace hoy.</p>}
+        {snapshots.data && snapshots.data.length > 0 && (
+          <ul className="list-admin snapshot-list">
+            {snapshots.data.slice(0, 10).map((c) => (
+              <li key={c.id}>
+                <span>
+                  {new Date(c.createdAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}
+                  <span className="muted small">
+                    {' '}
+                    · {c.reason} · {c.items} valores{c.positions ? `, ${c.positions} posiciones` : ''}
+                  </span>
+                </span>
+                <span className="list-admin__actions">
+                  <a className="btn btn--small" href={`/api/snapshots/${c.id}`} download>
+                    Descargar
+                  </a>
+                  <button
+                    type="button"
+                    className="btn btn--small"
+                    onClick={async () => {
+                      if (!confirm('Restaurar esta copia REEMPLAZA las listas, valores y cartera actuales (antes se guarda una copia de lo actual). ¿Continuar?')) return;
+                      const r = await api.restoreSnapshot(c.id);
+                      await qc.invalidateQueries();
+                      setMsg(`Restaurada: ${r.lists} listas, ${r.items} valores y ${r.positions} posiciones.`);
+                    }}
+                  >
+                    Restaurar
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <h4 className="settings-sub">Copia completa (JSON)</h4>
+        <div className="row-actions">
+          <a className="btn" href="/api/backup" download>
+            Exportar JSON
+          </a>
+          <button type="button" className="btn" onClick={() => fileRef.current?.click()} disabled={importM.isPending}>
+            Importar JSON…
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void onImport(f);
+              e.target.value = '';
+            }}
+          />
+        </div>
+        {msg && section === 'copias' && (
+          <p className="small" role="status">
+            {msg}
+          </p>
+        )}
+        <p className="muted small" style={{ marginTop: 18 }}>
+          Versión: {health.data?.version ?? '–'}
+        </p>
+      </>
+    ),
+  };
+
+  return (
+    <Dialog
+      title="Ajustes"
+      onClose={onClose}
+      className="dialog--settings"
+      footer={
+        <>
+          {error && (
+            <span className="error-text small" role="alert">
+              {error}
+            </span>
+          )}
+          <span className="spacer" />
+          <button type="button" className="btn" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="button" className="btn btn--primary" onClick={() => void save()} disabled={update.isPending}>
+            Guardar
+          </button>
+        </>
+      }
+    >
+      <div className="settings">
+        <nav className="settings__nav" aria-label="Categorías de ajustes">
+          {SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              aria-current={section === s.id ? 'page' : undefined}
+              onClick={() => {
+                setSection(s.id);
+                setMsg(null);
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
+        </nav>
+        <div className="settings__panel">{panels[section]}</div>
+      </div>
+      {promptEl}
+      {importing && (
+        <ImportDialog
+          fileName={importing.fileName}
+          sheets={importing.sheets}
+          lists={lists}
+          defaultListId={Number(localStorage.getItem('watchlist.listId')) || null}
+          defaultInvest={settings.defaultInvest}
+          onClose={() => setImporting(null)}
+          onDone={(_listId, message) => {
+            setImporting(null);
+            setMsg(message);
+          }}
+        />
+      )}
+    </Dialog>
+  );
+}

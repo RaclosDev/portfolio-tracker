@@ -1,0 +1,172 @@
+import type { ItemData, PositionData, Settings } from './schemas.ts';
+
+export interface WatchList {
+  id: number;
+  name: string;
+  itemCount: number;
+}
+
+export interface Item extends ItemData {
+  id: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Quote {
+  symbol: string;
+  name: string | null;
+  currency: string | null;
+  price: number | null;
+  changePct: number | null;
+  previousClose: number | null;
+  low52: number | null;
+  high52: number | null;
+  quoteType: string | null;
+  exchange: string | null;
+  marketState: string | null;
+  fetchedAt: string;
+  /** true si la fuente falló y se muestra el último dato guardado. */
+  stale: boolean;
+}
+
+export interface AnalystTargets {
+  mean: number | null;
+  median: number | null;
+  high: number | null;
+  low: number | null;
+  analysts: number | null;
+  recommendation: string | null;
+  recommendationMean: number | null;
+  /** Datos fundamentales y fechas clave (se piden junto al consenso, caché de 12 h). */
+  nextEarnings?: string | null;
+  exDividend?: string | null;
+  /** Rentabilidad por dividendo (fracción: 0,028 = 2,8 %). */
+  dividendYield?: number | null;
+  trailingPE?: number | null;
+  marketCap?: number | null;
+  fetchedAt: string;
+}
+
+export interface SymbolSearchResult {
+  symbol: string;
+  name: string;
+  exchange: string | null;
+  type: string | null;
+}
+
+export type LevelStatus = 'reached' | 'near' | 'far' | 'veryFar' | 'unknown';
+
+export interface LevelView {
+  price: number;
+  /** (nivel - actual) / actual. Negativo = el precio tiene que caer. */
+  distancePct: number | null;
+  status: LevelStatus;
+}
+
+export interface RowMetrics {
+  levels: LevelView[];
+  status: LevelStatus;
+  /** Distancia del nivel pendiente más cercano (0 si alguno ya se alcanzó). */
+  nearestDistancePct: number | null;
+  /** Unidades de la divisa del valor por 1 de divisa base. */
+  fxRate: number | null;
+  investAmount: number;
+  sharesCalc: number | null;
+  shares: number | null;
+  /** Precio de entrada usado en los cálculos (orden activa o compra 1). */
+  entryPrice: number | null;
+  netNative: number | null;
+  netBase: number | null;
+  diffBase: number | null;
+  upsideBrokerPct: number | null;
+  upsideConsensusPct: number | null;
+  orderDaysLeft: number | null;
+  orderExpired: boolean;
+}
+
+export interface WatchlistRow {
+  item: Item;
+  quote: Quote | null;
+  targets: AnalystTargets | null;
+  metrics: RowMetrics;
+}
+
+export interface WatchlistView {
+  list: WatchList;
+  settings: Settings;
+  rows: WatchlistRow[];
+  fx: Record<string, number>;
+  generatedAt: string;
+  /** Si el proveedor de cotizaciones nos limita, hasta cuándo se pausan las consultas (ISO). */
+  throttledUntil?: string | null;
+}
+
+/** Periodos del gráfico histórico. */
+export type HistoryRange = '1m' | '3m' | '6m' | '1y' | '5y';
+export const HISTORY_RANGES: { id: HistoryRange; label: string }[] = [
+  { id: '1m', label: '1 mes' },
+  { id: '3m', label: '3 meses' },
+  { id: '6m', label: '6 meses' },
+  { id: '1y', label: '1 año' },
+  { id: '5y', label: '5 años' },
+];
+
+/** Cierre de un día (o semana, en 5 años). */
+export interface PricePoint {
+  t: string;
+  c: number;
+}
+
+export interface Position extends PositionData {
+  id: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Estado de una posición frente a su objetivo de venta. */
+export type SellStatus = 'reached' | 'near' | 'below' | 'none';
+
+export interface PositionMetrics {
+  fxRate: number | null;
+  /** Valor de mercado: acciones × precio actual. */
+  valueNative: number | null;
+  valueBase: number | null;
+  /** Coste: acciones × precio medio (o lo pagado en divisa base si se indicó). */
+  costNative: number;
+  costBase: number | null;
+  pnlBase: number | null;
+  pnlPct: number | null;
+  /** Lo que ha ganado o perdido hoy la posición, en divisa base. */
+  dayChangeBase: number | null;
+  /** (objetivo − actual) / actual. Positivo = le falta subir. */
+  sellDistancePct: number | null;
+  sellStatus: SellStatus;
+  /** Peso en la cartera (0-1) según el valor de mercado. */
+  weight: number | null;
+}
+
+export interface PortfolioRow {
+  position: Position;
+  quote: Quote | null;
+  targets: AnalystTargets | null;
+  metrics: PositionMetrics;
+}
+
+export interface PortfolioTotals {
+  valueBase: number;
+  costBase: number;
+  pnlBase: number;
+  pnlPct: number | null;
+  dayChangeBase: number;
+  /** Posiciones sin cotización o sin cambio de divisa (no suman en los totales). */
+  missing: number;
+}
+
+export interface PortfolioView {
+  settings: Settings;
+  rows: PortfolioRow[];
+  totals: PortfolioTotals;
+  fx: Record<string, number>;
+  generatedAt: string;
+  throttledUntil?: string | null;
+}

@@ -1,0 +1,118 @@
+import type {
+  AlertRecord,
+  Backup,
+  HistoryRange,
+  ImportRow,
+  PricePoint,
+  Item,
+  ItemInput,
+  ItemPatch,
+  PortfolioView,
+  Position,
+  PositionInput,
+  PositionPatch,
+  Quote,
+  Settings,
+  SymbolSearchResult,
+  WatchList,
+  WatchlistView,
+} from '@watchlist/shared';
+
+export type Trade = { type: 'buy'; shares: number; price: number; costBase: number | null } | { type: 'sell'; shares: number };
+
+export const SESSION_LOST = 'watchlist:sin-sesion';
+
+export interface PushDevice {
+  id: number;
+  label: string | null;
+  createdAt: string;
+  lastOkAt: string | null;
+  endpointHost: string;
+}
+
+export interface SnapshotInfo {
+  id: number;
+  createdAt: string;
+  reason: string;
+  items: number;
+  positions: number;
+}
+
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+    public issues?: { path: string; message: string }[],
+  ) {
+    super(message);
+  }
+}
+
+async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method,
+    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 204) return undefined as T;
+  const data = await res.json().catch(() => ({}));
+  // Sesión caducada o cerrada en otro sitio: la app vuelve a la pantalla de entrada.
+  if (res.status === 401 && !url.startsWith('/api/login')) window.dispatchEvent(new Event(SESSION_LOST));
+  if (!res.ok) throw new ApiError(res.status, data.error ?? `Error ${res.status}`, data.issues);
+  return data as T;
+}
+
+export const api = {
+  health: () => request<{ ok: boolean; version: string }>('GET', '/api/health'),
+  session: () => request<{ authRequired: boolean; authenticated: boolean }>('GET', '/api/session'),
+  login: (password: string) => request<{ ok: true }>('POST', '/api/login', { password }),
+  logout: () => request<{ ok: true }>('POST', '/api/logout', {}),
+
+  pushKey: () => request<{ publicKey: string | null; enabled: boolean }>('GET', '/api/push/key'),
+  pushSubscribe: (subscription: { endpoint: string; keys: { p256dh: string; auth: string } }, label: string) =>
+    request<{ ok: true }>('POST', '/api/push/subscribe', { subscription, label }),
+  pushUnsubscribe: (endpoint: string) => request<{ ok: true }>('POST', '/api/push/unsubscribe', { endpoint }),
+  pushDevices: () => request<PushDevice[]>('GET', '/api/push/devices'),
+  removeDevice: (id: number) => request<void>('DELETE', `/api/push/devices/${id}`),
+  pushTest: () => request<{ sent: number; failed: number }>('POST', '/api/push/test', {}),
+  checkAlerts: () => request<{ alerts: number }>('POST', '/api/alerts/check', {}),
+
+  snapshots: () => request<SnapshotInfo[]>('GET', '/api/snapshots'),
+  restoreSnapshot: (id: number) =>
+    request<{ lists: number; items: number; positions: number; savedTo: string | null }>('POST', `/api/snapshots/${id}/restore`, {}),
+
+  settings: () => request<Settings>('GET', '/api/settings'),
+  updateSettings: (patch: Partial<Settings>) => request<Settings>('PUT', '/api/settings', patch),
+
+  lists: () => request<WatchList[]>('GET', '/api/lists'),
+  createList: (name: string) => request<WatchList>('POST', '/api/lists', { name }),
+  renameList: (id: number, name: string) => request<WatchList>('PATCH', `/api/lists/${id}`, { name }),
+  deleteList: (id: number) => request<void>('DELETE', `/api/lists/${id}`),
+  watchlist: (id: number, force = false) =>
+    request<WatchlistView>('GET', `/api/lists/${id}/watchlist${force ? '?force=1' : ''}`),
+
+  createItem: (data: ItemInput) => request<Item>('POST', '/api/items', data),
+  updateItem: (id: number, patch: ItemPatch) => request<Item>('PATCH', `/api/items/${id}`, patch),
+  deleteItem: (id: number) => request<void>('DELETE', `/api/items/${id}`),
+
+  portfolio: (force = false) => request<PortfolioView>('GET', `/api/portfolio${force ? '?force=1' : ''}`),
+  createPosition: (data: PositionInput) => request<Position>('POST', '/api/positions', data),
+  updatePosition: (id: number, patch: PositionPatch) => request<Position>('PATCH', `/api/positions/${id}`, patch),
+  deletePosition: (id: number) => request<void>('DELETE', `/api/positions/${id}`),
+  trade: (id: number, t: Trade) => request<Position | { deleted: true }>('POST', `/api/positions/${id}/trade`, t),
+
+  search: (q: string) => request<SymbolSearchResult[]>('GET', `/api/market/search?q=${encodeURIComponent(q)}`),
+  fx: (currencies: string[]) =>
+    request<Record<string, number>>('GET', `/api/market/fx?currencies=${encodeURIComponent(currencies.join(','))}`),
+  quotes: (symbols: string[]) => request<Quote[]>('GET', `/api/market/quotes?symbols=${encodeURIComponent(symbols.join(','))}`),
+  importRows: (listId: number, items: ImportRow[]) =>
+    request<{ created: number; updated: number }>('POST', `/api/lists/${listId}/import`, { items }),
+  quote: (symbol: string) => request<Quote>('GET', `/api/market/quote/${encodeURIComponent(symbol)}`),
+  history: (symbol: string, range: HistoryRange) =>
+    request<{ points: PricePoint[]; stale: boolean }>('GET', `/api/market/history/${encodeURIComponent(symbol)}?range=${range}`),
+  sparklines: (symbols: string[]) =>
+    request<Record<string, number[]>>('GET', `/api/market/sparklines?symbols=${encodeURIComponent(symbols.join(','))}`),
+
+  alerts: () => request<AlertRecord[]>('GET', '/api/alerts'),
+  importBackup: (data: Backup) => request<{ lists: number; items: number; positions: number; savedTo: string | null }>('POST', '/api/backup', data),
+};
