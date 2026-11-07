@@ -1,6 +1,7 @@
 import { MAX_BUY_LEVELS, type LevelView, type WatchlistRow } from '@watchlist/shared';
 import { useMemo, useState, type ReactNode } from 'react';
 import { MINOR_CURRENCY, money, num, pct, price, RECOMMENDATION_ES, shortDate } from '../../lib/format.ts';
+import { Icon } from '../../components/Icon.tsx';
 import { PriceMap } from './PriceMap.tsx';
 
 type SortDir = 'asc' | 'desc';
@@ -36,7 +37,7 @@ function TagButton({ tag, className, title, onTag }: { tag: Tag; className: stri
 }
 
 function LevelCell({ level }: { level: LevelView | undefined }) {
-  if (!level) return <span className="muted">—</span>;
+  if (!level) return <span className="muted">–</span>;
   return (
     <div className="stack stack--right">
       <span className="num">{price(level.price)}</span>
@@ -66,16 +67,22 @@ const columns: Column[] = [
         <span className="sub">
           <span className="ticker">{item.symbol}</span>
           {quote?.exchange && <> · {quote.exchange}</>}
-          {quote?.currency && quote.currency !== base && (
+          {/* Etiquetas de divisa y tipo en todas las filas; la divisa distinta de la base lleva color. */}
+          {quote?.currency && (
             <TagButton
               tag={{ kind: 'currency', value: quote.currency }}
-              className="badge--fx"
+              className={quote.currency !== base ? 'badge--fx' : ''}
               title={`${MINOR_CURRENCY[quote.currency] ? MINOR_CURRENCY[quote.currency] + '. ' : ''}Pulsa para ver solo ${quote.currency}`}
               onTag={onTag}
             />
           )}
-          {quote?.quoteType === 'ETF' && (
-            <TagButton tag={{ kind: 'type', value: 'ETF' }} className="" title="Pulsa para ver solo ETF" onTag={onTag} />
+          {(quote?.quoteType === 'ETF' || quote?.quoteType === 'EQUITY') && (
+            <TagButton
+              tag={{ kind: 'type', value: quote.quoteType }}
+              className=""
+              title={`Pulsa para ver solo ${quote.quoteType === 'ETF' ? 'ETF' : 'acciones'}`}
+              onTag={onTag}
+            />
           )}
         </span>
       </div>
@@ -92,8 +99,8 @@ const columns: Column[] = [
         <span className="num strong">
           {price(quote?.price)}
           {quote?.stale && (
-            <span className="stale" title={`Dato guardado del ${new Date(quote.fetchedAt).toLocaleString('es-ES')}`}>
-              ⚠
+            <span className="stale" title={`Sin conexión: dato guardado del ${new Date(quote.fetchedAt).toLocaleString('es-ES')}`}>
+              <Icon name="alert" label="Dato sin actualizar" />
             </span>
           )}
         </span>
@@ -126,7 +133,7 @@ const columns: Column[] = [
     sort: (r) => r.metrics.upsideBrokerPct,
     cell: ({ item, metrics }) =>
       item.brokerTarget == null ? (
-        <span className="muted">—</span>
+        <span className="muted">–</span>
       ) : (
         <div className="stack stack--right">
           <span className="num">
@@ -143,7 +150,7 @@ const columns: Column[] = [
     sort: (r) => r.metrics.upsideConsensusPct,
     cell: ({ targets, metrics }) =>
       targets?.mean == null ? (
-        <span className="muted">—</span>
+        <span className="muted">–</span>
       ) : (
         <div
           className="stack stack--right"
@@ -295,6 +302,7 @@ export function WatchlistTable({ rows, baseCurrency, blink, hiddenColumns, onEdi
           {sorted.map((r) => (
             <tr
               key={r.item.id}
+              id={`fila-${r.item.id}`}
               className={`row row--${r.metrics.status}${r.item.orderActive ? ' row--order' : ''}`}
               onDoubleClick={() => onEdit(r)}
             >
@@ -304,8 +312,14 @@ export function WatchlistTable({ rows, baseCurrency, blink, hiddenColumns, onEdi
                 </td>
               ))}
               <td className="col-actions">
-                <button type="button" className="icon-btn" onClick={() => onEdit(r)} aria-label={`Editar ${r.item.symbol}`}>
-                  ✎
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => onEdit(r)}
+                  aria-label={`Editar ${r.item.name ?? r.item.symbol}`}
+                  title="Editar"
+                >
+                  <Icon name="pencil" />
                 </button>
               </td>
             </tr>

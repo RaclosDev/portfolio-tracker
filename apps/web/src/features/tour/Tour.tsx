@@ -152,11 +152,11 @@ export function Tour({ steps: allSteps, onClose }: { steps: TourStep[]; onClose:
           )}
           {index > 0 && (
             <button type="button" className="btn btn--small" onClick={() => go(-1)}>
-              ← Anterior
+              Anterior
             </button>
           )}
           <button ref={nextRef} type="button" className="btn btn--small btn--primary" onClick={next}>
-            {isLast ? 'Terminar' : 'Siguiente →'}
+            {isLast ? 'Terminar' : 'Siguiente'}
           </button>
         </footer>
       </div>

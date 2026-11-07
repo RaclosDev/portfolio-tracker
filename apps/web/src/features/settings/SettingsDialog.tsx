@@ -11,13 +11,13 @@ import { COLUMN_OPTIONS } from '../watchlist/WatchlistTable.tsx';
 
 type Section = 'general' | 'estados' | 'aspecto' | 'notificaciones' | 'listas' | 'copias';
 
-const SECTIONS: { id: Section; icon: string; label: string }[] = [
-  { id: 'general', icon: '⚙', label: 'General' },
-  { id: 'estados', icon: '◎', label: 'Estados y umbrales' },
-  { id: 'aspecto', icon: '🎨', label: 'Aspecto' },
-  { id: 'notificaciones', icon: '🔔', label: 'Notificaciones' },
-  { id: 'listas', icon: '☰', label: 'Listas' },
-  { id: 'copias', icon: '⛁', label: 'Copias de seguridad' },
+const SECTIONS: { id: Section; label: string }[] = [
+  { id: 'general', label: 'General' },
+  { id: 'estados', label: 'Estados y umbrales' },
+  { id: 'aspecto', label: 'Aspecto' },
+  { id: 'notificaciones', label: 'Notificaciones' },
+  { id: 'listas', label: 'Listas' },
+  { id: 'copias', label: 'Copias de seguridad' },
 ];
 
 const COLOR_GROUPS = [...new Set(COLOR_DEFS.map((c) => c.group))];
@@ -435,7 +435,7 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
           </p>
         )}
         <p className="muted small" style={{ marginTop: 18 }}>
-          Versión: {health.data?.version ?? '—'}
+          Versión: {health.data?.version ?? '–'}
         </p>
       </>
     ),
@@ -475,9 +475,6 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
                 setMsg(null);
               }}
             >
-              <span className="nav-icon" aria-hidden>
-                {s.icon}
-              </span>
               {s.label}
             </button>
           ))}
