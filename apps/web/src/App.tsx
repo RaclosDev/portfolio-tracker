@@ -19,6 +19,7 @@ import { Tour } from './features/tour/Tour.tsx';
 import { num, timeAgo } from './lib/format.ts';
 import { applyAppearance, applyColors } from './lib/theme.ts';
 import { usePrompt } from './components/usePrompt.tsx';
+import { PushBanner } from './components/PushBanner.tsx';
 import { UpdateBanner } from './components/UpdateBanner.tsx';
 import { AlertsDialog } from './features/alerts/AlertsDialog.tsx';
 
@@ -271,6 +272,7 @@ export function App() {
 
       <main className="content">
         <UpdateBanner />
+        <PushBanner />
         {throttledUntil && (
           <p className="notice" role="status">
             Yahoo está limitando las consultas. Se muestran los últimos precios guardados y se vuelve a intentar a las{' '}

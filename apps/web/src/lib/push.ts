@@ -41,9 +41,18 @@ export async function enablePush(): Promise<string | null> {
   if (permission !== 'granted') return 'Has bloqueado las notificaciones. Actívalas en los permisos del navegador para esta web.';
   const reg = await navigator.serviceWorker.register('/sw.js');
   await navigator.serviceWorker.ready;
-  const sub =
-    (await reg.pushManager.getSubscription()) ??
-    (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(publicKey) }));
+  let sub: PushSubscription;
+  try {
+    sub =
+      (await reg.pushManager.getSubscription()) ??
+      (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(publicKey) }));
+  } catch {
+    // Brave trae el servicio de notificaciones desactivado de serie.
+    const isBrave = !!(navigator as Navigator & { brave?: unknown }).brave;
+    return isBrave
+      ? 'Brave tiene desactivadas las notificaciones push. Ve a brave://settings/privacy, activa «Usar los servicios de Google para la mensajería push», reinicia Brave y vuelve a pulsar.'
+      : 'El navegador no ha podido registrar las notificaciones. Inténtalo de nuevo o prueba con Chrome.';
+  }
   await api.pushSubscribe(sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } }, deviceLabel());
   return null;
 }

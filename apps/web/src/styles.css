@@ -511,6 +511,9 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   background: color-mix(in oklab, var(--accent) 12%, var(--surface)); font-size: 13px;
 }
 .update-banner span { flex: 1; }
+.push-banner { flex-wrap: wrap; }
+.update-banner .push-banner__actions { flex: 0 0 auto; display: flex; gap: 8px; }
+.update-banner .push-banner__error { flex: none; color: var(--expired-fg); }
 .switch { display: inline-block; vertical-align: middle; }
 .dialog--settings .dialog__body { overflow: hidden; }
 .settings { min-width: 0; }
