@@ -2,6 +2,7 @@ import type {
   AlertRecord,
   Backup,
   HistoryRange,
+  ImportRow,
   PricePoint,
   Item,
   ItemInput,
@@ -65,6 +66,9 @@ export const api = {
   search: (q: string) => request<SymbolSearchResult[]>('GET', `/api/market/search?q=${encodeURIComponent(q)}`),
   fx: (currencies: string[]) =>
     request<Record<string, number>>('GET', `/api/market/fx?currencies=${encodeURIComponent(currencies.join(','))}`),
+  quotes: (symbols: string[]) => request<Quote[]>('GET', `/api/market/quotes?symbols=${encodeURIComponent(symbols.join(','))}`),
+  importRows: (listId: number, items: ImportRow[]) =>
+    request<{ created: number; updated: number }>('POST', `/api/lists/${listId}/import`, { items }),
   quote: (symbol: string) => request<Quote>('GET', `/api/market/quote/${encodeURIComponent(symbol)}`),
   history: (symbol: string, range: HistoryRange) =>
     request<{ points: PricePoint[]; stale: boolean }>('GET', `/api/market/history/${encodeURIComponent(symbol)}?range=${range}`),

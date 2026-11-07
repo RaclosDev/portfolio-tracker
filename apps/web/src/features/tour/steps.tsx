@@ -275,7 +275,7 @@ export const TOUR_STEPS: TourStep[] = [
             opcionales de PER, rentabilidad por dividendo, capitalización y fechas de resultados y dividendo.
           </li>
           <li><strong>Notificaciones</strong>: avisos de Windows y segundo plano.</li>
-          <li><strong>Listas</strong> y <strong>Copias de seguridad</strong>.</li>
+          <li><strong>Listas</strong> y <strong>Copias de seguridad y Excel</strong>: exportar todo a .xlsx o importar desde Excel o CSV.</li>
         </ul>
       </>
     ),

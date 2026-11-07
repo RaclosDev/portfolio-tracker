@@ -1,11 +1,14 @@
 import { COLOR_DEFS, DEFAULT_COLORS, DEFAULT_SETTINGS, type Colors, type Settings, type WatchList } from '@watchlist/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { api } from '../../api/client.ts';
 import { useImportBackup, useListMutations, useUpdateSettings } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
 import { usePrompt } from '../../components/usePrompt.tsx';
 import { desktop, type DesktopPrefs } from '../../desktop.ts';
+import { exportExcel, readSpreadsheet, type ReadSheet } from '../../lib/excel.ts';
 import { parseDecimal } from '../../lib/format.ts';
+import { ImportDialog } from '../import/ImportDialog.tsx';
 import { applyAppearance, applyColors } from '../../lib/theme.ts';
 import { COLUMN_OPTIONS } from '../watchlist/WatchlistTable.tsx';
 
@@ -17,7 +20,7 @@ const SECTIONS: { id: Section; label: string }[] = [
   { id: 'aspecto', label: 'Aspecto' },
   { id: 'notificaciones', label: 'Notificaciones' },
   { id: 'listas', label: 'Listas' },
-  { id: 'copias', label: 'Copias de seguridad' },
+  { id: 'copias', label: 'Copias y Excel' },
 ];
 
 const COLOR_GROUPS = [...new Set(COLOR_DEFS.map((c) => c.group))];
@@ -142,6 +145,31 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
       onClose();
     } catch {
       setError('No se pudieron guardar los ajustes.');
+    }
+  };
+
+  // --- Excel
+  const tableRef = useRef<HTMLInputElement>(null);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState<{ fileName: string; sheets: ReadSheet[] } | null>(null);
+  const onExportExcel = async () => {
+    setExporting(true);
+    setMsg(null);
+    try {
+      const [views, portfolio] = await Promise.all([Promise.all(lists.map((l) => api.watchlist(l.id))), api.portfolio()]);
+      await exportExcel(views, portfolio);
+    } catch {
+      setMsg('No se pudo crear el Excel.');
+    } finally {
+      setExporting(false);
+    }
+  };
+  const onPickTable = async (file: File) => {
+    setMsg(null);
+    try {
+      setImporting({ fileName: file.name, sheets: await readSpreadsheet(file) });
+    } catch {
+      setMsg('No se pudo leer el fichero. Tiene que ser un Excel .xlsx o un CSV.');
     }
   };
 
@@ -447,11 +475,36 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
     ),
     copias: (
       <>
-        <h3>Copias de seguridad</h3>
+        <h3>Copias de seguridad y Excel</h3>
         <p className="intro">
           La app guarda una copia automática cada día (carpeta «copias» dentro de la de datos) y otra antes de cada
           importación. Aquí puedes exportar tus datos a un fichero o cargar uno.
         </p>
+        <h4 className="settings-sub">Excel</h4>
+        <p className="muted small">
+          Exporta todas las listas y la cartera a un .xlsx (filas amarillas con orden puesta, en azul las de otra divisa). Al
+          importar un Excel o CSV se añaden o actualizan valores en la lista que elijas, sin borrar nada.
+        </p>
+        <div className="row-actions" style={{ justifyContent: 'flex-start', marginBottom: 18 }}>
+          <button type="button" className="btn" onClick={onExportExcel} disabled={exporting}>
+            {exporting ? 'Preparando…' : 'Exportar a Excel'}
+          </button>
+          <button type="button" className="btn" onClick={() => tableRef.current?.click()}>
+            Importar desde Excel o CSV…
+          </button>
+          <input
+            ref={tableRef}
+            type="file"
+            accept=".xlsx,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void onPickTable(f);
+              e.target.value = '';
+            }}
+          />
+        </div>
+        <h4 className="settings-sub">Copia completa (JSON)</h4>
         <div className="row-actions">
           <a className="btn" href="/api/backup" download>
             Exportar JSON
@@ -532,6 +585,20 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
         <div className="settings__panel">{panels[section]}</div>
       </div>
       {promptEl}
+      {importing && (
+        <ImportDialog
+          fileName={importing.fileName}
+          sheets={importing.sheets}
+          lists={lists}
+          defaultListId={Number(localStorage.getItem('watchlist.listId')) || null}
+          defaultInvest={settings.defaultInvest}
+          onClose={() => setImporting(null)}
+          onDone={(_listId, message) => {
+            setImporting(null);
+            setMsg(message);
+          }}
+        />
+      )}
     </Dialog>
   );
 }

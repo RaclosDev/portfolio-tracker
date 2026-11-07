@@ -55,6 +55,11 @@ export const itemPatchSchema = z.object({
 }).partial();
 export type ItemPatch = z.input<typeof itemPatchSchema>;
 
+/** Fila importada desde Excel/CSV: solo los campos que traía el fichero (el resto no se toca). */
+export const importRowSchema = itemPatchSchema.omit({ listId: true }).extend({ symbol: itemInputSchema.shape.symbol });
+export type ImportRow = z.input<typeof importRowSchema>;
+export const importRequestSchema = z.object({ items: z.array(importRowSchema).min(1).max(1000) });
+
 /** Posición de la cartera real: un valor comprado (una fila por valor, con el precio medio). */
 const positionFields = {
   symbol: z
