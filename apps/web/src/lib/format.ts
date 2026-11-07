@@ -7,7 +7,8 @@ function nf(key: string, opts: Intl.NumberFormatOptions) {
   return f;
 }
 
-const DASH = '—';
+/** Marca de dato vacío en tablas (guion corto). */
+const DASH = '–';
 
 /** Precio con decimales adaptados a su magnitud (2,485 vs 276,47). */
 export function price(v: number | null | undefined) {

@@ -239,7 +239,7 @@ export function ItemDialog({ listId, row, settings, fx, onClose }: Props) {
               <span className="field__value">
                 {entry && fxRate
                   ? money(((parseDecimal(shares) ?? (sharesCalc != null ? roundUpShares(sharesCalc) : 0)) * entry) / fxRate, settings.baseCurrency)
-                  : '—'}
+                  : '–'}
               </span>
             </div>
           </div>

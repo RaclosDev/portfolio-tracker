@@ -43,7 +43,7 @@ export const TOUR_STEPS: TourStep[] = [
       <>
         <p>
           Las cotizaciones se refrescan solas cada minuto (configurable en Ajustes). Aquí ves cuándo fue la última vez y
-          puedes forzarla con <strong>↻ Actualizar</strong>.
+          puedes forzarla con <strong>Actualizar</strong>.
         </p>
         <p className="muted">
           Las bolsas europeas en Yahoo suelen ir unos 15 min retrasadas. El consenso de analistas se renueva cada 12 h.
@@ -52,17 +52,31 @@ export const TOUR_STEPS: TourStep[] = [
     ),
   },
   {
-    target: '.summary',
-    title: 'Resumen y filtros rápidos',
+    target: '.highlights',
+    title: 'Lo importante, arriba',
     body: (
       <>
         <p>
-          <strong>En zona de compra</strong>: el precio ya está por debajo de alguno de tus niveles (parpadean para que
-          no se te pasen). <strong>Cerca</strong>, <strong>Lejos</strong> y <strong>Muy lejos</strong>: según lo que le
-          falta caer; los porcentajes se cambian en Ajustes → Estados y umbrales. <strong>Órdenes activas</strong>: las
-          que tienes puestas en el banco y el dinero comprometido.
+          Esta línea responde a la pregunta principal: qué valores están ya <strong>en zona de compra</strong> y, si no
+          hay ninguno, cuál es el que <strong>más cerca</strong> está de tu precio. También avisa de las órdenes que
+          caducan pronto.
         </p>
-        <p>Pulsa una tarjeta para filtrar la tabla; vuelve a pulsarla para quitar el filtro.</p>
+        <p>Pulsa un nombre para ir directamente a su fila.</p>
+      </>
+    ),
+  },
+  {
+    target: '.status-filter',
+    title: 'Filtrar por estado',
+    body: (
+      <>
+        <p>
+          <strong>En zona</strong>: el precio ya está por debajo de alguno de tus niveles (parpadean para que no se te
+          pasen). <strong>Cerca</strong>, <strong>Lejos</strong> y <strong>Muy lejos</strong>: según lo que le falta caer;
+          los porcentajes se cambian en Ajustes, Estados y umbrales. <strong>Con orden</strong>: las que tienes puestas
+          en el banco.
+        </p>
+        <p>El número es cuántos valores hay en cada estado. Pulsa uno para filtrar y otra vez para quitarlo.</p>
       </>
     ),
   },
@@ -110,8 +124,8 @@ export const TOUR_STEPS: TourStep[] = [
     title: 'Precio actual',
     body: (
       <p>
-        Última cotización y variación del día. Si aparece un ⚠ es que no se pudo conectar y se muestra el último dato
-        guardado.
+        Última cotización y variación del día. Si aparece un triángulo de aviso junto al precio, es que no se pudo
+        conectar y se muestra el último dato guardado.
       </p>
     ),
   },
@@ -120,15 +134,15 @@ export const TOUR_STEPS: TourStep[] = [
     title: 'Mapa de precios',
     body: (
       <>
-        <p>Todo de un vistazo en una sola línea:</p>
+        <p>Se lee de izquierda (más barato) a derecha (más caro):</p>
         <ul>
-          <li>Barra gris: mínimo y máximo de las últimas 52 semanas.</li>
-          <li>● Precio actual.</li>
-          <li>▲ Tus niveles de compra (1, 2, 3): rellenos si ya se alcanzaron o están cerca.</li>
-          <li>◆ Objetivo de tu bróker.</li>
-          <li>| Consenso de analistas, con su rango mínimo–máximo encima.</li>
+          <li>La franja verde es tu <strong>zona de compra</strong>: todo lo que queda por debajo de tu compra más alta.</li>
+          <li>La <strong>aguja oscura</strong> es el precio actual. Si está dentro de la franja, ya estás en tu precio.</li>
+          <li>Las marcas <strong>1, 2 y 3</strong> son tus niveles de compra, con el color de su estado.</li>
+          <li>La banda gris es el rango de las últimas 52 semanas, con el mínimo y el máximo anotados debajo.</li>
+          <li>La marca morada es el objetivo de tu bróker y la discontinua azul, el consenso de analistas.</li>
         </ul>
-        <p>Pasa el ratón por encima de cada marca para ver su valor exacto.</p>
+        <p>Pasa el ratón por encima para ver todos los valores exactos.</p>
       </>
     ),
   },
@@ -139,7 +153,7 @@ export const TOUR_STEPS: TourStep[] = [
       <p>
         Tu precio de entrada y cuánto tiene que caer la cotización para llegar (negativo = falta caída). Color:{' '}
         <span className="pill pill--reached">✓ alcanzado</span> <span className="pill pill--near">cerca</span>{' '}
-        <span className="pill pill--far">lejos</span>
+        <span className="pill pill--far">lejos</span> <span className="pill pill--veryFar">muy lejos</span>
       </p>
     ),
   },
@@ -198,7 +212,7 @@ export const TOUR_STEPS: TourStep[] = [
     title: 'Editar',
     body: (
       <p>
-        Pulsa ✎ o haz doble clic en cualquier fila para cambiar niveles, objetivo, importe, orden o notas, o para quitar
+        Pulsa el lápiz o haz doble clic en cualquier fila para cambiar niveles, objetivo, importe, orden o notas, o para quitar
         el valor de la lista.
       </p>
     ),
@@ -245,6 +259,6 @@ export const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="tour"]',
     title: '¡Listo!',
-    body: <p>Cuando quieras repasar esta explicación, pulsa este botón y el tour empezará de nuevo.</p>,
+    body: <p>Cuando quieras repasar esta explicación, pulsa «Guía» y empezará de nuevo.</p>,
   },
 ];

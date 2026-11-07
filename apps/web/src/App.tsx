@@ -4,7 +4,8 @@ import { useForceRefresh, useListMutations, useLists, useSettings, useWatchlist 
 import { ItemDialog } from './features/items/ItemDialog.tsx';
 import { SettingsDialog } from './features/settings/SettingsDialog.tsx';
 import { PriceMapLegend } from './features/watchlist/PriceMap.tsx';
-import { Summary, filterRow, type Filter } from './features/watchlist/Summary.tsx';
+import { Highlights } from './features/watchlist/Highlights.tsx';
+import { StatusFilter, filterRow, type Filter } from './features/watchlist/StatusFilter.tsx';
 import { WatchlistTable, type Tag } from './features/watchlist/WatchlistTable.tsx';
 import { TagFilters, rowType, type TypeFilter } from './features/watchlist/TagFilters.tsx';
 import { TOUR_STEPS } from './features/tour/steps.tsx';
@@ -136,7 +137,7 @@ export function App() {
               if (name) setListId((await createList.mutateAsync(name)).id);
             }}
           >
-            + Lista
+            Nueva lista
           </button>
         </nav>
 
@@ -161,7 +162,7 @@ export function App() {
             disabled={!listId || refresh.isPending}
             title="Forzar actualización de cotizaciones"
           >
-            ↻ Actualizar
+            Actualizar
           </button>
           <button
             type="button"
@@ -171,43 +172,28 @@ export function App() {
             disabled={!hasRows}
             title="Volver a ver la explicación de la app"
           >
-            ? Tour
+            Guía
           </button>
-          <button
-            type="button"
-            className="icon-btn"
-            data-tour="settings"
-            onClick={() => setShowSettings(true)}
-            aria-label="Ajustes"
-            title="Ajustes"
-          >
-            ⚙
+          <button type="button" className="btn btn--ghost" data-tour="settings" onClick={() => setShowSettings(true)}>
+            Ajustes
           </button>
         </div>
       </header>
 
       <main className="content">
         <UpdateBanner />
-        {view && (
-          <Summary
-            rows={tagged}
-            base={base}
-            nearPct={settings.nearThresholdPct}
-            farPct={settings.farThresholdPct}
-            filter={filter}
-            onFilter={setFilter}
-          />
-        )}
+        {view && <Highlights rows={view.rows} base={base} />}
 
         <div className="toolbar">
-          <input
-            type="search"
-            className="search"
-            placeholder="Filtrar por nombre, ticker o nota…"
-            aria-label="Filtrar"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          {view && (
+            <StatusFilter
+              rows={tagged}
+              nearPct={settings.nearThresholdPct}
+              farPct={settings.farThresholdPct}
+              value={filter}
+              onChange={setFilter}
+            />
+          )}
           <TagFilters
             type={typeFilter}
             onType={setTypeFilter}
@@ -215,8 +201,15 @@ export function App() {
             currencies={currencies}
             onCurrency={setCurrencyFilter}
           />
-          <PriceMapLegend />
           <span className="spacer" />
+          <input
+            type="search"
+            className="search"
+            placeholder="Buscar por nombre, ticker o nota"
+            aria-label="Buscar en la lista"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
           <button
             type="button"
             className="btn btn--primary"
@@ -224,7 +217,7 @@ export function App() {
             onClick={() => setEditing('new')}
             disabled={!listId}
           >
-            + Añadir valor
+            Añadir valor
           </button>
         </div>
 
@@ -234,7 +227,7 @@ export function App() {
           <div className="empty">
             <p>Esta lista está vacía.</p>
             <button type="button" className="btn btn--primary" onClick={() => setEditing('new')}>
-              + Añadir el primer valor
+              Añadir el primer valor
             </button>
           </div>
         )}
@@ -248,9 +241,26 @@ export function App() {
               onEdit={setEditing}
               onTag={onTag}
             />
-            {rows.length === 0 && <p className="muted center">Ningún valor coincide con el filtro.</p>}
+            {rows.length === 0 && (
+              <div className="empty">
+                <p>Ningún valor coincide con los filtros.</p>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    setFilter('all');
+                    setTypeFilter('all');
+                    setCurrencyFilter('all');
+                    setSearch('');
+                  }}
+                >
+                  Quitar filtros
+                </button>
+              </div>
+            )}
           </>
         )}
+        {view && view.rows.length > 0 && <PriceMapLegend />}
         <p className="footnote">
           Cotizaciones y consenso de analistas: Yahoo Finance (pueden tener retraso). Doble clic en una fila para editarla.
         </p>
