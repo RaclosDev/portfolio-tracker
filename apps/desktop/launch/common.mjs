@@ -28,7 +28,8 @@ export function localAppRoot() {
 
 export const CONFIG_FILE = 'watchlist.local.json';
 /** Nunca se copian ni se borran al sincronizar código. */
-const SKIP_DIRS = new Set(['node_modules', 'dist', 'datos', '.git', '.claude', '.vscode']);
+// 'data' = base de datos del modo navegador de desarrollo (apps/server/data).
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'datos', 'data', '.git', '.claude', '.vscode']);
 const KEEP_FILES = new Set([CONFIG_FILE]);
 
 export function readJson(file, fallback = null) {
@@ -121,9 +122,20 @@ export function electronPath(root) {
   return createRequire(path.join(root, 'package.json'))('electron');
 }
 
+/** Reintenta una vez: justo tras npm install, el antivirus a veces bloquea ficheros recién creados. */
+function runWithRetry(cmd, args, cwd, opts) {
+  try {
+    run(cmd, args, cwd, opts);
+  } catch {
+    log('Reintentando…');
+    spawnSync(process.platform === 'win32' ? 'timeout /t 3 /nobreak >nul' : 'sleep 3', { shell: true });
+    run(cmd, args, cwd, opts);
+  }
+}
+
 export function buildApp(root, opts) {
-  run('npm', ['run', 'build', '-w', '@watchlist/web'], root, opts);
-  run('npm', ['run', 'build', '-w', '@watchlist/desktop'], root, opts);
+  runWithRetry('npm', ['run', 'build', '-w', '@watchlist/web'], root, opts);
+  runWithRetry('npm', ['run', 'build', '-w', '@watchlist/desktop'], root, opts);
 }
 
 /** tar de Windows (bsdtar, sabe de .zip); evita el tar de Git si está antes en el PATH. */
