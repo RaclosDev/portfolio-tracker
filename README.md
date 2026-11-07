@@ -7,7 +7,7 @@ Se abre con un acceso directo, en su propia ventana; al cerrarla se detiene todo
 ## Instalar (una vez en cada PC)
 
 1. Instala **Node.js LTS** desde <https://nodejs.org> (siguiente, siguiente…).
-2. Descarga el proyecto: botón verde **Code → Download ZIP** en GitHub (o la carpeta que te hayan pasado) y descomprímelo donde quieras.
+2. Descomprime donde quieras el ZIP que te hayan pasado (lo genera `npm run empaquetar` e incluye la lista inicial de valores) o, si no, el de GitHub: botón verde **Code → Download ZIP**.
 3. Doble clic en **`instalar.bat`** (macOS/Linux: `./instalar.sh`).
    - Te pedirá la **carpeta de datos**. Si vas a usar la app en varios PCs (p. ej. trabajo y casa), elige en todos **la misma carpeta compartida** (OneDrive, Google Drive, Dropbox…).
    - Crea el acceso directo **Watchlist** en el escritorio y en el menú Inicio.

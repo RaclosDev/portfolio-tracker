@@ -117,6 +117,10 @@ export function buildApp(root, opts) {
   run('npm', ['run', 'build', '-w', '@watchlist/desktop'], root, opts);
 }
 
+/** tar de Windows (bsdtar, sabe de .zip); evita el tar de Git si está antes en el PATH. */
+export const TAR =
+  process.platform === 'win32' ? path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
+
 /* ---------------- GitHub ---------------- */
 
 /** Último commit de la rama configurada: { sha, date } o null si no hay conexión/configuración. */
@@ -145,7 +149,7 @@ export async function downloadCommit({ repo }, sha) {
   fs.mkdirSync(out);
   // tar (bsdtar) viene con Windows 10+ y macOS y descomprime .zip; en Linux se usa unzip.
   const unzip =
-    process.platform === 'linux' ? spawnSync('unzip', ['-q', zip, '-d', out]) : spawnSync('tar', ['-xf', zip, '-C', out]);
+    process.platform === 'linux' ? spawnSync('unzip', ['-q', zip, '-d', out]) : spawnSync(TAR, ['-xf', zip, '-C', out]);
   if (unzip.status !== 0) throw new Error('No se pudo descomprimir la actualización');
   const [folder] = fs.readdirSync(out);
   return { dir: path.join(out, folder), cleanup: () => fs.rmSync(tmp, { recursive: true, force: true }) };
