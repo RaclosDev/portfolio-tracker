@@ -23,9 +23,24 @@ Si Windows avisa de que el archivo viene de internet, elige **Ejecutar de todas 
 
 ## Actualizaciones
 
-Al abrir la app se comprueba si hay una versión nueva en la rama `main` de [`RaclosDev/portfolio-tracker`](https://github.com/RaclosDev/portfolio-tracker). Si la hay, se descarga e instala (aparece un aviso "Actualizando…") y luego se abre. Sin conexión, se abre la versión instalada. La versión instalada se ve en ⚙ Ajustes.
+La app busca versiones nuevas en la rama `main` de [`RaclosDev/portfolio-tracker`](https://github.com/RaclosDev/portfolio-tracker):
+
+- **Al abrirla**: si hay versión nueva se descarga e instala (aviso "Actualizando…") y luego se abre.
+- **Al instante mientras está en marcha**: cada push a `main` dispara la GitHub Action `avisar-version.yml`, que publica un aviso en un canal de [ntfy.sh](https://ntfy.sh) (`pushTopic` en `watchlist.update.json`). La app mantiene abierta una conexión a ese canal; al recibir el aviso comprueba la versión en GitHub (el aviso por sí solo no instala nada). Si solo está en la bandeja, se actualiza y reinicia sola; si la ventana está abierta, avisa con una notificación y un botón **Actualizar ahora** (si no se pulsa, se instala al cerrar la ventana).
+- **Respaldo**: también comprueba al despertar el PC, cada 6 horas y desde el menú de la bandeja (**Buscar actualizaciones**). Las consultas a GitHub son condicionales (ETag): sin cambios no gastan cupo.
+- Sin conexión, sigue con la versión instalada. La versión se ve en ⚙ Ajustes → Copias de seguridad.
 
 Para publicar cambios: haz commit y `git push` a `main`. Para trabajar sin que llegue todavía a los demás, usa otra rama y fusiónala en `main` cuando esté lista.
+
+## Notificaciones y segundo plano
+
+Al cerrar la ventana, Watchlist sigue en la **bandeja del sistema** (junto al reloj) y comprueba los precios con la misma frecuencia que con la ventana abierta (Ajustes → General, por defecto cada 60 s). Avisa con notificaciones de Windows cuando:
+
+- un valor entra en **zona de compra** o se pone **cerca** de un nivel,
+- el precio toca tu **orden** puesta en el banco,
+- una orden **caduca** en 2 días o menos.
+
+Cada aviso sale una vez (no se repite en 12 h aunque el precio oscile). En segundo plano la app solo **lee** los datos y no bloquea la carpeta compartida. Clic en el icono de la bandeja: abrir; clic derecho: comprobar ahora, activar/desactivar avisos o **Salir**. Todo se configura en ⚙ Ajustes → Notificaciones (también **Iniciar con Windows**).
 
 ## Datos
 

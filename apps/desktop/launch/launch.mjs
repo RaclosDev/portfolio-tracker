@@ -66,6 +66,11 @@ async function updateIfNeeded() {
   }
 }
 
+// Opciones: --oculta (arrancar solo en la bandeja) · --esperar (reinicio tras detectar una
+// actualización: deja que la instancia anterior termine de cerrarse antes de tocar ficheros).
+const args = process.argv.slice(2);
+if (args.includes('--esperar')) await new Promise((r) => setTimeout(r, 4000));
+
 await updateIfNeeded();
 
 // Si por lo que sea falta la compilación (p. ej. una actualización a medias), se rehace.
@@ -75,11 +80,24 @@ if (!fs.existsSync(path.join(root, 'apps/web/dist/index.html')) || !fs.existsSyn
 }
 
 const electron = electronPath(root);
+// Configuración de actualizaciones del código instalado (viene con cada versión).
+const update = readJson(path.join(root, 'watchlist.update.json'), {});
 const version = cfg.installedSha ? `${cfg.installedSha.slice(0, 7)} · ${(cfg.installedDate ?? '').slice(0, 10)}` : 'instalación local';
 log(`Abriendo Watchlist (${version}). Datos: ${cfg.dataDir}`);
 
-const child = spawn(electron, [path.join(root, 'apps/desktop')], {
+const child = spawn(electron, [path.join(root, 'apps/desktop'), ...args.filter((a) => a === '--oculta')], {
   stdio: 'inherit',
-  env: { ...process.env, WATCHLIST_DATA_DIR: cfg.dataDir, WATCHLIST_VERSION: version },
+  env: {
+    ...process.env,
+    WATCHLIST_DATA_DIR: cfg.dataDir,
+    WATCHLIST_VERSION: version,
+    // Para que la app busque actualizaciones en segundo plano y se reinicie a través de este lanzador.
+    WATCHLIST_SHA: cfg.installedSha ?? '',
+    WATCHLIST_REPO: update.repo ?? cfg.repo ?? '',
+    WATCHLIST_BRANCH: update.branch ?? cfg.branch ?? 'main',
+    WATCHLIST_PUSH_TOPIC: update.pushTopic ?? '',
+    WATCHLIST_NODE: process.execPath,
+    WATCHLIST_LAUNCHER: import.meta.filename,
+  },
 });
 child.on('exit', (code) => process.exit(code ?? 0));

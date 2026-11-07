@@ -57,9 +57,10 @@ export const TOUR_STEPS: TourStep[] = [
     body: (
       <>
         <p>
-          <strong>En zona de compra</strong>: el precio ya está por debajo de alguno de tus niveles.{' '}
-          <strong>Cerca</strong>: le falta menos del umbral (5 % por defecto). <strong>Órdenes activas</strong>: las que
-          tienes puestas en el banco y el dinero comprometido.
+          <strong>En zona de compra</strong>: el precio ya está por debajo de alguno de tus niveles (parpadean para que
+          no se te pasen). <strong>Cerca</strong>, <strong>Lejos</strong> y <strong>Muy lejos</strong>: según lo que le
+          falta caer; los porcentajes se cambian en Ajustes → Estados y umbrales. <strong>Órdenes activas</strong>: las
+          que tienes puestas en el banco y el dinero comprometido.
         </p>
         <p>Pulsa una tarjeta para filtrar la tabla; vuelve a pulsarla para quitar el filtro.</p>
       </>
@@ -69,6 +70,16 @@ export const TOUR_STEPS: TourStep[] = [
     target: '.search',
     title: 'Buscar en la lista',
     body: <p>Filtra al momento por nombre, ticker o el texto de tus notas.</p>,
+  },
+  {
+    target: '.tag-filters',
+    title: 'Filtrar por tipo y divisa',
+    body: (
+      <p>
+        Muestra solo <strong>acciones</strong> o solo <strong>ETF</strong>, y solo los valores en una divisa (EUR, USD…).
+        También puedes pulsar directamente la etiqueta «USD» o «ETF» de cualquier fila.
+      </p>
+    ),
   },
   {
     target: '[data-tour="add"]',
@@ -206,10 +217,29 @@ export const TOUR_STEPS: TourStep[] = [
     target: '[data-tour="settings"]',
     title: 'Ajustes',
     body: (
-      <p>
-        Importe por defecto, umbral de "cerca", frecuencia de refresco, los colores de cada estado (en zona, cerca, orden activa…), renombrar o borrar listas y hacer copias de
-        seguridad (exportar/importar) para llevar tus datos a otro PC.
-      </p>
+      <>
+        <p>Todo es personalizable, ordenado por categorías:</p>
+        <ul>
+          <li><strong>General</strong>: importe por defecto, divisa base y frecuencia de actualización.</li>
+          <li><strong>Estados y umbrales</strong>: qué es cerca, lejos y muy lejos, y el parpadeo.</li>
+          <li><strong>Aspecto</strong>: tema claro u oscuro, densidad, tamaño de letra, columnas y colores.</li>
+          <li><strong>Notificaciones</strong>: avisos de Windows y segundo plano.</li>
+          <li><strong>Listas</strong> y <strong>Copias de seguridad</strong>.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    title: 'Notificaciones y segundo plano',
+    body: (
+      <>
+        <p>
+          En la app de escritorio, al cerrar la ventana Watchlist sigue en la <strong>bandeja del sistema</strong> (junto al
+          reloj) y te avisa con una notificación cuando un valor entra en zona de compra, se pone cerca de un nivel, toca tu
+          orden o la orden va a caducar.
+        </p>
+        <p>Para cerrarla del todo: clic derecho en su icono de la bandeja → Salir.</p>
+      </>
     ),
   },
   {

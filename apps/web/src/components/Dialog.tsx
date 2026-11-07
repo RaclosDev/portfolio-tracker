@@ -6,10 +6,11 @@ interface Props {
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  className?: string;
 }
 
 /** Modal accesible basado en <dialog> nativo (foco, Escape y fondo gestionados por el navegador). */
-export function Dialog({ title, onClose, children, footer, wide }: Props) {
+export function Dialog({ title, onClose, children, footer, wide, className }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -23,7 +24,7 @@ export function Dialog({ title, onClose, children, footer, wide }: Props) {
   return (
     <dialog
       ref={ref}
-      className={`dialog${wide ? ' dialog--wide' : ''}`}
+      className={`dialog${wide ? ' dialog--wide' : ''}${className ? ` ${className}` : ''}`}
       onCancel={(e) => {
         e.preventDefault();
         onClose();

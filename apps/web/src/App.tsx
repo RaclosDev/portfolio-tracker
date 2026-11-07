@@ -5,12 +5,14 @@ import { ItemDialog } from './features/items/ItemDialog.tsx';
 import { SettingsDialog } from './features/settings/SettingsDialog.tsx';
 import { PriceMapLegend } from './features/watchlist/PriceMap.tsx';
 import { Summary, filterRow, type Filter } from './features/watchlist/Summary.tsx';
-import { WatchlistTable } from './features/watchlist/WatchlistTable.tsx';
+import { WatchlistTable, type Tag } from './features/watchlist/WatchlistTable.tsx';
+import { TagFilters, rowType, type TypeFilter } from './features/watchlist/TagFilters.tsx';
 import { TOUR_STEPS } from './features/tour/steps.tsx';
 import { Tour } from './features/tour/Tour.tsx';
 import { num, timeAgo } from './lib/format.ts';
-import { applyColors } from './lib/theme.ts';
+import { applyAppearance, applyColors } from './lib/theme.ts';
 import { usePrompt } from './components/usePrompt.tsx';
+import { UpdateBanner } from './components/UpdateBanner.tsx';
 
 const LS_LIST = 'watchlist.listId';
 const LS_TOUR = 'watchlist.tourSeen';
@@ -39,6 +41,7 @@ export function App() {
   }, [listId]);
 
   useEffect(() => applyColors(settings.colors), [settings.colors]);
+  useEffect(() => applyAppearance(settings), [settings.theme, settings.density, settings.fontSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const wl = useWatchlist(listId, settings.refreshSeconds);
   const refresh = useForceRefresh();
@@ -52,14 +55,35 @@ export function App() {
   const [tourOpen, setTourOpen] = useState(false);
   const [ask, promptEl] = usePrompt();
 
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
+  const [currencyFilter, setCurrencyFilter] = useState<string>('all');
+
   const view = wl.data;
   const base = view?.settings.baseCurrency ?? settings.baseCurrency;
+  // Filtros por etiqueta: se aplican antes de las tarjetas, que cuentan sobre lo filtrado.
+  const tagged = useMemo(
+    () =>
+      (view?.rows ?? []).filter(
+        (r) =>
+          (typeFilter === 'all' || rowType(r) === typeFilter) &&
+          (currencyFilter === 'all' || (r.quote?.currency ?? '') === currencyFilter),
+      ),
+    [view, typeFilter, currencyFilter],
+  );
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return (view?.rows ?? [])
+    return tagged
       .filter(filterRow(filter))
       .filter((r) => !q || `${r.item.symbol} ${r.item.name ?? ''} ${r.item.notes ?? ''}`.toLowerCase().includes(q));
-  }, [view, filter, search]);
+  }, [tagged, filter, search]);
+  const currencies = useMemo(
+    () => [...new Set((view?.rows ?? []).map((r) => r.quote?.currency).filter((c): c is string => !!c))].sort(),
+    [view],
+  );
+  const onTag = (tag: Tag) =>
+    tag.kind === 'currency'
+      ? setCurrencyFilter((c) => (c === tag.value ? 'all' : tag.value))
+      : setTypeFilter((t) => (t === tag.value ? 'all' : tag.value));
 
   // El tour se abre solo la primera vez, cuando ya hay datos que enseñar.
   const hasRows = (view?.rows.length ?? 0) > 0;
@@ -73,6 +97,8 @@ export function App() {
   const startTour = () => {
     setFilter('all');
     setSearch('');
+    setTypeFilter('all');
+    setCurrencyFilter('all');
     setTourOpen(true);
   };
 
@@ -161,8 +187,16 @@ export function App() {
       </header>
 
       <main className="content">
+        <UpdateBanner />
         {view && (
-          <Summary rows={view.rows} base={base} nearPct={settings.nearThresholdPct} filter={filter} onFilter={setFilter} />
+          <Summary
+            rows={tagged}
+            base={base}
+            nearPct={settings.nearThresholdPct}
+            farPct={settings.farThresholdPct}
+            filter={filter}
+            onFilter={setFilter}
+          />
         )}
 
         <div className="toolbar">
@@ -173,6 +207,13 @@ export function App() {
             aria-label="Filtrar"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+          />
+          <TagFilters
+            type={typeFilter}
+            onType={setTypeFilter}
+            currency={currencyFilter}
+            currencies={currencies}
+            onCurrency={setCurrencyFilter}
           />
           <PriceMapLegend />
           <span className="spacer" />
@@ -199,7 +240,14 @@ export function App() {
         )}
         {view && view.rows.length > 0 && (
           <>
-            <WatchlistTable rows={rows} baseCurrency={base} onEdit={setEditing} />
+            <WatchlistTable
+              rows={rows}
+              baseCurrency={base}
+              blink={settings.blinkReached}
+              hiddenColumns={settings.hiddenColumns}
+              onEdit={setEditing}
+              onTag={onTag}
+            />
             {rows.length === 0 && <p className="muted center">Ningún valor coincide con el filtro.</p>}
           </>
         )}
