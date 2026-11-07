@@ -58,6 +58,7 @@ export const COLOR_DEFS = [
   { key: 'reached', label: 'En zona de compra', group: 'Estados', default: '#16a34a' },
   { key: 'near', label: 'Cerca', group: 'Estados', default: '#d97706' },
   { key: 'far', label: 'Lejos', group: 'Estados', default: '#64748b' },
+  { key: 'veryFar', label: 'Muy lejos', group: 'Estados', default: '#a1a1aa' },
   { key: 'order', label: 'Orden activa', group: 'Estados', default: '#eab308' },
   { key: 'expired', label: 'Orden caducada', group: 'Estados', default: '#dc2626' },
   { key: 'fx', label: 'Otra divisa (USD…)', group: 'Tabla', default: '#0284c7' },
@@ -80,9 +81,20 @@ export const DEFAULT_COLORS: Colors = colorsSchema.parse({});
 export const settingsSchema = z.object({
   baseCurrency: z.string().length(3).default('EUR'),
   defaultInvest: price.default(2500),
+  /** Hasta este % por encima del nivel de compra: "cerca". */
   nearThresholdPct: z.number().min(0).max(100).default(5),
+  /** Hasta este % : "lejos"; más allá: "muy lejos". */
+  farThresholdPct: z.number().min(0).max(100).default(15),
+  /** Hacer parpadear los valores en zona de compra. */
+  blinkReached: z.boolean().default(true),
   refreshSeconds: z.number().int().min(15).max(3600).default(60),
   colors: colorsSchema.default(DEFAULT_COLORS),
+  /** Aspecto */
+  theme: z.enum(['system', 'light', 'dark']).default('system'),
+  density: z.enum(['compact', 'normal', 'comfortable']).default('normal'),
+  fontSize: z.enum(['small', 'normal', 'large']).default('normal'),
+  /** Columnas ocultas de la tabla (ids). */
+  hiddenColumns: z.array(z.string().max(30)).max(30).default([]),
 });
 export type Settings = z.output<typeof settingsSchema>;
 export const DEFAULT_SETTINGS: Settings = settingsSchema.parse({});

@@ -1,4 +1,4 @@
-import { COLOR_DEFS, type Colors } from '@watchlist/shared';
+import { COLOR_DEFS, type Colors, type Settings } from '@watchlist/shared';
 
 /**
  * Aplica los colores configurables como variables CSS (--c-<clave>).
@@ -10,4 +10,13 @@ export function applyColors(colors: Partial<Colors> | undefined) {
   for (const { key, default: fallback } of COLOR_DEFS) {
     root.setProperty(`--c-${key}`, colors?.[key] ?? fallback);
   }
+}
+
+/** Tema, densidad y tamaño de letra (atributos data-* en <html> que usa styles.css). */
+export function applyAppearance(s: Pick<Settings, 'theme' | 'density' | 'fontSize'>) {
+  const el = document.documentElement;
+  if (s.theme === 'system') delete el.dataset.theme;
+  else el.dataset.theme = s.theme;
+  el.dataset.density = s.density;
+  el.dataset.font = s.fontSize;
 }

@@ -1,7 +1,7 @@
 ' Abre la Watchlist sin ventana de consola. Es lo que ejecuta el acceso directo.
 ' Busca actualizaciones en GitHub y abre la ventana de la app.
 Option Explicit
-Dim fso, sh, env, root, home, nodeDir, logFile, rc
+Dim fso, sh, env, root, home, nodeDir, logFile, rc, extra, i
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set sh = CreateObject("WScript.Shell")
 Set env = sh.Environment("PROCESS")
@@ -16,7 +16,13 @@ If fso.FileExists(nodeDir & "\node.exe") Then env("PATH") = nodeDir & ";" & env(
 
 logFile = sh.ExpandEnvironmentStrings("%TEMP%") & "\watchlist-launch.log"
 sh.CurrentDirectory = root
-rc = sh.Run("cmd /c node ""apps\desktop\launch\launch.mjs"" > """ & logFile & """ 2>&1", 0, True)
+' Opciones que se pasan a la app (p. ej. --oculta al iniciar con Windows).
+extra = ""
+For i = 0 To WScript.Arguments.Count - 1
+  extra = extra & " " & WScript.Arguments(i)
+Next
+
+rc = sh.Run("cmd /c node ""apps\desktop\launch\launch.mjs""" & extra & " > """ & logFile & """ 2>&1", 0, True)
 
 If rc <> 0 Then
   MsgBox "No se pudo abrir Watchlist." & vbCrLf & vbCrLf & _

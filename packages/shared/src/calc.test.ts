@@ -42,7 +42,9 @@ describe('levelStatus', () => {
   it('clasifica alcanzado / cerca / lejos', () => {
     expect(levelStatus(10, 9.9, 5)).toBe('reached');
     expect(levelStatus(10, 10.4, 5)).toBe('near');
-    expect(levelStatus(10, 12, 5)).toBe('far');
+    expect(levelStatus(10, 11, 5, 15)).toBe('far'); // falta caer 9 %
+    expect(levelStatus(10, 12, 5, 15)).toBe('veryFar'); // falta caer 16,7 %
+    expect(levelStatus(10, 12, 5)).toBe('far'); // sin umbral de lejos
     expect(levelStatus(10, null, 5)).toBe('unknown');
   });
 });

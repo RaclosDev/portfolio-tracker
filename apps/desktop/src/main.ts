@@ -1,33 +1,62 @@
 /**
  * Proceso principal de la app de escritorio.
- * Arranca la API dentro de la propia app (invisible para el usuario) y abre una ventana con la web.
- * Al cerrar la ventana se detiene todo.
  *
- * Carpeta de datos: la variable WATCHLIST_DATA_DIR (la pone el lanzador con la carpeta elegida
- * al instalar, que puede ser una carpeta compartida entre PCs) o, en desarrollo, <proyecto>/datos.
+ *  - Ventana: arranca la API dentro de la app y muestra la web. Mientras está abierta, la
+ *    carpeta de datos queda marcada "en uso" por este PC.
+ *  - Bandeja del sistema: al cerrar la ventana la app puede seguir en segundo plano vigilando
+ *    precios (solo lectura, sin bloquear la carpeta) y avisando con notificaciones de Windows.
+ *  - Actualizaciones: cada hora mira GitHub; si hay versión nueva se aplica al cerrar la ventana
+ *    (o al momento si solo está en la bandeja).
+ *
+ * Carpeta de datos: WATCHLIST_DATA_DIR (la pone el lanzador con la elegida al instalar) o,
+ * en desarrollo (npm run desktop), <proyecto>/datos.
  */
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, Menu, shell } from 'electron';
-import { localToday } from '@watchlist/shared';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell, Tray } from 'electron';
+import { localToday, type Alert } from '@watchlist/shared';
 import { startServer, type RunningServer } from '../../server/src/server.ts';
 import { acquireLock, dailyBackup, findConflictCopies, migrateLegacyData, otherPcLock } from './data-folder.ts';
+import { PrefsStore, type DesktopPrefs } from './prefs.ts';
+import { checkForUpdate, relaunchThroughLauncher, updatesEnabled, type UpdateInfo } from './updater.ts';
+import { PriceWatcher } from './watcher.ts';
 
 // dist/main.mjs → raíz del proyecto
 const ROOT = path.resolve(import.meta.dirname, '../../..');
 const WEB_DIST = path.join(ROOT, 'apps/web/dist');
 const SEED_FILE = path.join(ROOT, 'apps/server/seed/watchlist.seed.json');
-const ICON = path.join(ROOT, 'apps/desktop/assets/icon.png');
-const DATA_DIR = path.resolve(process.env.WATCHLIST_DATA_DIR || path.join(ROOT, 'datos'));
-/** Puerto fijo: así las preferencias del navegador interno (tour visto, lista abierta) se conservan. */
-const PREFERRED_PORT = 5175;
+const ICON_PNG = path.join(ROOT, 'apps/desktop/assets/icon.png');
+const ICON_ICO = path.join(ROOT, 'apps/desktop/assets/icon.ico');
+const PRELOAD = path.join(ROOT, 'apps/desktop/src/preload.cjs');
+const LAUNCHER_VBS = path.join(ROOT, 'apps/desktop/launch/watchlist.vbs');
+const WSCRIPT = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'wscript.exe');
 
-app.setName('Watchlist');
+/** Instalada con instalar.bat (la arranca el lanzador) o en desarrollo desde el código. */
+const INSTALLED = Boolean(process.env.WATCHLIST_DATA_DIR);
+const DATA_DIR = path.resolve(process.env.WATCHLIST_DATA_DIR || path.join(ROOT, 'datos'));
+const START_HIDDEN = process.argv.includes('--oculta');
+const APP_ID = INSTALLED ? 'com.raclosdev.watchlist' : 'com.raclosdev.watchlist.dev';
+/** Puerto fijo: así las preferencias del navegador interno (tour visto, lista abierta) se conservan. */
+const PREFERRED_PORT = INSTALLED ? 5175 : 5176;
+const UPDATE_EVERY_MS = 60 * 60_000;
+
+// En desarrollo usa otro nombre: no choca con la app instalada (preferencias, instancia única).
+app.setName(INSTALLED ? 'Watchlist' : 'Watchlist (desarrollo)');
+if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
 let win: BrowserWindow | null = null;
 let server: RunningServer | null = null;
 let releaseLock: (() => void) | null = null;
+let tray: Tray | null = null;
+let prefs: PrefsStore;
+let watcher: PriceWatcher;
+let checkTimer: NodeJS.Timeout | undefined;
+let quitting = false;
+let pendingUpdate: UpdateInfo | null = null;
+
+const log = (msg: string, err?: unknown) =>
+  console.log(`[${new Date().toLocaleTimeString('es-ES')}] ${msg}${err ? `: ${err instanceof Error ? err.message : err}` : ''}`);
 
 function portIsFree(port: number) {
   return new Promise<boolean>((resolve) => {
@@ -40,10 +69,13 @@ function portIsFree(port: number) {
 const timeEs = (iso: string) =>
   new Date(iso).toLocaleString('es-ES', { weekday: 'long', hour: '2-digit', minute: '2-digit' });
 
-/** Comprobaciones de la carpeta de datos. Devuelve false si el usuario decide no abrir. */
+/* ------------------------------------------------------------------ */
+/* Carpeta de datos y sesión (ventana abierta = API + carpeta en uso)  */
+/* ------------------------------------------------------------------ */
+
+/** Comprobaciones de la carpeta de datos. Devuelve false si no se puede o no se quiere abrir. */
 function prepareDataFolder(): boolean {
-  const parent = path.dirname(DATA_DIR);
-  if (!fs.existsSync(parent)) {
+  if (!fs.existsSync(path.dirname(DATA_DIR))) {
     dialog.showErrorBox(
       'No se encuentra la carpeta de datos',
       `La carpeta donde se guardan los datos no está disponible:\n\n${DATA_DIR}\n\n` +
@@ -63,7 +95,7 @@ function prepareDataFolder(): boolean {
       detail:
         'Si la usas en los dos PCs a la vez, los cambios de uno pueden pisar los del otro. ' +
         'Lo recomendable es cerrarla allí, esperar a que se sincronice la carpeta y abrirla aquí.',
-      buttons: ['Salir', 'Abrir de todas formas'],
+      buttons: ['No abrir', 'Abrir de todas formas'],
       defaultId: 0,
       cancelId: 0,
       noLink: true,
@@ -75,40 +107,18 @@ function prepareDataFolder(): boolean {
   try {
     dailyBackup(DATA_DIR, localToday());
   } catch (err) {
-    console.warn('No se pudo hacer la copia diaria:', err);
+    log('No se pudo hacer la copia diaria', err);
   }
   releaseLock = acquireLock(DATA_DIR);
   return true;
 }
 
-function warnConflictCopies() {
-  const copies = findConflictCopies(DATA_DIR);
-  if (!copies.length || !win) return;
-  void dialog.showMessageBox(win, {
-    type: 'info',
-    title: 'Copias en conflicto',
-    message: 'La sincronización ha creado copias en conflicto de la base de datos.',
-    detail:
-      `En ${DATA_DIR} hay:\n• ${copies.join('\n• ')}\n\n` +
-      `Tus datos actuales están en watchlist.db. Esas copias suelen aparecer al usar la app en dos PCs a la vez. ` +
-      'Si no echas nada en falta, puedes borrarlas. Las copias diarias están en la subcarpeta "copias".',
-    buttons: ['Entendido', 'Abrir la carpeta'],
-    noLink: true,
-  }).then(({ response }) => {
-    if (response === 1) void shell.openPath(DATA_DIR);
-  });
-}
-
-async function createWindow() {
-  if (!prepareDataFolder()) {
-    app.quit();
-    return;
-  }
-
+async function startSession(): Promise<boolean> {
+  if (server) return true;
+  if (!prepareDataFolder()) return false;
   // Datos iniciales que deja el instalador (solo se usan si la base de datos está vacía).
   const importFile = path.join(DATA_DIR, 'importar.json');
   const initialData = fs.existsSync(importFile) ? importFile : SEED_FILE;
-
   server = await startServer({
     host: '127.0.0.1',
     port: (await portIsFree(PREFERRED_PORT)) ? PREFERRED_PORT : 0,
@@ -119,6 +129,50 @@ async function createWindow() {
     quiet: true,
   });
   if (initialData !== SEED_FILE && fs.existsSync(initialData)) fs.renameSync(initialData, `${initialData}.importado`);
+  return true;
+}
+
+/** Cierra la API y libera la carpeta de datos (la vigilancia en segundo plano no la necesita). */
+async function stopSession() {
+  const s = server;
+  server = null;
+  await s?.close();
+  releaseLock?.();
+  releaseLock = null;
+}
+
+function warnConflictCopies() {
+  const copies = findConflictCopies(DATA_DIR);
+  if (!copies.length || !win) return;
+  void dialog
+    .showMessageBox(win, {
+      type: 'info',
+      title: 'Copias en conflicto',
+      message: 'La sincronización ha creado copias en conflicto de la base de datos.',
+      detail:
+        `En ${DATA_DIR} hay:\n• ${copies.join('\n• ')}\n\n` +
+        'Tus datos actuales están en watchlist.db. Esas copias suelen aparecer al usar la app en dos PCs a la vez. ' +
+        'Si no echas nada en falta, puedes borrarlas. Las copias diarias están en la subcarpeta "copias".',
+      buttons: ['Entendido', 'Abrir la carpeta'],
+      noLink: true,
+    })
+    .then(({ response }) => {
+      if (response === 1) void shell.openPath(DATA_DIR);
+    });
+}
+
+/* ------------------------------------------------------------------ */
+/* Ventana                                                             */
+/* ------------------------------------------------------------------ */
+
+async function openWindow() {
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+    return;
+  }
+  if (!(await startSession())) return;
 
   win = new BrowserWindow({
     width: 1500,
@@ -126,14 +180,15 @@ async function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: 'Watchlist',
-    icon: ICON,
+    icon: ICON_PNG,
     backgroundColor: '#0f1216',
     show: false,
-    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
+    webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   win.once('ready-to-show', () => {
     win?.show();
     warnConflictCopies();
+    if (pendingUpdate) win?.webContents.send('update:available', pendingUpdate);
   });
 
   // Enlaces externos → navegador del sistema; la ventana solo muestra la app.
@@ -150,9 +205,9 @@ async function createWindow() {
 
   // Atajos: F5 / Ctrl+R recargar, Ctrl+± zoom, F12 herramientas de desarrollo.
   win.webContents.on('before-input-event', (e, input) => {
-    if (input.type !== 'keyDown') return;
+    if (input.type !== 'keyDown' || !win) return;
     const key = input.key.toLowerCase();
-    const wc = win!.webContents;
+    const wc = win.webContents;
     if (key === 'f5' || (input.control && key === 'r')) wc.reload();
     else if (key === 'f12') wc.toggleDevTools();
     else if (input.control && (key === '+' || key === '=')) wc.setZoomLevel(wc.getZoomLevel() + 0.5);
@@ -162,33 +217,237 @@ async function createWindow() {
     e.preventDefault();
   });
 
-  win.on('closed', () => (win = null));
-  await win.loadURL(server.url);
+  win.on('closed', () => void onWindowClosed());
+  await win.loadURL(server!.url);
 }
 
-// Una sola instancia: si ya está abierta, otro clic en el acceso directo la trae al frente.
+async function onWindowClosed() {
+  win = null;
+  await stopSession();
+  if (quitting) return app.quit();
+  // Había una actualización esperando: se aplica ahora y se vuelve a la bandeja.
+  if (pendingUpdate && relaunchThroughLauncher(true)) {
+    quitting = true;
+    return app.quit();
+  }
+  if (!prefs.get().runInBackground) return app.quit();
+  const p = prefs.get();
+  if (!p.trayHintShown) {
+    notify(
+      'Watchlist sigue en segundo plano',
+      'Vigila tus precios desde la bandeja del sistema (junto al reloj). Para cerrarla del todo: clic derecho en el icono → Salir.',
+    );
+    prefs.set({ trayHintShown: true });
+  }
+}
+
+function quitApp() {
+  quitting = true;
+  if (win) win.close();
+  else void stopSession().then(() => app.quit());
+}
+
+/* ------------------------------------------------------------------ */
+/* Bandeja, notificaciones y vigilancia                                */
+/* ------------------------------------------------------------------ */
+
+function notify(title: string, body: string) {
+  if (!Notification.isSupported()) return;
+  const n = new Notification({ title, body, icon: ICON_PNG });
+  n.on('click', () => void openWindow());
+  n.on('show', () => log(`Notificación mostrada: ${title}`));
+  n.on('failed', (_e, error) => log(`Notificación fallida: ${title}`, error));
+  n.show();
+}
+
+function showAlerts(alerts: Alert[]) {
+  if (alerts.length > 4) {
+    notify(`Watchlist: ${alerts.length} avisos`, `${alerts.slice(0, 4).map((a) => a.title).join('\n')}\n…`);
+  } else {
+    for (const a of alerts) notify(a.title, a.body);
+  }
+}
+
+async function runCheck(manual = false): Promise<number> {
+  const p = prefs.get();
+  const day = new Date().getDay();
+  if (!manual && (!p.notifications || (p.skipWeekends && (day === 0 || day === 6)))) return 0;
+  try {
+    const alerts = await watcher.check({ reached: p.notifyReached, near: p.notifyNear, orders: p.notifyOrders });
+    if (alerts.length) log(`${alerts.length} aviso(s): ${alerts.map((a) => a.title).join(' | ')}`);
+    showAlerts(alerts);
+    return alerts.length;
+  } catch (err) {
+    log('No se pudieron comprobar los precios', err);
+    return 0;
+  }
+}
+
+function scheduleChecks() {
+  clearInterval(checkTimer);
+  checkTimer = setInterval(() => void runCheck(), prefs.get().checkMinutes * 60_000);
+}
+
+function rebuildTrayMenu() {
+  if (!tray) return;
+  const p = prefs.get();
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: 'Abrir Watchlist', click: () => void openWindow() },
+      { label: 'Comprobar precios ahora', click: () => void runCheck(true) },
+      { type: 'separator' },
+      {
+        label: 'Notificaciones',
+        type: 'checkbox',
+        checked: p.notifications,
+        click: (item) => {
+          prefs.set({ notifications: item.checked });
+          scheduleChecks();
+        },
+      },
+      { type: 'separator' },
+      ...(pendingUpdate ? [{ label: 'Instalar la actualización y reiniciar', click: () => applyUpdate() }] : []),
+      { label: 'Salir', click: quitApp },
+    ]),
+  );
+  tray.setToolTip(pendingUpdate ? 'Watchlist · hay una actualización' : 'Watchlist · vigilando precios');
+}
+
+function createTray() {
+  const icon = nativeImage.createFromPath(ICON_PNG).resize({ width: 16, height: 16 });
+  tray = new Tray(icon);
+  tray.on('click', () => void openWindow());
+  rebuildTrayMenu();
+}
+
+/* ------------------------------------------------------------------ */
+/* Actualizaciones                                                     */
+/* ------------------------------------------------------------------ */
+
+async function checkUpdates() {
+  try {
+    const info = await checkForUpdate();
+    if (!info || pendingUpdate?.sha === info.sha) return;
+    pendingUpdate = info;
+    log(`Versión nueva disponible: ${info.sha.slice(0, 7)}`);
+    rebuildTrayMenu();
+    if (!win) {
+      // Solo en la bandeja: se actualiza y reinicia sin molestar.
+      if (relaunchThroughLauncher(true)) {
+        quitting = true;
+        await stopSession();
+        app.quit();
+      }
+      return;
+    }
+    win.webContents.send('update:available', info);
+    notify('Nueva versión de Watchlist', 'Se instalará al cerrar la ventana, o pulsa «Actualizar ahora» en la app.');
+  } catch (err) {
+    log('No se pudo comprobar si hay actualizaciones', err);
+  }
+}
+
+function applyUpdate() {
+  if (!relaunchThroughLauncher(!win)) return;
+  quitting = true;
+  if (win) win.close();
+  else void stopSession().then(() => app.quit());
+}
+
+/* ------------------------------------------------------------------ */
+/* Integración con Windows                                             */
+/* ------------------------------------------------------------------ */
+
+/** Acceso directo del menú Inicio con el AppUserModelID: Windows lo necesita para mostrar notificaciones. */
+function ensureStartMenuShortcut() {
+  if (process.platform !== 'win32' || !INSTALLED) return;
+  const lnk = path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Watchlist.lnk');
+  try {
+    shell.writeShortcutLink(lnk, fs.existsSync(lnk) ? 'replace' : 'create', {
+      target: WSCRIPT,
+      args: `"${LAUNCHER_VBS}"`,
+      cwd: ROOT,
+      icon: ICON_ICO,
+      iconIndex: 0,
+      appUserModelId: APP_ID,
+      description: 'Watchlist de acciones y ETF',
+    });
+  } catch (err) {
+    log('No se pudo actualizar el acceso directo del menú Inicio', err);
+  }
+}
+
+function applyLoginItem() {
+  if (process.platform !== 'win32' || !INSTALLED) return;
+  app.setLoginItemSettings({
+    openAtLogin: prefs.get().startWithWindows,
+    path: WSCRIPT,
+    args: [LAUNCHER_VBS, '--oculta'],
+  });
+}
+
+function registerIpc() {
+  const fromOurWindow = (e: Electron.IpcMainInvokeEvent) => Boolean(win && e.sender === win.webContents);
+  const handle = (channel: string, fn: (...args: any[]) => unknown) =>
+    ipcMain.handle(channel, (e, ...args) => {
+      if (!fromOurWindow(e)) throw new Error('No permitido');
+      return fn(...args);
+    });
+
+  handle('prefs:get', () => prefs.get());
+  handle('prefs:set', (patch: Partial<DesktopPrefs>) => {
+    const p = prefs.set(patch ?? {});
+    applyLoginItem();
+    scheduleChecks();
+    rebuildTrayMenu();
+    return p;
+  });
+  handle('notify:test', () => notify('Notificación de prueba', 'Así se verán los avisos de Watchlist.'));
+  handle('check:now', async () => ({ alerts: await runCheck(true) }));
+  handle('data:dir', () => DATA_DIR);
+  handle('update:status', () => pendingUpdate);
+  handle('update:apply', () => applyUpdate());
+}
+
+/* ------------------------------------------------------------------ */
+/* Arranque                                                            */
+/* ------------------------------------------------------------------ */
+
+// Una sola instancia: otro clic en el acceso directo abre (o trae al frente) la ventana.
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
-    if (!win) return;
-    if (win.isMinimized()) win.restore();
-    win.focus();
+  app.on('second-instance', (_e, argv) => {
+    if (!argv.includes('--oculta')) void openWindow();
   });
 
   Menu.setApplicationMenu(null);
+  // La app no se cierra al cerrar la ventana: lo decide onWindowClosed().
+  app.on('window-all-closed', () => {});
+  app.on('before-quit', () => {
+    quitting = true;
+    releaseLock?.();
+  });
 
   app
     .whenReady()
-    .then(createWindow)
+    .then(async () => {
+      prefs = new PrefsStore(app.getPath('userData'));
+      watcher = new PriceWatcher(DATA_DIR, app.getPath('userData'), log);
+      ensureStartMenuShortcut();
+      applyLoginItem();
+      registerIpc();
+      createTray();
+      scheduleChecks();
+      setTimeout(() => void runCheck(), 20_000);
+      if (updatesEnabled()) {
+        setTimeout(() => void checkUpdates(), 2 * 60_000);
+        setInterval(() => void checkUpdates(), UPDATE_EVERY_MS);
+      }
+      if (!START_HIDDEN) await openWindow();
+    })
     .catch((err: unknown) => {
       dialog.showErrorBox('No se pudo abrir Watchlist', err instanceof Error ? (err.stack ?? err.message) : String(err));
       app.quit();
     });
-
-  app.on('window-all-closed', async () => {
-    await server?.close();
-    releaseLock?.();
-    app.quit();
-  });
 }

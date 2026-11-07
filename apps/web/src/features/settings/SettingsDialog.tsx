@@ -1,13 +1,27 @@
-import { COLOR_DEFS, DEFAULT_COLORS, type Colors, type Settings, type WatchList } from '@watchlist/shared';
+import { COLOR_DEFS, DEFAULT_COLORS, DEFAULT_SETTINGS, type Colors, type Settings, type WatchList } from '@watchlist/shared';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useImportBackup, useListMutations, useUpdateSettings } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
-import { parseDecimal } from '../../lib/format.ts';
-import { applyColors } from '../../lib/theme.ts';
 import { usePrompt } from '../../components/usePrompt.tsx';
+import { desktop, type DesktopPrefs } from '../../desktop.ts';
+import { parseDecimal } from '../../lib/format.ts';
+import { applyAppearance, applyColors } from '../../lib/theme.ts';
+import { COLUMN_OPTIONS } from '../watchlist/WatchlistTable.tsx';
+
+type Section = 'general' | 'estados' | 'aspecto' | 'notificaciones' | 'listas' | 'copias';
+
+const SECTIONS: { id: Section; icon: string; label: string }[] = [
+  { id: 'general', icon: '⚙', label: 'General' },
+  { id: 'estados', icon: '◎', label: 'Estados y umbrales' },
+  { id: 'aspecto', icon: '🎨', label: 'Aspecto' },
+  { id: 'notificaciones', icon: '🔔', label: 'Notificaciones' },
+  { id: 'listas', icon: '☰', label: 'Listas' },
+  { id: 'copias', icon: '⛁', label: 'Copias de seguridad' },
+];
 
 const COLOR_GROUPS = [...new Set(COLOR_DEFS.map((c) => c.group))];
+const CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF'];
 
 interface Props {
   settings: Settings;
@@ -15,39 +29,116 @@ interface Props {
   onClose: () => void;
 }
 
+function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  return (
+    <div className="setting-row">
+      <div className="setting-row__label">
+        <strong>{label}</strong>
+        {hint && <span>{hint}</span>}
+      </div>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <label className="switch" title={label}>
+      <input type="checkbox" role="switch" aria-label={label} checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span />
+    </label>
+  );
+}
+
+function NumberInput({ value, onChange, suffix, label }: { value: string; onChange: (v: string) => void; suffix: string; label: string }) {
+  return (
+    <span className="input-suffix">
+      <input inputMode="decimal" aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} />
+      {suffix}
+    </span>
+  );
+}
+
+const str = (n: number) => String(n).replace('.', ',');
+
 export function SettingsDialog({ settings, lists, onClose }: Props) {
-  const [invest, setInvest] = useState(String(settings.defaultInvest));
-  const [near, setNear] = useState(String(settings.nearThresholdPct).replace('.', ','));
-  const [refresh, setRefresh] = useState(String(settings.refreshSeconds));
-  const [msg, setMsg] = useState<string | null>(null);
+  const [section, setSection] = useState<Section>('general');
   const update = useUpdateSettings();
   const listsM = useListMutations();
   const importM = useImportBackup();
   const fileRef = useRef<HTMLInputElement>(null);
   const [ask, promptEl] = usePrompt();
+  const [msg, setMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const health = useQuery({
     queryKey: ['health'],
     queryFn: () => fetch('/api/health').then((r) => r.json() as Promise<{ version?: string }>),
     staleTime: Infinity,
   });
 
-  // Colores: se previsualizan en vivo; si se cancela, se restauran los guardados.
+  // --- Borrador de los ajustes guardados en la base de datos (compartidos entre PCs)
+  const [invest, setInvest] = useState(str(settings.defaultInvest));
+  const [baseCurrency, setBaseCurrency] = useState(settings.baseCurrency);
+  const [refresh, setRefresh] = useState(String(settings.refreshSeconds));
+  const [near, setNear] = useState(str(settings.nearThresholdPct));
+  const [far, setFar] = useState(str(settings.farThresholdPct));
+  const [blink, setBlink] = useState(settings.blinkReached);
+  const [theme, setTheme] = useState(settings.theme);
+  const [density, setDensity] = useState(settings.density);
+  const [fontSize, setFontSize] = useState(settings.fontSize);
+  const [hidden, setHidden] = useState<string[]>(settings.hiddenColumns);
   const [colors, setColors] = useState<Colors>({ ...DEFAULT_COLORS, ...settings.colors });
-  const savedColors = useRef(settings.colors);
-  useEffect(() => applyColors(colors), [colors]);
-  useEffect(() => () => applyColors(savedColors.current), []);
-  const isDefault = COLOR_DEFS.every((c) => colors[c.key].toLowerCase() === c.default);
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    await update.mutateAsync({
+  // Vista previa en vivo del aspecto; si se cancela, se vuelve a lo guardado.
+  const saved = useRef(settings);
+  useEffect(() => applyColors(colors), [colors]);
+  useEffect(() => applyAppearance({ theme, density, fontSize }), [theme, density, fontSize]);
+  useEffect(
+    () => () => {
+      applyColors(saved.current.colors);
+      applyAppearance(saved.current);
+    },
+    [],
+  );
+
+  // --- Preferencias de este PC (solo app de escritorio)
+  const [prefs, setPrefs] = useState<DesktopPrefs | null>(null);
+  useEffect(() => {
+    void desktop?.getPrefs().then(setPrefs);
+  }, []);
+  const setPref = <K extends keyof DesktopPrefs>(k: K, v: DesktopPrefs[K]) => setPrefs((p) => (p ? { ...p, [k]: v } : p));
+
+  const save = async () => {
+    setError(null);
+    const nearN = parseDecimal(near) ?? settings.nearThresholdPct;
+    const farN = parseDecimal(far) ?? settings.farThresholdPct;
+    if (farN < nearN) {
+      setSection('estados');
+      return setError('El umbral de "lejos" tiene que ser mayor o igual que el de "cerca".');
+    }
+    const next: Partial<Settings> = {
       defaultInvest: parseDecimal(invest) ?? settings.defaultInvest,
-      nearThresholdPct: parseDecimal(near) ?? settings.nearThresholdPct,
-      refreshSeconds: Math.max(15, Math.round(parseDecimal(refresh) ?? settings.refreshSeconds)),
+      baseCurrency,
+      refreshSeconds: Math.min(3600, Math.max(15, Math.round(parseDecimal(refresh) ?? settings.refreshSeconds))),
+      nearThresholdPct: nearN,
+      farThresholdPct: farN,
+      blinkReached: blink,
+      theme,
+      density,
+      fontSize,
+      hiddenColumns: hidden,
       colors,
-    });
-    savedColors.current = colors;
-    onClose();
+    };
+    try {
+      const res = await update.mutateAsync(next);
+      saved.current = res;
+      if (desktop && prefs) {
+        await desktop.setPrefs({ ...prefs, checkMinutes: Math.min(240, Math.max(5, Math.round(prefs.checkMinutes))) });
+      }
+      onClose();
+    } catch {
+      setError('No se pudieron guardar los ajustes.');
+    }
   };
 
   const onImport = async (file: File) => {
@@ -69,45 +160,102 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
     }
   };
 
-  return (
-    <Dialog
-      title="Ajustes"
-      onClose={onClose}
-      wide
-      footer={
-        <>
-          <span className="spacer" />
-          <button type="button" className="btn" onClick={onClose}>
-            Cancelar
-          </button>
-          <button type="submit" form="settings-form" className="btn btn--primary" disabled={update.isPending}>
-            Guardar
-          </button>
-        </>
-      }
-    >
-      <form id="settings-form" className="form" onSubmit={submit}>
-        <fieldset className="form__section">
-          <legend>Cálculos</legend>
-          <div className="grid-3">
-            <div className="field">
-              <label htmlFor="s-inv">Importe por defecto ({settings.baseCurrency})</label>
-              <input id="s-inv" inputMode="decimal" value={invest} onChange={(e) => setInvest(e.target.value)} />
-            </div>
-            <div className="field">
-              <label htmlFor="s-near">Umbral "cerca" (%)</label>
-              <input id="s-near" inputMode="decimal" value={near} onChange={(e) => setNear(e.target.value)} />
-            </div>
-            <div className="field">
-              <label htmlFor="s-ref">Refresco (segundos)</label>
-              <input id="s-ref" inputMode="numeric" value={refresh} onChange={(e) => setRefresh(e.target.value)} />
-            </div>
-          </div>
-        </fieldset>
+  const nearN = parseDecimal(near) ?? 0;
+  const farN = parseDecimal(far) ?? 0;
 
-        <fieldset className="form__section">
-          <legend>Colores</legend>
-          <div className="color-groups">
+  const panels: Record<Section, ReactNode> = {
+    general: (
+      <>
+        <h3>General</h3>
+        <p className="intro">Cálculos y actualización de precios. Se guardan con tus datos y valen para todos los PCs.</p>
+        <Row label="Importe a invertir por defecto" hint="Se usa en los valores que no tienen un importe propio.">
+          <NumberInput label="Importe por defecto" value={invest} onChange={setInvest} suffix={baseCurrency} />
+        </Row>
+        <Row label="Divisa base" hint="Importes y diferencias se muestran convertidos a esta divisa.">
+          <select aria-label="Divisa base" value={baseCurrency} onChange={(e) => setBaseCurrency(e.target.value)}>
+            {CURRENCIES.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+        </Row>
+        <Row label="Actualizar cotizaciones cada" hint="Con la app abierta (mínimo 15 s).">
+          <NumberInput label="Segundos entre actualizaciones" value={refresh} onChange={setRefresh} suffix="segundos" />
+        </Row>
+      </>
+    ),
+    estados: (
+      <>
+        <h3>Estados y umbrales</h3>
+        <p className="intro">
+          Cómo se clasifica cada nivel de compra según lo que le falta caer al precio. Afecta a los colores, las tarjetas,
+          los filtros y las notificaciones.
+        </p>
+        <Row label="Cerca" hint="Le falta caer como mucho este porcentaje.">
+          <NumberInput label="Umbral cerca" value={near} onChange={setNear} suffix="%" />
+        </Row>
+        <Row label="Lejos" hint="Hasta este porcentaje; por encima es «muy lejos».">
+          <NumberInput label="Umbral lejos" value={far} onChange={setFar} suffix="%" />
+        </Row>
+        <Row label="Parpadear los valores en zona de compra" hint="Para que no se te pasen. Se desactiva si Windows tiene reducidas las animaciones.">
+          <Switch label="Parpadeo" checked={blink} onChange={setBlink} />
+        </Row>
+        <div className="threshold-preview" aria-label="Ejemplo">
+          <span className="pill pill--reached">✓ En zona</span>
+          <span className="pill pill--near">Cerca: hasta −{str(nearN)} %</span>
+          <span className="pill pill--far">Lejos: hasta −{str(farN)} %</span>
+          <span className="pill pill--veryFar">Muy lejos: más de −{str(farN)} %</span>
+        </div>
+      </>
+    ),
+    aspecto: (
+      <>
+        <h3>Aspecto</h3>
+        <p className="intro">Los cambios se ven al momento; si cancelas, se deshacen.</p>
+        <Row label="Tema">
+          <select aria-label="Tema" value={theme} onChange={(e) => setTheme(e.target.value as Settings['theme'])}>
+            <option value="system">Como Windows</option>
+            <option value="light">Claro</option>
+            <option value="dark">Oscuro</option>
+          </select>
+        </Row>
+        <Row label="Densidad de la tabla">
+          <select aria-label="Densidad" value={density} onChange={(e) => setDensity(e.target.value as Settings['density'])}>
+            <option value="compact">Compacta</option>
+            <option value="normal">Normal</option>
+            <option value="comfortable">Amplia</option>
+          </select>
+        </Row>
+        <Row label="Tamaño de letra">
+          <select aria-label="Tamaño de letra" value={fontSize} onChange={(e) => setFontSize(e.target.value as Settings['fontSize'])}>
+            <option value="small">Pequeña</option>
+            <option value="normal">Normal</option>
+            <option value="large">Grande</option>
+          </select>
+        </Row>
+        <div className="setting-row" style={{ display: 'block' }}>
+          <div className="setting-row__label">
+            <strong>Columnas visibles</strong>
+            <span>Desmarca las que no uses. «Valor» siempre se muestra.</span>
+          </div>
+          <div className="columns-grid">
+            {COLUMN_OPTIONS.map((c) => (
+              <label key={c.id}>
+                <input
+                  type="checkbox"
+                  checked={!hidden.includes(c.id)}
+                  onChange={(e) => setHidden((h) => (e.target.checked ? h.filter((x) => x !== c.id) : [...h, c.id]))}
+                />
+                {c.label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="setting-row" style={{ display: 'block' }}>
+          <div className="setting-row__label">
+            <strong>Colores</strong>
+            <span>Eliges uno por estado; la app ajusta fondos y textos para que se lean bien en claro y oscuro.</span>
+          </div>
+          <div className="color-groups" style={{ marginTop: 10 }}>
             {COLOR_GROUPS.map((group) => (
               <div key={group} className="color-group">
                 <h4>{group}</h4>
@@ -129,7 +277,8 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
           <div className="color-preview" aria-label="Vista previa">
             <span className="pill pill--reached">✓ -1,2 %</span>
             <span className="pill pill--near">-3,4 %</span>
-            <span className="pill pill--far">-18,0 %</span>
+            <span className="pill pill--far">-11,0 %</span>
+            <span className="pill pill--veryFar">-24,0 %</span>
             <span className="badge badge--order">Activa @ 64,20</span>
             <span className="badge badge--danger">Caducada</span>
             <span className="badge badge--fx">USD</span>
@@ -139,17 +288,88 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
             <button
               type="button"
               className="btn btn--small btn--ghost"
-              disabled={isDefault}
-              onClick={() => setColors(DEFAULT_COLORS)}
+              onClick={() => {
+                setColors(DEFAULT_COLORS);
+                setTheme(DEFAULT_SETTINGS.theme);
+                setDensity(DEFAULT_SETTINGS.density);
+                setFontSize(DEFAULT_SETTINGS.fontSize);
+                setHidden([]);
+              }}
             >
-              Restablecer colores
+              Restablecer aspecto
             </button>
           </div>
-        </fieldset>
-      </form>
-
-      <section className="form__section">
-        <h3 className="section-title">Listas</h3>
+        </div>
+      </>
+    ),
+    notificaciones: desktop ? (
+      prefs ? (
+        <>
+          <h3>Notificaciones</h3>
+          <p className="intro">Avisos de Windows cuando un precio llega a donde quieres. Se configuran en cada PC.</p>
+          <Row label="Activar notificaciones">
+            <Switch label="Activar notificaciones" checked={prefs.notifications} onChange={(v) => setPref('notifications', v)} />
+          </Row>
+          <Row label="En zona de compra" hint="El precio baja de alguno de tus niveles de compra.">
+            <Switch label="Avisar en zona de compra" checked={prefs.notifyReached} onChange={(v) => setPref('notifyReached', v)} />
+          </Row>
+          <Row label="Cerca de un nivel" hint="Según el umbral de «cerca» de Estados y umbrales.">
+            <Switch label="Avisar cerca" checked={prefs.notifyNear} onChange={(v) => setPref('notifyNear', v)} />
+          </Row>
+          <Row label="Órdenes" hint="El precio toca tu orden puesta o la orden está a punto de caducar.">
+            <Switch label="Avisar de órdenes" checked={prefs.notifyOrders} onChange={(v) => setPref('notifyOrders', v)} />
+          </Row>
+          <Row label="Comprobar precios cada" hint="Entre 5 y 240 minutos.">
+            <NumberInput
+              label="Minutos entre comprobaciones"
+              value={String(prefs.checkMinutes)}
+              onChange={(v) => setPref('checkMinutes', parseDecimal(v) ?? prefs.checkMinutes)}
+              suffix="minutos"
+            />
+          </Row>
+          <Row label="No comprobar en fin de semana" hint="Los mercados están cerrados.">
+            <Switch label="Saltar fin de semana" checked={prefs.skipWeekends} onChange={(v) => setPref('skipWeekends', v)} />
+          </Row>
+          <Row label="Seguir en segundo plano al cerrar" hint="La ventana se cierra pero la app queda en la bandeja del sistema (junto al reloj) vigilando precios.">
+            <Switch label="Segundo plano" checked={prefs.runInBackground} onChange={(v) => setPref('runInBackground', v)} />
+          </Row>
+          <Row label="Iniciar con Windows" hint="Arranca oculta en la bandeja al encender el PC.">
+            <Switch label="Iniciar con Windows" checked={prefs.startWithWindows} onChange={(v) => setPref('startWithWindows', v)} />
+          </Row>
+          <div className="row-actions" style={{ marginTop: 12 }}>
+            <button type="button" className="btn" onClick={() => void desktop!.testNotification()}>
+              Enviar notificación de prueba
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={async () => {
+                const r = await desktop!.checkNow();
+                setMsg(r.alerts ? `${r.alerts} aviso(s) nuevo(s).` : 'Comprobado: nada nuevo que avisar.');
+              }}
+            >
+              Comprobar ahora
+            </button>
+          </div>
+          {msg && section === 'notificaciones' && (
+            <p className="small" role="status">
+              {msg}
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="muted">Cargando…</p>
+      )
+    ) : (
+      <>
+        <h3>Notificaciones</h3>
+        <p className="intro">Las notificaciones solo funcionan en la app de escritorio (acceso directo «Watchlist»).</p>
+      </>
+    ),
+    listas: (
+      <>
+        <h3>Listas</h3>
+        <p className="intro">Para crear una lista nueva usa «+ Lista» junto a las pestañas.</p>
         <ul className="list-admin">
           {lists.map((l) => (
             <li key={l.id}>
@@ -181,11 +401,15 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
             </li>
           ))}
         </ul>
-      </section>
-
-      <section className="form__section">
-        <h3 className="section-title">Copia de seguridad</h3>
-        <p className="muted small">Todos los datos se guardan solo en este ordenador. Exporta una copia para llevarla a otro PC.</p>
+      </>
+    ),
+    copias: (
+      <>
+        <h3>Copias de seguridad</h3>
+        <p className="intro">
+          La app guarda una copia automática cada día (carpeta «copias» dentro de la de datos) y otra antes de cada
+          importación. Aquí puedes exportar tus datos a un fichero o cargar uno.
+        </p>
         <div className="row-actions">
           <a className="btn" href="/api/backup" download>
             Exportar JSON
@@ -205,13 +429,61 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
             }}
           />
         </div>
-        {msg && (
+        {msg && section === 'copias' && (
           <p className="small" role="status">
             {msg}
           </p>
         )}
-      </section>
-      <p className="muted small">Versión: {health.data?.version ?? '—'}</p>
+        <p className="muted small" style={{ marginTop: 18 }}>
+          Versión: {health.data?.version ?? '—'}
+        </p>
+      </>
+    ),
+  };
+
+  return (
+    <Dialog
+      title="Ajustes"
+      onClose={onClose}
+      className="dialog--settings"
+      footer={
+        <>
+          {error && (
+            <span className="error-text small" role="alert">
+              {error}
+            </span>
+          )}
+          <span className="spacer" />
+          <button type="button" className="btn" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="button" className="btn btn--primary" onClick={() => void save()} disabled={update.isPending}>
+            Guardar
+          </button>
+        </>
+      }
+    >
+      <div className="settings">
+        <nav className="settings__nav" aria-label="Categorías de ajustes">
+          {SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              aria-current={section === s.id ? 'page' : undefined}
+              onClick={() => {
+                setSection(s.id);
+                setMsg(null);
+              }}
+            >
+              <span className="nav-icon" aria-hidden>
+                {s.icon}
+              </span>
+              {s.label}
+            </button>
+          ))}
+        </nav>
+        <div className="settings__panel">{panels[section]}</div>
+      </div>
       {promptEl}
     </Dialog>
   );

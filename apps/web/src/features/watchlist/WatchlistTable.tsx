@@ -10,10 +10,30 @@ interface Column {
   title?: string;
   align?: 'right' | 'center';
   sort?: (r: WatchlistRow) => number | string | null;
-  cell: (r: WatchlistRow, base: string) => ReactNode;
+  cell: (r: WatchlistRow, base: string, onTag: (tag: Tag) => void) => ReactNode;
 }
 
-const STATUS_LABEL = { reached: 'En zona', near: 'Cerca', far: 'Lejos', unknown: '' } as const;
+/** Etiqueta pulsable de una fila (divisa o tipo) que activa el filtro correspondiente. */
+export type Tag = { kind: 'currency'; value: string } | { kind: 'type'; value: 'ETF' | 'EQUITY' };
+
+const STATUS_LABEL = { reached: 'En zona', near: 'Cerca', far: 'Lejos', veryFar: 'Muy lejos', unknown: '' } as const;
+
+function TagButton({ tag, className, title, onTag }: { tag: Tag; className: string; title?: string; onTag: (t: Tag) => void }) {
+  return (
+    <button
+      type="button"
+      className={`badge badge--btn ${className}`}
+      title={title ?? 'Filtrar por esta etiqueta'}
+      onClick={(e) => {
+        e.stopPropagation();
+        onTag(tag);
+      }}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      {tag.kind === 'type' ? (tag.value === 'ETF' ? 'ETF' : 'ACC') : tag.value}
+    </button>
+  );
+}
 
 function LevelCell({ level }: { level: LevelView | undefined }) {
   if (!level) return <span className="muted">—</span>;
@@ -38,7 +58,7 @@ const columns: Column[] = [
     id: 'name',
     label: 'Valor',
     sort: (r) => (r.item.name ?? r.item.symbol).toLowerCase(),
-    cell: ({ item, quote }, base) => (
+    cell: ({ item, quote }, base, onTag) => (
       <div className="stack">
         <span className="name" title={item.name ?? undefined}>
           {item.name ?? item.symbol}
@@ -47,11 +67,16 @@ const columns: Column[] = [
           <span className="ticker">{item.symbol}</span>
           {quote?.exchange && <> · {quote.exchange}</>}
           {quote?.currency && quote.currency !== base && (
-            <span className="badge badge--fx" title={MINOR_CURRENCY[quote.currency]}>
-              {quote.currency}
-            </span>
+            <TagButton
+              tag={{ kind: 'currency', value: quote.currency }}
+              className="badge--fx"
+              title={`${MINOR_CURRENCY[quote.currency] ? MINOR_CURRENCY[quote.currency] + '. ' : ''}Pulsa para ver solo ${quote.currency}`}
+              onTag={onTag}
+            />
           )}
-          {quote?.quoteType === 'ETF' && <span className="badge">ETF</span>}
+          {quote?.quoteType === 'ETF' && (
+            <TagButton tag={{ kind: 'type', value: 'ETF' }} className="" title="Pulsa para ver solo ETF" onTag={onTag} />
+          )}
         </span>
       </div>
     ),
@@ -215,10 +240,17 @@ function compare(a: number | string | null, b: number | string | null, dir: Sort
 interface Props {
   rows: WatchlistRow[];
   baseCurrency: string;
+  blink: boolean;
+  hiddenColumns: string[];
   onEdit: (row: WatchlistRow) => void;
+  onTag: (tag: Tag) => void;
 }
 
-export function WatchlistTable({ rows, baseCurrency, onEdit }: Props) {
+/** Columnas que se pueden ocultar desde Ajustes → Aspecto (todas menos "Valor"). */
+export const COLUMN_OPTIONS = columns.filter((c) => c.id !== 'name').map((c) => ({ id: c.id, label: c.label }));
+
+export function WatchlistTable({ rows, baseCurrency, blink, hiddenColumns, onEdit, onTag }: Props) {
+  const visible = useMemo(() => columns.filter((c) => !hiddenColumns.includes(c.id)), [hiddenColumns]);
   // Por defecto: lo más cercano a un nivel de compra arriba.
   const [sort, setSort] = useState<{ id: string; dir: SortDir }>({ id: 'map', dir: 'desc' });
 
@@ -233,10 +265,10 @@ export function WatchlistTable({ rows, baseCurrency, onEdit }: Props) {
 
   return (
     <div className="table-wrap">
-      <table className="wl-table">
+      <table className={`wl-table${blink ? ' wl-table--blink' : ''}`}>
         <thead>
           <tr>
-            {columns.map((c) => (
+            {visible.map((c) => (
               <th
                 key={c.id}
                 className={`${c.align ? `al-${c.align}` : ''} col-${c.id}`}
@@ -266,9 +298,9 @@ export function WatchlistTable({ rows, baseCurrency, onEdit }: Props) {
               className={`row row--${r.metrics.status}${r.item.orderActive ? ' row--order' : ''}`}
               onDoubleClick={() => onEdit(r)}
             >
-              {columns.map((c) => (
+              {visible.map((c) => (
                 <td key={c.id} className={`${c.align ? `al-${c.align}` : ''} col-${c.id}`}>
-                  {c.cell(r, baseCurrency)}
+                  {c.cell(r, baseCurrency, onTag)}
                 </td>
               ))}
               <td className="col-actions">
