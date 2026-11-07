@@ -8,16 +8,18 @@ Se abre con un acceso directo, en su propia ventana; al cerrarla se detiene todo
 
 No hace falta instalar nada antes, solo tener internet durante la instalación.
 
-1. Descomprime donde quieras el ZIP que te hayan pasado (lo genera `npm run empaquetar` e incluye la lista inicial de valores) o, si no, el de GitHub: botón verde **Code → Download ZIP**.
+1. Descarga el proyecto: en GitHub, botón verde **Code → Download ZIP** (o el ZIP que te hayan pasado, generado con `npm run empaquetar`, que además trae la lista inicial de valores). Descomprímelo.
 2. Doble clic en **`instalar.bat`** (macOS/Linux: `./instalar.sh`). Tarda menos de un minuto:
-   - Descarga su propio **Node.js portátil** (no necesita permisos de administrador ni toca el sistema).
-   - Te pide la **carpeta de datos**. Si vas a usar la app en varios PCs (p. ej. trabajo y casa), elige en todos **la misma carpeta compartida** (OneDrive, Google Drive, Dropbox…).
-   - Crea el acceso directo **Watchlist** en el escritorio y en el menú Inicio.
-3. Abre **Watchlist** desde el acceso directo.
+   - Te pregunta **dónde instalar** (por defecto `%LOCALAPPDATA%\Watchlist`). Todo queda dentro de esa carpeta: `node` (Node.js portátil, sin permisos de administrador), `app` (el programa) y `datos`.
+   - Te pide la **carpeta de datos**. Acepta la propuesta (`…\Watchlist\datos`) o, si vas a usar la app en varios PCs (trabajo y casa), elige en todos **la misma carpeta compartida** (OneDrive, Google Drive, Dropbox…).
+   - Crea el acceso directo **Watchlist** en el escritorio y en el menú Inicio y la registra en **Configuración → Aplicaciones instaladas**.
+3. Abre **Watchlist** desde el acceso directo. La carpeta descomprimida ya no hace falta.
 
-Todo se instala en `%LOCALAPPDATA%\Watchlist` (`node` y `app`), fuera de la carpeta compartida. La carpeta descomprimida ya no hace falta, salvo la de datos si la dejaste dentro.
+Si Windows avisa de que el archivo viene de internet, elige **Ejecutar de todas formas** (solo al instalar).
 
-Para desinstalar: borra el acceso directo y la carpeta `%LOCALAPPDATA%\Watchlist` (los datos están aparte, en la carpeta que elegiste).
+**Desinstalar:** Configuración → Aplicaciones instaladas → Watchlist → Desinstalar. Borra el programa y los accesos directos; los datos se conservan salvo que digas que se borren (y nunca se tocan si están en una carpeta compartida).
+
+**Reinstalar o cambiar de carpeta:** vuelve a ejecutar `instalar.bat`; propone la carpeta de la instalación actual.
 
 ## Actualizaciones
 
