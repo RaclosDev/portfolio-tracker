@@ -90,4 +90,6 @@ export interface WatchlistView {
   rows: WatchlistRow[];
   fx: Record<string, number>;
   generatedAt: string;
+  /** Si el proveedor de cotizaciones nos limita, hasta cuándo se pausan las consultas (ISO). */
+  throttledUntil?: string | null;
 }

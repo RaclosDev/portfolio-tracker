@@ -45,6 +45,13 @@ export class WatchlistService {
       };
     });
 
-    return { list, settings, rows, fx, generatedAt: new Date().toISOString() };
+    return {
+      list,
+      settings,
+      rows,
+      fx,
+      generatedAt: new Date().toISOString(),
+      throttledUntil: this.market.throttledUntilIso,
+    };
   }
 }

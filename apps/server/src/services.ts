@@ -30,8 +30,9 @@ export function createServices(
     opts.log,
   );
   const watchlist = new WatchlistService(lists, items, settings, market);
-  const backup = new BackupService(db, lists, items, settings, opts.db ? null : (opts.dataDir ?? config.dataDir));
-  return { db, lists, items, settings, market, watchlist, backup };
+  const dataDir = opts.dataDir ?? (opts.db ? null : config.dataDir);
+  const backup = new BackupService(db, lists, items, settings, dataDir);
+  return { db, dataDir, lists, items, settings, market, watchlist, backup };
 }
 
 export type Services = ReturnType<typeof createServices>;

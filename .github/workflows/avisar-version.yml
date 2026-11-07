@@ -1,17 +1,44 @@
-# Avisa al instante a las apps instaladas de que hay una versión nueva en main.
-# Publica un mensaje en el canal de ntfy.sh indicado en watchlist.update.json; las apps lo
-# escuchan y, al recibirlo, comprueban la versión en GitHub (el mensaje no instala nada por sí solo).
-name: Avisar de versión nueva
+# Verifica cada cambio y, si todo está bien en main, avisa al instante a las apps instaladas.
+#  1. verificar: tipos, tests y compilación. Si algo falla, NO se avisa, y además las apps solo
+#     instalan versiones cuyo job «verificar» haya terminado bien (lo comprueban en la API de
+#     GitHub), así que un push roto nunca llega a los PCs.
+#  2. avisar: publica un mensaje en el canal de ntfy.sh de watchlist.update.json. Las apps lo
+#     escuchan y comprueban la versión en GitHub (el mensaje no instala nada por sí solo).
+name: Verificar y avisar de versión nueva
 
 on:
   push:
     branches: [main]
+  pull_request:
 
 permissions:
   contents: read
 
 jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1' # no hace falta el binario de Electron para compilar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Tipos
+        run: npm run typecheck
+      - name: Tests
+        run: npm test
+      - name: Compilación (web y escritorio)
+        run: |
+          npm run build -w @watchlist/web
+          npm run build -w @watchlist/desktop
+
   avisar:
+    needs: verificar
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

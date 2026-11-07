@@ -14,6 +14,7 @@ import {
   latestCommit,
   log,
   mirror,
+  passedVerification,
   npmInstall,
   readJson,
   showUpdatingNotice,
@@ -39,6 +40,10 @@ async function updateIfNeeded() {
   }
   if (!latest || latest.sha === cfg.installedSha) {
     log(`Versión al día (${(cfg.installedSha ?? '').slice(0, 7)}).`);
+    return;
+  }
+  if (!(await passedVerification(cfg, latest.sha).catch(() => false))) {
+    log(`Hay una versión nueva (${latest.sha.slice(0, 7)}) pero aún no ha pasado la verificación: se espera.`);
     return;
   }
 
