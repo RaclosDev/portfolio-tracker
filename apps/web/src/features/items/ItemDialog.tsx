@@ -17,6 +17,17 @@ interface Props {
 
 const str = (v: number | null | undefined) => (v == null ? '' : String(v).replace('.', ','));
 
+/**
+ * Cuando el número escrito lleva punto o coma, muestra cómo se ha entendido ("1.234" puede
+ * ser mil doscientos o uno coma dos). Así se ve antes de guardar.
+ */
+function understood(raw: string, n: number | null) {
+  if (n == null || !/[.,]/.test(raw)) return '';
+  return `= ${n.toLocaleString('es-ES', { maximumFractionDigits: 6 })}`;
+}
+
+const joinHelp = (...parts: string[]) => parts.filter(Boolean).join(' · ') || ' ';
+
 export function ItemDialog({ listId, row, settings, fx, onClose }: Props) {
   const item = row?.item;
   const [symbol, setSymbol] = useState(item?.symbol ?? '');
@@ -182,7 +193,7 @@ export function ItemDialog({ listId, row, settings, fx, onClose }: Props) {
                     value={v}
                     onChange={(e) => setLevels((ls) => ls.map((x, j) => (j === i ? e.target.value : x)))}
                   />
-                  <span className="field__help">{n && current ? `${pct((n - current) / current)} vs actual` : ' '}</span>
+                  <span className="field__help">{joinHelp(understood(v, n), n && current ? `${pct((n - current) / current)} vs actual` : '')}</span>
                 </div>
               );
             })}
@@ -196,7 +207,7 @@ export function ItemDialog({ listId, row, settings, fx, onClose }: Props) {
               <label htmlFor="bt">Objetivo bróker</label>
               <input id="bt" inputMode="decimal" value={brokerTarget} onChange={(e) => setBrokerTarget(e.target.value)} />
               <span className="field__help">
-                {parseDecimal(brokerTarget) && current ? `${pct((parseDecimal(brokerTarget)! - current) / current)} potencial` : ' '}
+                {joinHelp(understood(brokerTarget, parseDecimal(brokerTarget)), parseDecimal(brokerTarget) && current ? `${pct((parseDecimal(brokerTarget)! - current) / current)} potencial` : '')}
               </span>
             </div>
             <div className="field">
@@ -220,6 +231,7 @@ export function ItemDialog({ listId, row, settings, fx, onClose }: Props) {
             <div className="field">
               <label htmlFor="inv">Importe a invertir ({settings.baseCurrency})</label>
               <input id="inv" inputMode="decimal" value={invest} placeholder={num(settings.defaultInvest)} onChange={(e) => setInvest(e.target.value)} />
+              <span className="field__help">{joinHelp(understood(invest, parseDecimal(invest)))}</span>
             </div>
             <div className="field">
               <label htmlFor="sh">Acciones a comprar</label>
@@ -256,6 +268,7 @@ export function ItemDialog({ listId, row, settings, fx, onClose }: Props) {
               <div className="field">
                 <label htmlFor="op">Precio límite</label>
                 <input id="op" inputMode="decimal" value={orderPrice} placeholder={levels[0]} onChange={(e) => setOrderPrice(e.target.value)} />
+                <span className="field__help">{joinHelp(understood(orderPrice, parseDecimal(orderPrice)))}</span>
               </div>
               <div className="field">
                 <label htmlFor="ou">Válida hasta</label>
