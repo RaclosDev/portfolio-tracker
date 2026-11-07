@@ -1,34 +1,24 @@
-import { useEffect, useState } from 'react';
-import { desktop, type UpdateInfo } from '../desktop.ts';
+import { useQuery } from '@tanstack/react-query';
+import { useRef } from 'react';
+import { api } from '../api/client.ts';
 
-/** Aviso de versión nueva (solo app de escritorio). Si no se pulsa, se instala al cerrar la ventana. */
+/**
+ * Aviso de versión nueva: cada vez que se publica, el servidor cambia de versión. Si esta pestaña
+ * se abrió con una anterior, se ofrece recargar (los datos están en el servidor, no se pierde nada).
+ */
 export function UpdateBanner() {
-  const [info, setInfo] = useState<UpdateInfo | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (!desktop) return;
-    void desktop.updateStatus().then((i) => i && setInfo(i));
-    return desktop.onUpdateAvailable(setInfo);
-  }, []);
-
-  if (!info) return null;
+  const health = useQuery({ queryKey: ['health'], queryFn: api.health, refetchInterval: 5 * 60_000, staleTime: 60_000 });
+  const first = useRef<string | null>(null);
+  if (health.data && first.current == null) first.current = health.data.version;
+  const changed = !!health.data && first.current != null && health.data.version !== first.current;
+  if (!changed) return null;
   return (
     <div className="update-banner" role="status">
       <span>
-        <strong>Hay una versión nueva de Watchlist.</strong> Se instalará sola al cerrar la ventana, o ahora mismo (tarda
-        unos segundos).
+        <strong>Hay una versión nueva de Watchlist.</strong> Recarga para usarla.
       </span>
-      <button
-        type="button"
-        className="btn btn--primary btn--small"
-        disabled={busy}
-        onClick={() => {
-          setBusy(true);
-          void desktop!.applyUpdate();
-        }}
-      >
-        {busy ? 'Actualizando…' : 'Actualizar ahora'}
+      <button type="button" className="btn btn--primary btn--small" onClick={() => location.reload()}>
+        Recargar
       </button>
     </div>
   );

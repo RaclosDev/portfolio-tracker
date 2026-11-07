@@ -281,15 +281,18 @@ export const TOUR_STEPS: TourStep[] = [
     ),
   },
   {
-    title: 'Notificaciones y segundo plano',
+    title: 'Avisos en el móvil y en el PC',
     body: (
       <>
         <p>
-          En la app de escritorio, al cerrar la ventana Watchlist sigue en la <strong>bandeja del sistema</strong> (junto al
-          reloj) y te avisa con una notificación cuando un valor entra en zona de compra, se pone cerca de un nivel, toca tu
-          orden o la orden va a caducar.
+          El servidor vigila los precios todo el día, aunque no tengas la web abierta, y te avisa con una notificación cuando
+          un valor entra en zona de compra, se pone cerca de un nivel, toca tu orden, la orden va a caducar o llega a tu
+          objetivo de venta.
         </p>
-        <p>Para cerrarla del todo: clic derecho en su icono de la bandeja → Salir.</p>
+        <p>
+          Actívalas en <strong>Ajustes → Notificaciones</strong> en cada dispositivo donde quieras recibirlas. En el móvil,
+          añade antes la web a la pantalla de inicio.
+        </p>
       </>
     ),
   },

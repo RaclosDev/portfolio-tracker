@@ -39,10 +39,10 @@ Problemas del Excel que la app resuelve:
 10. Copia de seguridad: exportar / importar JSON.
 
 **No funcionales**
-- Solo local: el servidor escucha en `127.0.0.1`, sin cuentas ni nube.
-- Funciona en Windows, macOS y Linux con **un único requisito: Node.js ≥ 22.13** (recomendado 24 LTS).
-- Sin compilaciones nativas (nada de Python, Visual Studio Build Tools, etc.).
-- Datos en un único fichero SQLite (`apps/server/data/watchlist.db`), fácil de copiar.
+- Web en internet (`cartera.raclos.es`), usable desde cualquier PC, móvil o tablet, protegida con contraseña.
+- Alojamiento gratuito: Render (servidor), Neon (PostgreSQL) y UptimeRobot (lo mantiene despierto).
+- Avisos de precio en el servidor, 24 h, enviados como notificaciones Web Push a los dispositivos activados.
+- Sin compilaciones nativas; en local no hace falta instalar PostgreSQL (se usa PGlite).
 - Tolerante a fallos de la fuente de datos: si Yahoo no responde se muestra la última cotización guardada marcada como antigua.
 - Arquitectura modular para añadir proveedores, cartera real, alertas, gráficos…
 
@@ -54,7 +54,9 @@ Problemas del Excel que la app resuelve:
 | Monorepo | **npm workspaces** | Viene con Node, sin herramientas extra |
 | Lenguaje | **TypeScript** | Tipos compartidos entre cliente y servidor |
 | Backend | **Fastify 5** | Rápido, validación por esquema, ecosistema de plugins |
-| Base de datos | **SQLite con `node:sqlite`** (integrado en Node) | Cero dependencias nativas → instala igual en cualquier PC |
+| Base de datos | **PostgreSQL** (Neon) con `pg`; **PGlite** en local y tests | Gratis en la nube; en local el mismo SQL sin instalar nada |
+| Notificaciones | **Web Push** (`web-push`, service worker) | Llegan al móvil y al PC sin instalar apps |
+| Alojamiento | **Render** (Node), dominio propio | Despliegue desde GitHub tras pasar los tests |
 | Validación | **Zod** (paquete `shared`) | Un único esquema valida formularios y API |
 | Datos de mercado | **yahoo-finance2** detrás de una interfaz `MarketDataProvider` | Gratis, sin API key, cubre acciones y ETF europeos/EE. UU., FX y consenso de analistas |
 | Frontend | **React 19 + Vite** | Estándar de la industria, arranque instantáneo |
@@ -68,20 +70,21 @@ Sobre el consenso: Yahoo publica el consenso de analistas (fuente LSEG/Refinitiv
 ```
 watchlist/
 ├─ packages/shared/        Tipos, esquemas Zod y cálculos puros (con tests)
-├─ apps/server/            API Fastify + SQLite + proveedores de mercado
-│  ├─ src/db/              Conexión y migraciones SQL versionadas
-│  ├─ src/modules/         lists · items · settings · market · watchlist · backup
+├─ apps/server/            API Fastify + PostgreSQL + proveedores de mercado
+│  ├─ src/db/              Conexión (Neon o PGlite) y migraciones SQL versionadas
+│  ├─ src/modules/         auth · lists · items · settings · market · watchlist · portfolio · alerts · backup
 │  ├─ seed/                Datos iniciales (importados del Excel)
-│  └─ data/                Base de datos (ignorada en git)
-├─ apps/web/               React + Vite
-│  └─ src/features/        watchlist · items · settings
+│  └─ data/                Base de datos local de desarrollo (ignorada en git)
+├─ apps/web/               React + Vite (PWA: manifest y service worker en public/)
+│  └─ src/features/        watchlist · portfolio · items · import · alerts · settings · auth
 └─ docs/
 ```
 
 Flujo: el navegador pide `GET /api/lists/:id/watchlist`; el servidor combina los valores guardados con cotizaciones (caché 60 s), consenso (caché 12 h) y tipos de cambio, aplica los cálculos de `shared` y devuelve filas listas para pintar.
 
-## 5. Siguientes pasos posibles
-- Importador directo de Excel/CSV.
-- Alertas (notificación de escritorio) al alcanzar un nivel de compra.
-- Hoja de cartera real (posiciones, P&L) reutilizando el módulo de mercado.
-- Gráfico histórico por valor con los niveles dibujados.
+## 5. Avisos
+
+El servidor ejecuta `AlertsService` cada minuto (o la frecuencia de Ajustes): calcula todas las listas y la
+cartera, compara con la memoria de avisos (`app_state`), guarda lo nuevo en `alert_history` y lo envía a cada
+suscripción de `push_subscriptions`. Respeta fines de semana, horas de silencio y el resumen diario (hora de
+España, `TZ=Europe/Madrid`). También guarda una copia diaria en `snapshots`.

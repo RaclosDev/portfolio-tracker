@@ -1,17 +1,13 @@
 /**
- * Tests de la API de punta a punta (Fastify inject) con una base de datos en memoria y un
- * proveedor de cotizaciones simulado: no dependen de internet ni de Yahoo.
+ * Tests de la API de punta a punta (Fastify inject) con un Postgres en memoria (PGlite) y un
+ * proveedor de cotizaciones simulado: no dependen de internet, de Neon ni de Yahoo.
  */
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 import type { PortfolioView, WatchlistView } from '@watchlist/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from './app.ts';
-import { migrate } from './db/database.ts';
+import { migrate, openPGlite, type Db } from './db/database.ts';
 import type { MarketDataProvider } from './modules/market/provider.ts';
-import { createServices } from './services.ts';
+import { createServicesFromDb } from './services.ts';
 
 const now = () => new Date().toISOString();
 const quote = (symbol: string, price: number, currency: string) => ({
@@ -41,33 +37,71 @@ class FakeProvider implements MarketDataProvider {
 }
 
 let provider: FakeProvider;
-let tmp: string;
+let db: Db;
 let app: Awaited<ReturnType<typeof buildApp>>;
 
-async function setup(withDataDir = false) {
-  const db = new DatabaseSync(':memory:');
-  migrate(db);
+async function setup(auth?: { password: string; secret: string; secure: boolean }) {
+  db = openPGlite();
+  await migrate(db);
   provider = new FakeProvider();
-  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'watchlist-test-'));
-  const services = createServices({ db, provider, dataDir: withDataDir ? tmp : undefined });
-  app = await buildApp(services);
+  app = await buildApp(createServicesFromDb(db, { provider }), { auth });
 }
 
-const get = (url: string) => app.inject({ method: 'GET', url, headers: { host: 'localhost:5174' } });
+let cookie = '';
+const headers = () => ({ host: 'cartera.test', ...(cookie ? { cookie } : {}) });
+const get = (url: string) => app.inject({ method: 'GET', url, headers: headers() });
 const send = (method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', url: string, payload?: unknown) =>
-  app.inject({ method, url, payload: payload as object, headers: { host: 'localhost:5174' } });
+  app.inject({ method, url, payload: payload as object, headers: headers() });
 
-beforeEach(() => setup(true));
+beforeEach(async () => {
+  cookie = '';
+  await setup();
+});
 afterEach(async () => {
   await app.close();
-  fs.rmSync(tmp, { recursive: true, force: true });
+  await db.close();
 });
 
-describe('seguridad', () => {
-  it('rechaza peticiones con un Host ajeno (DNS rebinding)', async () => {
-    const res = await app.inject({ method: 'GET', url: '/api/lists', headers: { host: 'evil.example' } });
-    expect(res.statusCode).toBe(403);
+describe('acceso', () => {
+  beforeEach(async () => {
+    await app.close();
+    await db.close();
+    await setup({ password: 'pan-con-tomate', secret: 'x'.repeat(32), secure: true });
+  });
+
+  it('sin entrar no se ven los datos; con la contraseña sí', async () => {
+    expect((await get('/api/lists')).statusCode).toBe(401);
+    expect((await get('/api/health')).statusCode).toBe(200);
+    expect((await get('/api/session')).json()).toEqual({ authRequired: true, authenticated: false });
+    expect((await send('POST', '/api/login', { password: 'otra' })).statusCode).toBe(401);
+    const ok = await send('POST', '/api/login', { password: 'pan-con-tomate' });
+    expect(ok.statusCode).toBe(200);
+    const setCookie = String(ok.headers['set-cookie']);
+    expect(setCookie).toMatch(/HttpOnly/);
+    expect(setCookie).toMatch(/Secure/);
+    cookie = setCookie.split(';')[0]!;
     expect((await get('/api/lists')).statusCode).toBe(200);
+    expect((await get('/api/session')).json()).toEqual({ authRequired: true, authenticated: true });
+  });
+
+  it('una cookie manipulada no vale', async () => {
+    cookie = `wl_sesion=${Date.now() + 1e9}.abc.firma-falsa`;
+    expect((await get('/api/lists')).statusCode).toBe(401);
+  });
+
+  it('bloquea tras 5 intentos fallidos', async () => {
+    for (let i = 0; i < 5; i++) await send('POST', '/api/login', { password: 'mal' });
+    expect((await send('POST', '/api/login', { password: 'pan-con-tomate' })).statusCode).toBe(429);
+  });
+
+  it('rechaza cambios enviados desde otra web', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/lists',
+      payload: { name: 'X' },
+      headers: { host: 'cartera.test', origin: 'https://malvada.example' },
+    });
+    expect(res.statusCode).toBe(403);
   });
 });
 
@@ -113,12 +147,22 @@ describe('ajustes', () => {
 });
 
 describe('copias', () => {
-  it('importar guarda antes una copia de lo que había', async () => {
+  it('importar guarda antes una copia de lo que había y se puede restaurar', async () => {
     await send('POST', '/api/items', { listId: 1, symbol: 'AAA.MC' });
-    const backup = (await get('/api/backup')).json();
-    const res = (await send('POST', '/api/backup', backup)).json() as { savedTo: string | null };
+    const res = (await send('POST', '/api/backup', { version: 1, lists: [{ name: 'Nueva', items: [] }] })).json() as {
+      savedTo: string | null;
+    };
     expect(res.savedTo).toBeTruthy();
-    expect(fs.existsSync(res.savedTo!)).toBe(true);
+    const snaps = (await get('/api/snapshots')).json() as { id: number; reason: string; items: number }[];
+    expect(snaps[0]).toMatchObject({ reason: 'antes de importar', items: 1 });
+    await send('POST', `/api/snapshots/${snaps[0]!.id}/restore`);
+    const lists = (await get('/api/lists')).json() as { name: string; itemCount: number }[];
+    expect(lists).toEqual([expect.objectContaining({ name: 'Vigilar nuevas', itemCount: 1 })]);
+  });
+
+  it('un nombre de lista repetido da un error claro', async () => {
+    const res = await send('POST', '/api/lists', { name: 'Vigilar nuevas' });
+    expect(res.statusCode).toBe(409);
   });
 });
 
@@ -215,5 +259,23 @@ describe('importar desde Excel/CSV', () => {
     const res = await send('POST', '/api/lists/1/import', { items: [{ symbol: 'AAA.MC' }, { symbol: 'BBB', buyPrices: [-1] }] });
     expect(res.statusCode).toBe(400);
     expect(((await get('/api/lists/1/watchlist')).json() as WatchlistView).rows).toHaveLength(0);
+  });
+});
+
+describe('avisos en el servidor', () => {
+  it('detecta la zona de compra, lo guarda en el historial y no lo repite', async () => {
+    await send('POST', '/api/items', { listId: 1, symbol: 'AAA.MC', buyPrices: [10.2] });
+    expect((await send('POST', '/api/alerts/check')).json()).toEqual({ alerts: 1 });
+    expect((await send('POST', '/api/alerts/check')).json()).toEqual({ alerts: 0 });
+    const history = (await get('/api/alerts')).json() as { kind: string; symbol: string }[];
+    expect(history).toEqual([expect.objectContaining({ kind: 'reached', symbol: 'AAA.MC' })]);
+  });
+
+  it('sin claves VAPID las notificaciones no se pueden activar', async () => {
+    expect((await get('/api/push/key')).json()).toEqual({ publicKey: null, enabled: false });
+    const res = await send('POST', '/api/push/subscribe', {
+      subscription: { endpoint: 'https://push.example/x', keys: { p256dh: 'a', auth: 'b' } },
+    });
+    expect(res.statusCode).toBe(503);
   });
 });

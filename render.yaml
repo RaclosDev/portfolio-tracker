@@ -1,0 +1,40 @@
+# Despliegue en Render (plan gratuito). Se crea con «New → Blueprint» apuntando a este repositorio.
+# No se despliega en cada push: lo hace la GitHub Action cuando los tests pasan (RENDER_DEPLOY_HOOK).
+services:
+  - type: web
+    name: cartera
+    runtime: node
+    plan: free
+    region: frankfurt # misma región que la base de datos de Neon (eu-central-1)
+    branch: main
+    autoDeployTrigger: "off"
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    domains:
+      - cartera.raclos.es
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      # Horas de silencio, resumen diario y fechas de órdenes, en hora de España.
+      - key: TZ
+        value: Europe/Madrid
+      - key: PUBLIC_URL
+        value: https://cartera.raclos.es
+      # Cadena de conexión de Neon (con ?sslmode=require).
+      - key: DATABASE_URL
+        sync: false
+      # Contraseña para entrar en la web.
+      - key: APP_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      # Claves de las notificaciones: npm run claves-push
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: mailto:avisos@raclos.es

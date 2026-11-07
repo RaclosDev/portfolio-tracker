@@ -19,9 +19,9 @@ import { Tour } from './features/tour/Tour.tsx';
 import { num, timeAgo } from './lib/format.ts';
 import { applyAppearance, applyColors } from './lib/theme.ts';
 import { usePrompt } from './components/usePrompt.tsx';
+import { PushBanner } from './components/PushBanner.tsx';
 import { UpdateBanner } from './components/UpdateBanner.tsx';
 import { AlertsDialog } from './features/alerts/AlertsDialog.tsx';
-import { WhatsNewDialog } from './components/WhatsNewDialog.tsx';
 
 const LS_LIST = 'watchlist.listId';
 const LS_TOUR = 'watchlist.tourSeen';
@@ -272,6 +272,7 @@ export function App() {
 
       <main className="content">
         <UpdateBanner />
+        <PushBanner />
         {throttledUntil && (
           <p className="notice" role="status">
             Yahoo está limitando las consultas. Se muestran los últimos precios guardados y se vuelve a intentar a las{' '}
@@ -409,7 +410,6 @@ export function App() {
       )}
       {trading && <TradeDialog row={trading.row} type={trading.type} base={base} onClose={() => setTrading(null)} />}
       {promptEl}
-      <WhatsNewDialog />
       {tourOpen && <Tour steps={TOUR_STEPS} onClose={closeTour} />}
       {showSettings && <SettingsDialog settings={settings} lists={lists} onClose={() => setShowSettings(false)} />}
       {showAlerts && (

@@ -9,7 +9,7 @@ interface Request {
 }
 
 /**
- * Sustituto de window.prompt() (no existe en la app de escritorio).
+ * Sustituto de window.prompt() con el estilo de la app.
  * Uso: const [ask, promptEl] = usePrompt(); … const name = await ask('Título', 'Etiqueta');
  * y renderizar {promptEl}.
  */
