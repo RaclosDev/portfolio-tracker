@@ -40,6 +40,11 @@ jobs:
         env:
           HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
         run: |
+          HOOK="$(echo "$HOOK" | tr -d '[:space:]')"
           if [ -z "$HOOK" ]; then echo "Sin RENDER_DEPLOY_HOOK: no se despliega."; exit 0; fi
+          case "$HOOK" in
+            https://api.render.com/deploy/*) ;;
+            *) echo "::error::RENDER_DEPLOY_HOOK no es una URL de Render válida (debe empezar por https://api.render.com/deploy/)."; exit 1 ;;
+          esac
           curl -fsS --retry 3 -X POST "$HOOK" > /dev/null
           echo "Despliegue solicitado."
