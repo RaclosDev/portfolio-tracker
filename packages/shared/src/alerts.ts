@@ -25,7 +25,7 @@ export function isMuted(mutedUntil: string | null | undefined, today: string): b
 }
 
 /** Texto del resumen diario (una sola notificación con lo importante). */
-export function buildDailySummary(rows: WatchlistRow[]): { title: string; body: string } | null {
+export function buildDailySummary(rows: WatchlistRow[], today = new Date()): { title: string; body: string } | null {
   if (!rows.length) return null;
   const name = (r: WatchlistRow) => r.item.name ?? r.quote?.name ?? r.item.symbol;
   const reached = rows.filter((r) => r.metrics.status === 'reached');
@@ -38,6 +38,11 @@ export function buildDailySummary(rows: WatchlistRow[]): { title: string; body: 
     parts.push(
       `Órdenes por caducar: ${expiring.map((r) => `${name(r)} (${r.metrics.orderDaysLeft! < 0 ? 'caducada' : `${r.metrics.orderDaysLeft} d`})`).join(', ')}.`,
     );
+  // Resultados hoy o mañana: suele haber movimientos fuertes de precio.
+  const t0 = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  const earnings = rows
+    .map((r) => ({ r, days: r.targets?.nextEarnings ? Math.round((Date.parse(r.targets.nextEarnings) - t0) / 86_400_000) : null }))
+    .filter((x) => x.days === 0 || x.days === 1);
   if (!parts.length) {
     const nearest = rows
       .filter((r) => r.metrics.nearestDistancePct != null)
@@ -48,6 +53,8 @@ export function buildDailySummary(rows: WatchlistRow[]): { title: string; body: 
         : 'Nada en zona ni cerca.',
     );
   }
+  if (earnings.length)
+    parts.push(`Resultados: ${earnings.map((x) => `${name(x.r)} (${x.days === 0 ? 'hoy' : 'mañana'})`).join(', ')}.`);
   return { title: 'Watchlist: resumen de hoy', body: parts.join(' ') };
 }
 

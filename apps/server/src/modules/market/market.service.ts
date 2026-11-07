@@ -1,9 +1,12 @@
-import type { AnalystTargets, Quote, SymbolSearchResult } from '@watchlist/shared';
+import type { AnalystTargets, HistoryRange, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
 import type { Db } from '../../db/database.ts';
 import { isinCandidates, isIsin } from './isin.ts';
 import type { MarketDataProvider } from './provider.ts';
 
-type Kind = 'quote' | 'targets';
+type Kind = string; // 'quote' | TARGETS_KIND | 'history-<periodo>'
+/** Sube la versión cuando AnalystTargets gane campos: así no se sirve la caché antigua sin ellos. */
+const TARGETS_KIND = 'targets-v2';
+const HISTORY_TTL_MS = 60 * 60_000;
 interface Entry<T> {
   value: T;
   fetchedAt: number;
@@ -119,9 +122,9 @@ export class MarketService {
   async getTargets(symbols: string[], { force = false } = {}): Promise<Map<string, AnalystTargets | null>> {
     const out = new Map<string, AnalystTargets | null>();
     await mapLimit([...new Set(symbols)], 4, async (sym) => {
-      const key = `targets:${sym}`;
+      const key = `${TARGETS_KIND}:${sym}`;
       const cached =
-        (this.mem.get(key) as Entry<AnalystTargets | null> | undefined) ?? this.load<AnalystTargets | null>('targets', sym);
+        (this.mem.get(key) as Entry<AnalystTargets | null> | undefined) ?? this.load<AnalystTargets | null>(TARGETS_KIND, sym);
       if ((!force && cached && Date.now() - cached.fetchedAt < this.opts.targetsTtlMs) || this.throttled) {
         if (cached) this.mem.set(key, cached);
         out.set(sym, cached?.value ?? null);
@@ -132,7 +135,7 @@ export class MarketService {
         const value = t ? { ...t, fetchedAt: new Date().toISOString() } : null;
         const entry = { value, fetchedAt: Date.now() };
         this.mem.set(key, entry);
-        this.persist('targets', sym, value);
+        this.persist(TARGETS_KIND, sym, value);
         out.set(sym, value);
       } catch (err) {
         this.onProviderError(err, `Sin consenso para ${sym}`);
@@ -179,6 +182,35 @@ export class MarketService {
       .map((s) => quotes.get(s))
       .filter((q): q is Quote => !!q && !q.stale)
       .map((q) => ({ symbol: q.symbol, name: q.name ?? q.symbol, exchange: q.exchange, type: q.quoteType }));
+  }
+
+  /** Histórico de cierres (caché 1 h; sin conexión, el último guardado). */
+  async getHistory(symbol: string, range: HistoryRange): Promise<{ points: PricePoint[]; stale: boolean }> {
+    const kind = `history-${range}`;
+    const key = `${kind}:${symbol}`;
+    const hit = this.mem.get(key) as Entry<PricePoint[]> | undefined;
+    if (hit && Date.now() - hit.fetchedAt < HISTORY_TTL_MS) return { points: hit.value, stale: false };
+    if (!this.throttled) {
+      try {
+        const points = await this.provider.getHistory(symbol, range);
+        this.mem.set(key, { value: points, fetchedAt: Date.now() });
+        this.persist(kind, symbol, points);
+        return { points, stale: false };
+      } catch (err) {
+        this.onProviderError(err, `Sin histórico de ${symbol}`);
+      }
+    }
+    const stored = this.load<PricePoint[]>(kind, symbol);
+    return { points: stored?.value ?? [], stale: true };
+  }
+
+  /** Cierres de los últimos 3 meses de varios valores, para los minigráficos de la tabla. */
+  async getSparklines(symbols: string[]): Promise<Record<string, number[]>> {
+    const out: Record<string, number[]> = {};
+    await mapLimit([...new Set(symbols)], 4, async (sym) => {
+      out[sym] = (await this.getHistory(sym, '3m')).points.map((p) => p.c);
+    });
+    return out;
   }
 
   private persist(kind: Kind, symbol: string, value: unknown) {

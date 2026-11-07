@@ -100,6 +100,17 @@ describe('silenciar y resumen diario', () => {
     expect(s.body).toContain('Cerca: Viscofan');
   });
 
+  it('el resumen diario menciona los resultados de hoy o mañana', async () => {
+    const { buildDailySummary } = await import('./alerts.ts');
+    const r = row(16);
+    const targets = {
+      mean: null, median: null, high: null, low: null, analysts: null, recommendation: null, recommendationMean: null,
+      nextEarnings: '2026-11-08', fetchedAt: '',
+    };
+    const s = buildDailySummary([{ ...r, targets }], new Date(2026, 10, 7, 9))!;
+    expect(s.body).toContain('Resultados: Fluidra (mañana)');
+  });
+
   it('los avisos llevan el ticker del valor', () => {
     const { alerts } = evaluateAlerts([row(16)], emptyMemory(), DEFAULT_ALERT_PREFS, t0);
     expect(alerts[0]!.symbol).toBe('FDR.MC');

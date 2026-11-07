@@ -99,6 +99,17 @@ export async function registerRoutes(app: FastifyInstance, s: Services) {
     return s.market.getFxRates(s.settings.get().baseCurrency, currencies.split(','));
   });
 
+  // Históricos para la ficha de detalle y minigráficos de la tabla
+  app.get('/api/market/history/:symbol', async (req) => {
+    const { symbol } = z.object({ symbol: z.string().min(1).max(32) }).parse(req.params);
+    const { range } = z.object({ range: z.enum(['1m', '3m', '6m', '1y', '5y']).default('1y') }).parse(req.query);
+    return s.market.getHistory(symbol.toUpperCase(), range);
+  });
+  app.get('/api/market/sparklines', async (req) => {
+    const { symbols } = z.object({ symbols: z.string().min(1).max(2000) }).parse(req.query);
+    return s.market.getSparklines(symbols.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean).slice(0, 100));
+  });
+
   // Historial de avisos (lo escribe la app de escritorio en la carpeta de datos)
   app.get('/api/alerts', async () => {
     if (!s.dataDir) return [];

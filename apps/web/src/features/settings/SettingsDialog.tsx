@@ -87,6 +87,7 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
   const [density, setDensity] = useState(settings.density);
   const [fontSize, setFontSize] = useState(settings.fontSize);
   const [hidden, setHidden] = useState<string[]>(settings.hiddenColumns);
+  const [extra, setExtra] = useState<string[]>(settings.extraColumns ?? []);
   const [colors, setColors] = useState<Colors>({ ...DEFAULT_COLORS, ...settings.colors });
 
   // Vista previa en vivo del aspecto; si se cancela, se vuelve a lo guardado.
@@ -127,6 +128,7 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
       density,
       fontSize,
       hiddenColumns: hidden,
+      extraColumns: extra,
       colors,
     };
     try {
@@ -238,12 +240,30 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
             <span>Desmarca las que no uses. «Valor» siempre se muestra.</span>
           </div>
           <div className="columns-grid">
-            {COLUMN_OPTIONS.map((c) => (
+            {COLUMN_OPTIONS.filter((c) => !c.optional).map((c) => (
               <label key={c.id}>
                 <input
                   type="checkbox"
                   checked={!hidden.includes(c.id)}
                   onChange={(e) => setHidden((h) => (e.target.checked ? h.filter((x) => x !== c.id) : [...h, c.id]))}
+                />
+                {c.label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="setting-row" style={{ display: 'block' }}>
+          <div className="setting-row__label">
+            <strong>Columnas de datos</strong>
+            <span>Opcionales, vienen de Yahoo Finance y se renuevan cada 12 h. Los ETF no suelen tenerlos.</span>
+          </div>
+          <div className="columns-grid">
+            {COLUMN_OPTIONS.filter((c) => c.optional).map((c) => (
+              <label key={c.id}>
+                <input
+                  type="checkbox"
+                  checked={extra.includes(c.id)}
+                  onChange={(e) => setExtra((x) => (e.target.checked ? [...x, c.id] : x.filter((y) => y !== c.id)))}
                 />
                 {c.label}
               </label>

@@ -30,10 +30,13 @@ class FakeProvider implements MarketDataProvider {
     return all.filter((q) => symbols.includes(q.symbol));
   }
   async getTargets() {
-    return { mean: 12, median: 12, high: 14, low: 9, analysts: 5, recommendation: 'buy', recommendationMean: 2 };
+    return { mean: 12, median: 12, high: 14, low: 9, analysts: 5, recommendation: 'buy', recommendationMean: 2, trailingPE: 18.5, dividendYield: 0.031 };
   }
   async search() {
     return [];
+  }
+  async getHistory() {
+    return [10, 11, 9.5, 10.2].map((c, i) => ({ t: new Date(Date.UTC(2026, 9, i + 1)).toISOString(), c }));
   }
 }
 
@@ -78,6 +81,7 @@ describe('valores y vista', () => {
     const bbb = view.rows.find((r) => r.item.symbol === 'BBB')!;
     expect(aaa.metrics.status).toBe('reached'); // 10 ≤ 10,2
     expect(aaa.targets?.mean).toBe(12);
+    expect(aaa.targets?.trailingPE).toBe(18.5);
     expect(view.fx.USD).toBe(1.1);
     expect(bbb.metrics.netBase).toBeCloseTo((10 * 40) / 1.1, 6); // importe en euros
     expect(bbb.metrics.status).toBe('veryFar'); // le falta caer un 20 %
@@ -129,5 +133,16 @@ describe('límite de Yahoo', () => {
     const calls = provider.calls;
     await get('/api/lists/1/watchlist?force=1');
     expect(provider.calls).toBe(calls); // en pausa: no se vuelve a preguntar
+  });
+});
+
+describe('históricos', () => {
+  it('devuelve el histórico de un periodo y los minigráficos', async () => {
+    const h = (await get('/api/market/history/aaa.mc?range=6m')).json() as { points: { c: number }[]; stale: boolean };
+    expect(h.points.map((p) => p.c)).toEqual([10, 11, 9.5, 10.2]);
+    expect(h.stale).toBe(false);
+    expect((await get('/api/market/history/AAA.MC?range=10y')).statusCode).toBe(400);
+    const s = (await get('/api/market/sparklines?symbols=AAA.MC,BBB')).json() as Record<string, number[]>;
+    expect(Object.keys(s).sort()).toEqual(['AAA.MC', 'BBB']);
   });
 });
