@@ -127,7 +127,8 @@ try {
   step(5, 'Creando el acceso directo');
   createShortcut();
 
-  console.log('\n  Listo. Abre "Watchlist" desde el escritorio o el menú Inicio.');
+  // En Windows el mensaje final lo da instalar.ps1, tras registrar la app.
+  if (process.platform !== 'win32') console.log('\n  Listo. Abre "Watchlist" desde el escritorio o el menú Inicio.');
   if (update.repo) console.log(`  La app se actualizará sola desde github.com/${update.repo} al abrirse.\n`);
 } catch (err) {
   console.error(`\n  ERROR: ${err instanceof Error ? err.message : err}\n`);
