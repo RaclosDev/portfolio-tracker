@@ -18,6 +18,7 @@ const baseItem: Item = {
   orderPrice: null,
   orderUntil: null,
   notes: null,
+  mutedUntil: null,
   createdAt: '',
   updatedAt: '',
 };
@@ -80,5 +81,27 @@ describe('evaluateAlerts', () => {
     const r = row(16);
     r.quote!.stale = true;
     expect(evaluateAlerts([r], emptyMemory(), DEFAULT_ALERT_PREFS, t0).alerts).toEqual([]);
+  });
+});
+
+describe('silenciar y resumen diario', () => {
+  it('isMuted respeta la fecha (incluida) y "siempre"', async () => {
+    const { isMuted } = await import('./alerts.ts');
+    expect(isMuted(null, '2026-11-07')).toBe(false);
+    expect(isMuted('2026-11-07', '2026-11-07')).toBe(true);
+    expect(isMuted('2026-11-06', '2026-11-07')).toBe(false);
+    expect(isMuted('always', '2026-11-07')).toBe(true);
+  });
+
+  it('el resumen lista lo que está en zona y cerca', async () => {
+    const { buildDailySummary } = await import('./alerts.ts');
+    const s = buildDailySummary([row(16), row(17.5, { id: 8, name: 'Viscofan' })])!;
+    expect(s.body).toContain('En zona: Fluidra');
+    expect(s.body).toContain('Cerca: Viscofan');
+  });
+
+  it('los avisos llevan el ticker del valor', () => {
+    const { alerts } = evaluateAlerts([row(16)], emptyMemory(), DEFAULT_ALERT_PREFS, t0);
+    expect(alerts[0]!.symbol).toBe('FDR.MC');
   });
 });

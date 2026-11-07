@@ -14,6 +14,13 @@ export interface DesktopPrefs {
   runInBackground: boolean;
   /** Arrancar con Windows (oculta en la bandeja). */
   startWithWindows: boolean;
+  /** Horas de silencio ("HH:MM"). */
+  quietHours: boolean;
+  quietFrom: string;
+  quietTo: string;
+  /** Resumen diario a una hora ("HH:MM"). */
+  dailySummary: boolean;
+  dailySummaryAt: string;
 }
 
 export interface DesktopBridge {

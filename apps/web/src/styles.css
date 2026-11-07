@@ -511,3 +511,15 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   border: 1px solid color-mix(in oklab, var(--c-near) 45%, var(--border));
   background: var(--near-bg); color: var(--text);
 }
+
+/* ---------- Historial de avisos ---------- */
+.alert-list { list-style: none; margin: 0; padding: 0; }
+.alert-list li { display: grid; grid-template-columns: 92px 1fr auto; gap: 12px; align-items: start; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.alert-list li:last-child { border-bottom: 0; }
+.alert-list .pill, .alert-list .badge { justify-self: start; }
+.alert-list__text { display: grid; gap: 2px; }
+.alert-list__when { white-space: nowrap; }
+.badge--muted { background: var(--far-bg); color: var(--far-fg); }
+.field select, select.select { height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.setting-row input[type='time'] { height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.setting-row input[type='time']:disabled { opacity: 0.5; }

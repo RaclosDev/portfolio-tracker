@@ -330,6 +330,20 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
           <Row label="No comprobar en fin de semana" hint="Los mercados están cerrados.">
             <Switch label="Saltar fin de semana" checked={prefs.skipWeekends} onChange={(v) => setPref('skipWeekends', v)} />
           </Row>
+          <Row label="Horas de silencio" hint="Sin avisos en ese tramo; lo que pase se avisa al terminar.">
+            <span className="input-suffix">
+              <Switch label="Horas de silencio" checked={prefs.quietHours} onChange={(v) => setPref('quietHours', v)} />
+              <input type="time" aria-label="Silencio desde" value={prefs.quietFrom} disabled={!prefs.quietHours} onChange={(e) => setPref('quietFrom', e.target.value)} />
+              a
+              <input type="time" aria-label="Silencio hasta" value={prefs.quietTo} disabled={!prefs.quietHours} onChange={(e) => setPref('quietTo', e.target.value)} />
+            </span>
+          </Row>
+          <Row label="Resumen diario" hint="Una notificación con lo que está en zona, cerca y las órdenes por caducar.">
+            <span className="input-suffix">
+              <Switch label="Resumen diario" checked={prefs.dailySummary} onChange={(v) => setPref('dailySummary', v)} />
+              <input type="time" aria-label="Hora del resumen" value={prefs.dailySummaryAt} disabled={!prefs.dailySummary} onChange={(e) => setPref('dailySummaryAt', e.target.value)} />
+            </span>
+          </Row>
           <Row label="Seguir en segundo plano al cerrar" hint="La ventana se cierra pero la app queda en la bandeja del sistema (junto al reloj) vigilando precios.">
             <Switch label="Segundo plano" checked={prefs.runInBackground} onChange={(v) => setPref('runInBackground', v)} />
           </Row>

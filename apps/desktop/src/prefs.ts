@@ -10,7 +10,16 @@ export interface DesktopPrefs {
   skipWeekends: boolean;
   runInBackground: boolean;
   startWithWindows: boolean;
-  /** Ya se explicó que la app sigue en la bandeja al cerrar la ventana. */
+  /** Horas de silencio: no se comprueba ni se avisa entre quietFrom y quietTo ("HH:MM"). */
+  quietHours: boolean;
+  quietFrom: string;
+  quietTo: string;
+  /** Una notificación con el resumen del día a la hora indicada ("HH:MM"). */
+  dailySummary: boolean;
+  dailySummaryAt: string;
+  /** Interno: último día en que se mandó el resumen (AAAA-MM-DD). */
+  lastSummaryDate: string;
+  /** Interno: ya se explicó que la app sigue en la bandeja al cerrar la ventana. */
   trayHintShown: boolean;
 }
 
@@ -22,8 +31,20 @@ export const DEFAULT_PREFS: DesktopPrefs = {
   skipWeekends: true,
   runInBackground: true,
   startWithWindows: false,
+  quietHours: true,
+  quietFrom: '22:00',
+  quietTo: '08:00',
+  dailySummary: true,
+  dailySummaryAt: '09:15',
+  lastSummaryDate: '',
   trayHintShown: false,
 };
+
+/** ¿Está `hhmm` dentro del tramo [from, to)? Admite tramos que cruzan la medianoche (22:00 a 08:00). */
+export function inTimeRange(hhmm: string, from: string, to: string) {
+  if (from === to) return false;
+  return from < to ? hhmm >= from && hhmm < to : hhmm >= from || hhmm < to;
+}
 
 export class PrefsStore {
   private file: string;

@@ -14,6 +14,7 @@ import { num, timeAgo } from './lib/format.ts';
 import { applyAppearance, applyColors } from './lib/theme.ts';
 import { usePrompt } from './components/usePrompt.tsx';
 import { UpdateBanner } from './components/UpdateBanner.tsx';
+import { AlertsDialog } from './features/alerts/AlertsDialog.tsx';
 
 const LS_LIST = 'watchlist.listId';
 const LS_TOUR = 'watchlist.tourSeen';
@@ -53,6 +54,7 @@ export function App() {
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<WatchlistRow | 'new' | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAlerts, setShowAlerts] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
   const [ask, promptEl] = usePrompt();
 
@@ -163,6 +165,9 @@ export function App() {
             title="Forzar actualización de cotizaciones"
           >
             Actualizar
+          </button>
+          <button type="button" className="btn btn--ghost" data-tour="alerts" onClick={() => setShowAlerts(true)}>
+            Avisos
           </button>
           <button
             type="button"
@@ -284,6 +289,12 @@ export function App() {
       {promptEl}
       {tourOpen && <Tour steps={TOUR_STEPS} onClose={closeTour} />}
       {showSettings && <SettingsDialog settings={settings} lists={lists} onClose={() => setShowSettings(false)} />}
+      {showAlerts && (
+        <AlertsDialog
+          itemIds={new Map((view?.rows ?? []).map((r) => [r.item.symbol, r.item.id]))}
+          onClose={() => setShowAlerts(false)}
+        />
+      )}
     </div>
   );
 }

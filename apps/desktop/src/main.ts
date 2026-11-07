@@ -15,10 +15,10 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, powerMonitor, shell, Tray } from 'electron';
-import { localToday, type Alert } from '@watchlist/shared';
+import { buildDailySummary, localToday, type Alert } from '@watchlist/shared';
 import { startServer, type RunningServer } from '../../server/src/server.ts';
 import { acquireLock, dailyBackup, findConflictCopies, migrateLegacyData, otherPcLock } from './data-folder.ts';
-import { PrefsStore, type DesktopPrefs } from './prefs.ts';
+import { inTimeRange, PrefsStore, type DesktopPrefs } from './prefs.ts';
 import { checkForUpdate, listenForReleases, relaunchThroughLauncher, updatesEnabled, type UpdateInfo } from './updater.ts';
 import { PriceWatcher } from './watcher.ts';
 
@@ -273,10 +273,18 @@ function showAlerts(alerts: Alert[]) {
 let refreshSeconds = 60;
 let lastCheck: Date | null = null;
 
+const hhmm = (d: Date) => d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
+
 async function runCheck(manual = false): Promise<number> {
   const p = prefs.get();
-  const day = new Date().getDay();
-  if (!manual && (!p.notifications || (p.skipWeekends && (day === 0 || day === 6)))) return 0;
+  const now = new Date();
+  const day = now.getDay();
+  const weekend = day === 0 || day === 6;
+  if (!manual) {
+    if (!p.notifications || (p.skipWeekends && weekend)) return 0;
+    // En horas de silencio no se comprueba: lo que pase se avisa al terminar el silencio.
+    if (p.quietHours && inTimeRange(hhmm(now), p.quietFrom, p.quietTo)) return 0;
+  }
   try {
     const res = await watcher.check({ reached: p.notifyReached, near: p.notifyNear, orders: p.notifyOrders });
     if (res.refreshSeconds) refreshSeconds = res.refreshSeconds;
@@ -284,6 +292,14 @@ async function runCheck(manual = false): Promise<number> {
     updateTrayTooltip();
     if (res.alerts.length) log(`${res.alerts.length} aviso(s): ${res.alerts.map((a) => a.title).join(' | ')}`);
     showAlerts(res.alerts);
+
+    // Resumen del día: una vez, a partir de la hora elegida (los días que se comprueba).
+    const today = localToday(now);
+    if (!manual && p.dailySummary && p.lastSummaryDate !== today && hhmm(now) >= p.dailySummaryAt) {
+      const summary = buildDailySummary(res.rows);
+      if (summary) notify(summary.title, summary.body);
+      prefs.set({ lastSummaryDate: today });
+    }
     return res.alerts.length;
   } catch (err) {
     log('No se pudieron comprobar los precios', err);
