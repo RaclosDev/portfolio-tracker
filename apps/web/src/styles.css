@@ -259,6 +259,8 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 }
 .badge--fx { background: var(--fx-bg); color: var(--fx-fg); }
 .badge--order { background: var(--order-badge-bg); color: var(--order-fg); }
+.event { font-size: 12.5px; white-space: nowrap; }
+.event--soon { color: var(--near-fg); font-weight: 600; }
 .badge--danger { background: var(--expired-bg); color: var(--expired-fg); }
 
 /* Mapa de precios. Se lee de izquierda (barato) a derecha (caro). La zona de compra es el único

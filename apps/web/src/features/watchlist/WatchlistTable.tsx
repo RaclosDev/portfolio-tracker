@@ -1,7 +1,18 @@
 import { isMuted, localToday, MAX_BUY_LEVELS, type LevelView, type WatchlistRow } from '@watchlist/shared';
 import { Fragment, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Icon } from '../../components/Icon.tsx';
-import { MINOR_CURRENCY, money, num, parseDecimal, pct, price, RECOMMENDATION_ES, shortDate } from '../../lib/format.ts';
+import {
+  compact,
+  MINOR_CURRENCY,
+  money,
+  num,
+  parseDecimal,
+  pct,
+  price,
+  RECOMMENDATION_ES,
+  shortDate,
+} from '../../lib/format.ts';
+import { KEY_DATE_LABEL, upcoming } from '../../lib/keyDates.ts';
 import { PriceMap } from './PriceMap.tsx';
 import { Sparkline } from './Sparkline.tsx';
 
@@ -25,7 +36,11 @@ interface Column {
   align?: 'right' | 'center';
   sort?: (r: WatchlistRow) => number | string | null;
   cell: (r: WatchlistRow, ctx: CellCtx) => ReactNode;
+  /** Oculta por defecto: se activa en Ajustes → Aspecto → Columnas. */
+  optional?: boolean;
 }
+
+const nextEvent = (r: WatchlistRow) => upcoming(r)[0];
 
 /** Etiqueta pulsable de una fila (divisa o tipo) que activa el filtro correspondiente. */
 export type Tag = { kind: 'currency'; value: string } | { kind: 'type'; value: 'ETF' | 'EQUITY' };
@@ -262,6 +277,62 @@ const columns: Column[] = [
       ),
   },
   {
+    id: 'events',
+    label: 'Fechas clave',
+    group: 'Datos',
+    optional: true,
+    title: 'Próxima presentación de resultados y próxima fecha ex-dividendo',
+    sort: (r) => nextEvent(r)?.days ?? null,
+    cell: (r) => {
+      const ev = upcoming(r);
+      if (!ev.length) return <span className="muted">–</span>;
+      return (
+        <div className="stack">
+          {ev.map((e) => (
+            <span key={e.kind} className={e.days <= 7 ? 'event event--soon' : 'event'}>
+              {KEY_DATE_LABEL[e.kind]} {shortDate(e.date)}
+              {' '}<span className="muted">· {e.days === 0 ? 'hoy' : `${e.days} d`}</span>
+            </span>
+          ))}
+        </div>
+      );
+    },
+  },
+  {
+    id: 'per',
+    label: 'PER',
+    group: 'Datos',
+    optional: true,
+    align: 'right',
+    title: 'Precio / beneficio de los últimos 12 meses',
+    sort: (r) => r.targets?.trailingPE ?? null,
+    cell: ({ targets }) => <span className="num">{num(targets?.trailingPE, 1)}</span>,
+  },
+  {
+    id: 'yield',
+    label: 'Rent. div.',
+    group: 'Datos',
+    optional: true,
+    align: 'right',
+    title: 'Rentabilidad por dividendo anual al precio actual',
+    sort: (r) => r.targets?.dividendYield ?? null,
+    cell: ({ targets }) => (
+      <span className="num">{targets?.dividendYield ? pct(targets.dividendYield).replace('+', '') : '–'}</span>
+    ),
+  },
+  {
+    id: 'mcap',
+    label: 'Capitaliz.',
+    group: 'Datos',
+    optional: true,
+    align: 'right',
+    title: 'Capitalización bursátil en la divisa del valor',
+    sort: (r) => r.targets?.marketCap ?? null,
+    cell: ({ targets, quote }) => (
+      <span className="num">{compact(targets?.marketCap, quote?.currency === 'GBp' ? 'GBP' : quote?.currency)}</span>
+    ),
+  },
+  {
     id: 'shares',
     label: 'Acciones',
     group: 'Compra prevista',
@@ -351,6 +422,7 @@ interface Props {
   baseCurrency: string;
   blink: boolean;
   hiddenColumns: string[];
+  extraColumns: string[];
   sparks: Record<string, number[]> | undefined;
   onEdit: (row: WatchlistRow) => void;
   onOpen: (row: WatchlistRow) => void;
@@ -359,13 +431,22 @@ interface Props {
 }
 
 /** Columnas que se pueden ocultar desde Ajustes → Aspecto (todas menos "Valor"). */
-export const COLUMN_OPTIONS = columns.filter((c) => c.id !== 'name').map((c) => ({ id: c.id, label: fullLabel(c) }));
+export const COLUMN_OPTIONS = columns
+  .filter((c) => c.id !== 'name')
+  .map((c) => ({ id: c.id, label: fullLabel(c), optional: !!c.optional }));
+
+/** Una columna se ve si es normal y no está oculta, o si es opcional y se ha activado. */
+export const isColumnVisible = (c: { id: string; optional?: boolean }, hidden: string[], extra: string[]) =>
+  c.optional ? extra.includes(c.id) : !hidden.includes(c.id);
 
 const DEFAULT_SORT = { id: 'map', dir: 'desc' as SortDir }; // lo más cercano a un nivel de compra, arriba
 const sortKey = (listId: number) => `watchlist.orden.${listId}`;
 
-export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumns, sparks, onEdit, onOpen, onTag, onSaveLevel }: Props) {
-  const visible = useMemo(() => columns.filter((c) => !hiddenColumns.includes(c.id)), [hiddenColumns]);
+export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumns, extraColumns, sparks, onEdit, onOpen, onTag, onSaveLevel }: Props) {
+  const visible = useMemo(
+    () => columns.filter((c) => isColumnVisible(c, hiddenColumns, extraColumns)),
+    [hiddenColumns, extraColumns],
+  );
 
   // El orden elegido se recuerda por lista.
   const [sort, setSort] = useState<{ id: string; dir: SortDir }>(DEFAULT_SORT);

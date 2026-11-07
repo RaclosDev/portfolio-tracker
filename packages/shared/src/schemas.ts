@@ -99,6 +99,8 @@ export const settingsSchema = z.object({
   fontSize: z.enum(['small', 'normal', 'large']).default('normal'),
   /** Columnas ocultas de la tabla (ids). */
   hiddenColumns: z.array(z.string().max(30)).max(30).default([]),
+  /** Columnas opcionales activadas (datos fundamentales y fechas clave). */
+  extraColumns: z.array(z.string().max(30)).max(30).default([]),
 });
 export type Settings = z.output<typeof settingsSchema>;
 export const DEFAULT_SETTINGS: Settings = settingsSchema.parse({});

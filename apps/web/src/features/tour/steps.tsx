@@ -254,7 +254,10 @@ export const TOUR_STEPS: TourStep[] = [
         <ul>
           <li><strong>General</strong>: importe por defecto, divisa base y frecuencia de actualización.</li>
           <li><strong>Estados y umbrales</strong>: qué es cerca, lejos y muy lejos, y el parpadeo.</li>
-          <li><strong>Aspecto</strong>: tema claro u oscuro, densidad, tamaño de letra, columnas y colores.</li>
+          <li>
+            <strong>Aspecto</strong>: tema claro u oscuro, densidad, tamaño de letra, colores y columnas, incluidas las
+            opcionales de PER, rentabilidad por dividendo, capitalización y fechas de resultados y dividendo.
+          </li>
           <li><strong>Notificaciones</strong>: avisos de Windows y segundo plano.</li>
           <li><strong>Listas</strong> y <strong>Copias de seguridad</strong>.</li>
         </ul>

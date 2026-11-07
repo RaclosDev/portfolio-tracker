@@ -93,3 +93,19 @@ export const RECOMMENDATION_ES: Record<string, string> = {
   sell: 'Vender',
   strong_sell: 'Venta fuerte',
 };
+
+/** Cifras grandes abreviadas: 195 mil M / 2,5 mil M / 840 M. */
+export function compact(v: number | null | undefined, currency?: string | null) {
+  if (v == null) return DASH;
+  // Escala española: millones, miles de millones y billones (10^12).
+  const [div, unit] = v >= 1e12 ? [1e12, 'B'] : v >= 1e9 ? [1e9, 'mil M'] : v >= 1e6 ? [1e6, 'M'] : [1, ''];
+  const txt = `${num(v / div, v / div < 100 ? 1 : 0)}${unit ? ` ${unit}` : ''}`;
+  return currency ? `${txt} ${currency}` : txt;
+}
+
+/** Días naturales desde hoy hasta una fecha AAAA-MM-DD (negativo si ya pasó). */
+export function daysUntil(iso: string | null | undefined, today = new Date()) {
+  if (!iso) return null;
+  const t = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.round((Date.parse(iso.slice(0, 10)) - t) / 86_400_000);
+}

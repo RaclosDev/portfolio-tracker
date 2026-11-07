@@ -54,12 +54,19 @@ export class YahooProvider implements MarketDataProvider {
   }
 
   async getTargets(symbol: string) {
-    const res = (await this.yf.quoteSummary(symbol, { modules: ['financialData'] }, LOOSE)) as {
+    const res = (await this.yf.quoteSummary(
+      symbol,
+      { modules: ['financialData', 'calendarEvents', 'summaryDetail'] },
+      LOOSE,
+    )) as {
       financialData?: Record<string, unknown>;
+      calendarEvents?: { earnings?: { earningsDate?: unknown[] }; exDividendDate?: unknown };
+      summaryDetail?: Record<string, unknown>;
     };
-    const f = res.financialData;
-    if (!f || n(f.targetMeanPrice) == null) return null;
-    return {
+    const f = res.financialData ?? {};
+    const d = res.summaryDetail ?? {};
+    const iso = (v: unknown) => (v instanceof Date || typeof v === 'string' ? new Date(v).toISOString().slice(0, 10) : null);
+    const out = {
       mean: n(f.targetMeanPrice),
       median: n(f.targetMedianPrice),
       high: n(f.targetHighPrice),
@@ -67,7 +74,13 @@ export class YahooProvider implements MarketDataProvider {
       analysts: n(f.numberOfAnalystOpinions),
       recommendation: s(f.recommendationKey),
       recommendationMean: n(f.recommendationMean),
+      nextEarnings: iso(res.calendarEvents?.earnings?.earningsDate?.[0]),
+      exDividend: iso(res.calendarEvents?.exDividendDate),
+      dividendYield: n(d.dividendYield),
+      trailingPE: n(d.trailingPE),
+      marketCap: n(d.marketCap),
     };
+    return Object.values(out).some((v) => v != null) ? out : null;
   }
 
   async search(query: string) {

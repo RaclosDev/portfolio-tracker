@@ -30,7 +30,7 @@ class FakeProvider implements MarketDataProvider {
     return all.filter((q) => symbols.includes(q.symbol));
   }
   async getTargets() {
-    return { mean: 12, median: 12, high: 14, low: 9, analysts: 5, recommendation: 'buy', recommendationMean: 2 };
+    return { mean: 12, median: 12, high: 14, low: 9, analysts: 5, recommendation: 'buy', recommendationMean: 2, trailingPE: 18.5, dividendYield: 0.031 };
   }
   async search() {
     return [];
@@ -81,6 +81,7 @@ describe('valores y vista', () => {
     const bbb = view.rows.find((r) => r.item.symbol === 'BBB')!;
     expect(aaa.metrics.status).toBe('reached'); // 10 ≤ 10,2
     expect(aaa.targets?.mean).toBe(12);
+    expect(aaa.targets?.trailingPE).toBe(18.5);
     expect(view.fx.USD).toBe(1.1);
     expect(bbb.metrics.netBase).toBeCloseTo((10 * 40) / 1.1, 6); // importe en euros
     expect(bbb.metrics.status).toBe('veryFar'); // le falta caer un 20 %

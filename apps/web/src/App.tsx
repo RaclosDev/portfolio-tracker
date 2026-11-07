@@ -289,6 +289,7 @@ export function App() {
               baseCurrency={base}
               blink={settings.blinkReached}
               hiddenColumns={settings.hiddenColumns}
+              extraColumns={settings.extraColumns ?? []}
               sparks={sparks.data}
               onEdit={setEditing}
               onOpen={(r) => setDetailId(r.item.id)}

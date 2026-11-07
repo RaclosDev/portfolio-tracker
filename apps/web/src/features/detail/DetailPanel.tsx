@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { api } from '../../api/client.ts';
 import { Dialog } from '../../components/Dialog.tsx';
-import { money, num, pct, price, RECOMMENDATION_ES, shortDate } from '../../lib/format.ts';
+import { compact, money, num, pct, price, RECOMMENDATION_ES, shortDate } from '../../lib/format.ts';
+import { KEY_DATE_LABEL, upcoming } from '../../lib/keyDates.ts';
 import { HistoryChart, type RefLine } from './HistoryChart.tsx';
 
 const RANGE_KEY = 'watchlist.ficha.periodo';
@@ -35,6 +36,7 @@ export function DetailPanel({ row, base, onEdit, onClose }: { row: WatchlistRow;
   ];
   const name = item.name ?? quote?.name ?? item.symbol;
   const cur = quote?.currency ?? base;
+  const keyDates = upcoming(row);
 
   return (
     <Dialog
@@ -125,6 +127,22 @@ export function DetailPanel({ row, base, onEdit, onClose }: { row: WatchlistRow;
             '–'
           )}
         </Fact>
+        {(keyDates.length > 0 || targets?.trailingPE != null || targets?.dividendYield || targets?.marketCap != null) && (
+          <Fact label="Datos de la empresa">
+            {[
+              targets?.trailingPE != null && `PER ${num(targets.trailingPE, 1)}`,
+              targets?.dividendYield ? `rent. dividendo ${pct(targets.dividendYield).replace('+', '')}` : null,
+              targets?.marketCap != null && `capitalización ${compact(targets.marketCap, cur === 'GBp' ? 'GBP' : cur)}`,
+            ]
+              .filter(Boolean)
+              .join(' · ') || '–'}
+            {keyDates.map((d) => (
+              <span key={d.kind} className="fact__sub">
+                {KEY_DATE_LABEL[d.kind]} el {shortDate(d.date)} ({d.days === 0 ? 'hoy' : `en ${d.days} d`})
+              </span>
+            ))}
+          </Fact>
+        )}
         <Fact label="Compra prevista">
           {metrics.shares != null ? (
             <>

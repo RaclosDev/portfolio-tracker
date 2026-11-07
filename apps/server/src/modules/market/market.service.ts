@@ -3,7 +3,9 @@ import type { Db } from '../../db/database.ts';
 import { isinCandidates, isIsin } from './isin.ts';
 import type { MarketDataProvider } from './provider.ts';
 
-type Kind = string; // 'quote' | 'targets' | 'history-<periodo>'
+type Kind = string; // 'quote' | TARGETS_KIND | 'history-<periodo>'
+/** Sube la versión cuando AnalystTargets gane campos: así no se sirve la caché antigua sin ellos. */
+const TARGETS_KIND = 'targets-v2';
 const HISTORY_TTL_MS = 60 * 60_000;
 interface Entry<T> {
   value: T;
@@ -120,9 +122,9 @@ export class MarketService {
   async getTargets(symbols: string[], { force = false } = {}): Promise<Map<string, AnalystTargets | null>> {
     const out = new Map<string, AnalystTargets | null>();
     await mapLimit([...new Set(symbols)], 4, async (sym) => {
-      const key = `targets:${sym}`;
+      const key = `${TARGETS_KIND}:${sym}`;
       const cached =
-        (this.mem.get(key) as Entry<AnalystTargets | null> | undefined) ?? this.load<AnalystTargets | null>('targets', sym);
+        (this.mem.get(key) as Entry<AnalystTargets | null> | undefined) ?? this.load<AnalystTargets | null>(TARGETS_KIND, sym);
       if ((!force && cached && Date.now() - cached.fetchedAt < this.opts.targetsTtlMs) || this.throttled) {
         if (cached) this.mem.set(key, cached);
         out.set(sym, cached?.value ?? null);
@@ -133,7 +135,7 @@ export class MarketService {
         const value = t ? { ...t, fetchedAt: new Date().toISOString() } : null;
         const entry = { value, fetchedAt: Date.now() };
         this.mem.set(key, entry);
-        this.persist('targets', sym, value);
+        this.persist(TARGETS_KIND, sym, value);
         out.set(sym, value);
       } catch (err) {
         this.onProviderError(err, `Sin consenso para ${sym}`);

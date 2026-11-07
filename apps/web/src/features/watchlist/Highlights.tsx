@@ -1,6 +1,7 @@
 import type { WatchlistRow } from '@watchlist/shared';
 import type { ReactNode } from 'react';
 import { money, pct, price } from '../../lib/format.ts';
+import { upcoming } from '../../lib/keyDates.ts';
 
 const name = (r: WatchlistRow) => r.item.name ?? r.quote?.name ?? r.item.symbol;
 
@@ -35,6 +36,11 @@ export function Highlights({ rows, base }: { rows: WatchlistRow[]; base: string 
   const orders = rows.filter((r) => r.item.orderActive);
   const expiring = orders.filter((r) => r.metrics.orderDaysLeft != null && r.metrics.orderDaysLeft <= 7);
   const committed = orders.reduce((s, r) => s + (r.metrics.netBase ?? 0), 0);
+  // Resultados en los próximos 7 días: el precio suele moverse mucho ese día.
+  const earnings = rows
+    .map((r) => ({ r, d: upcoming(r).find((k) => k.kind === 'earnings' && k.days <= 7) }))
+    .filter((x) => x.d)
+    .sort((a, b) => a.d!.days - b.d!.days);
 
   let main: ReactNode;
   if (reached.length) {
@@ -90,6 +96,19 @@ export function Highlights({ rows, base }: { rows: WatchlistRow[]; base: string 
                   : `caduca en ${r.metrics.orderDaysLeft} d`}
             </span>
           ))}
+        </p>
+      )}
+      {earnings.length > 0 && (
+        <p className="highlights__side">
+          Resultados esta semana:{' '}
+          {earnings.slice(0, 5).map(({ r, d }, i) => (
+            <span key={r.item.id}>
+              {i > 0 && ', '}
+              <RowLink row={r}>{name(r)}</RowLink>{' '}
+              <span className="muted">{d!.days === 0 ? 'hoy' : d!.days === 1 ? 'mañana' : `en ${d!.days} d`}</span>
+            </span>
+          ))}
+          {earnings.length > 5 && <span className="muted"> y {earnings.length - 5} más</span>}
         </p>
       )}
     </section>

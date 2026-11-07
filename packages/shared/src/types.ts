@@ -37,6 +37,13 @@ export interface AnalystTargets {
   analysts: number | null;
   recommendation: string | null;
   recommendationMean: number | null;
+  /** Datos fundamentales y fechas clave (se piden junto al consenso, caché de 12 h). */
+  nextEarnings?: string | null;
+  exDividend?: string | null;
+  /** Rentabilidad por dividendo (fracción: 0,028 = 2,8 %). */
+  dividendYield?: number | null;
+  trailingPE?: number | null;
+  marketCap?: number | null;
   fetchedAt: string;
 }
 
