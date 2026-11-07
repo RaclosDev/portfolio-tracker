@@ -1,5 +1,6 @@
-import type { AnalystTargets, Quote } from '@watchlist/shared';
+import type { AnalystTargets, Quote, SymbolSearchResult } from '@watchlist/shared';
 import type { Db } from '../../db/database.ts';
+import { isinCandidates, isIsin } from './isin.ts';
 import type { MarketDataProvider } from './provider.ts';
 
 type Kind = 'quote' | 'targets';
@@ -163,8 +164,21 @@ export class MarketService {
     return rates;
   }
 
-  search(query: string) {
-    return this.provider.search(query);
+  /** Búsqueda por nombre o ticker; si es un ISIN, se traduce con OpenFIGI y se comprueba en el proveedor. */
+  async search(query: string): Promise<SymbolSearchResult[]> {
+    if (!isIsin(query)) return this.provider.search(query);
+    let candidates: string[] = [];
+    try {
+      candidates = await isinCandidates(query);
+    } catch (err) {
+      this.log(`No se pudo traducir el ISIN ${query}`, err);
+    }
+    if (!candidates.length) return [];
+    const quotes = await this.getQuotes(candidates);
+    return candidates
+      .map((s) => quotes.get(s))
+      .filter((q): q is Quote => !!q && !q.stale)
+      .map((q) => ({ symbol: q.symbol, name: q.name ?? q.symbol, exchange: q.exchange, type: q.quoteType }));
   }
 
   private persist(kind: Kind, symbol: string, value: unknown) {
