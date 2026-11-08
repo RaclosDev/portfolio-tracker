@@ -131,8 +131,8 @@ export const TOUR_STEPS: TourStep[] = [
           tipo: ACC para acciones y ETF. Pulsa una etiqueta para ver solo esos valores.
         </p>
         <p>
-          <strong>Pulsa el nombre</strong> para abrir su ficha: gráfico de 1 mes a 5 años con tus niveles, la orden y los
-          objetivos dibujados, y todos sus datos.
+          <strong>Pulsa la fila</strong> para desplegar su detalle: el mapa de precios en grande o el gráfico de 1 mes a
+          5 años con tus niveles, la orden y los objetivos, y todos sus datos.
         </p>
         <p>
           La franja de color a la izquierda resume la fila: <span className="tour-key tour-key--reached">verde</span> en

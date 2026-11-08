@@ -6,7 +6,6 @@ import { keys, useForceRefresh, useListMutations, useLists, usePortfolio, useSav
 import { PortfolioPage } from './features/portfolio/PortfolioPage.tsx';
 import { PositionDialog, type PositionDraft } from './features/portfolio/PositionDialog.tsx';
 import { TradeDialog } from './features/portfolio/TradeDialog.tsx';
-import { DetailPanel } from './features/detail/DetailPanel.tsx';
 import { ItemDialog } from './features/items/ItemDialog.tsx';
 import { SettingsDialog } from './features/settings/SettingsDialog.tsx';
 import { PriceMapLegend } from './features/watchlist/PriceMap.tsx';
@@ -90,7 +89,6 @@ export function App() {
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [currencyFilter, setCurrencyFilter] = useState<string>('all');
-  const [detailId, setDetailId] = useState<number | null>(null);
 
   // Los filtros se recuerdan por lista (se restauran al volver a ella o al reabrir la app).
   const filtersKey = listId ? `watchlist.filtros.${listId}` : null;
@@ -126,7 +124,6 @@ export function App() {
     staleTime: 30 * 60_000,
     refetchInterval: 30 * 60_000,
   });
-  const detailRow = view?.rows.find((r) => r.item.id === detailId) ?? null;
   const base = view?.settings.baseCurrency ?? settings.baseCurrency;
   // Filtros por etiqueta: se aplican antes de las tarjetas, que cuentan sobre lo filtrado.
   const tagged = useMemo(
@@ -408,7 +405,6 @@ export function App() {
                   extraColumns={settings.extraColumns ?? []}
                   sparks={sparks.data}
                   onEdit={setEditing}
-                  onOpen={(r) => setDetailId(r.item.id)}
                   onTag={onTag}
                   onSaveLevel={onSaveLevel}
                 />
@@ -470,17 +466,6 @@ export function App() {
         <AlertsDialog
           itemIds={new Map((view?.rows ?? []).map((r) => [r.item.symbol, r.item.id]))}
           onClose={() => setShowAlerts(false)}
-        />
-      )}
-      {detailRow && (
-        <DetailPanel
-          row={detailRow}
-          base={base}
-          onClose={() => setDetailId(null)}
-          onEdit={() => {
-            setDetailId(null);
-            setEditing(detailRow);
-          }}
         />
       )}
     </div>
