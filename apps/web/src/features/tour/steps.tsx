@@ -136,8 +136,9 @@ export const TOUR_STEPS: TourStep[] = [
         </p>
         <p>
           La franja de color a la izquierda resume la fila: <span className="tour-key tour-key--reached">verde</span> en
-          zona de compra, <span className="tour-key tour-key--near">ámbar</span> cerca y{' '}
-          <span className="tour-key tour-key--order">amarillo</span> con orden puesta.
+          zona de compra, <span className="tour-key tour-key--veryNear">verde claro</span> muy cerca,{' '}
+          <span className="tour-key tour-key--near">amarillo</span> cerca y un fondo{' '}
+          <span className="tour-key tour-key--order">de color</span> con orden puesta.
         </p>
       </>
     ),
@@ -186,7 +187,8 @@ export const TOUR_STEPS: TourStep[] = [
       <p>
         Tu precio de entrada y cuánto tiene que caer la cotización para llegar (negativo = falta caída). Pulsa el precio
         para cambiarlo ahí mismo (Enter guarda, Esc cancela). Color:{' '}
-        <span className="pill pill--reached">✓ alcanzado</span> <span className="pill pill--near">cerca</span>{' '}
+        <span className="pill pill--reached">✓ alcanzado</span> <span className="pill pill--veryNear">muy cerca</span>{' '}
+        <span className="pill pill--near">cerca</span>{' '}
         <span className="pill pill--far">lejos</span> <span className="pill pill--veryFar">muy lejos</span>
       </p>
     ),

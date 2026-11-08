@@ -43,7 +43,8 @@ function readableOn(base: RGB, backgrounds: RGB[], text: RGB) {
 /** Estados con etiqueta (texto sobre fondo suave) y el % de color en su fondo. */
 const BADGES: { key: keyof Colors; fg: string; bg: string; bgPct: number }[] = [
   { key: 'reached', fg: '--reached-fg', bg: '--reached-bg', bgPct: 20 },
-  { key: 'near', fg: '--near-fg', bg: '--near-bg', bgPct: 20 },
+  { key: 'veryNear', fg: '--veryNear-fg', bg: '--veryNear-bg', bgPct: 20 },
+  { key: 'near', fg: '--near-fg', bg: '--near-bg', bgPct: 22 },
   { key: 'far', fg: '--far-fg', bg: '--far-bg', bgPct: 16 },
   { key: 'veryFar', fg: '--veryFar-fg', bg: '--veryFar-bg', bgPct: 14 },
   { key: 'expired', fg: '--expired-fg', bg: '--expired-bg', bgPct: 22 },

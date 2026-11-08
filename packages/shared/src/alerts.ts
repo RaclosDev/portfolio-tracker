@@ -1,5 +1,6 @@
 import { STATUS_RANK } from './calc.ts';
 import type { LevelStatus, PortfolioRow, WatchlistRow } from './types.ts';
+import { DEFAULT_STATUS_NAMES, type StatusNames } from './schemas.ts';
 
 export type AlertKind = 'reached' | 'near' | 'orderTouched' | 'orderExpiring' | 'sellReached' | 'sellNear';
 
@@ -29,15 +30,16 @@ export function buildDailySummary(
   rows: WatchlistRow[],
   today = new Date(),
   portfolio: PortfolioRow[] = [],
+  names: StatusNames = DEFAULT_STATUS_NAMES,
 ): { title: string; body: string } | null {
   if (!rows.length && !portfolio.length) return null;
   const name = (r: WatchlistRow) => r.item.name ?? r.quote?.name ?? r.item.symbol;
   const reached = rows.filter((r) => r.metrics.status === 'reached');
-  const near = rows.filter((r) => r.metrics.status === 'near');
+  const near = rows.filter((r) => r.metrics.status === 'veryNear');
   const expiring = rows.filter((r) => r.item.orderActive && r.metrics.orderDaysLeft != null && r.metrics.orderDaysLeft <= 3);
   const parts: string[] = [];
-  if (reached.length) parts.push(`En zona: ${reached.map(name).join(', ')}.`);
-  if (near.length) parts.push(`Cerca: ${near.map(name).join(', ')}.`);
+  if (reached.length) parts.push(`${names.reached}: ${reached.map(name).join(', ')}.`);
+  if (near.length) parts.push(`${names.veryNear}: ${near.map(name).join(', ')}.`);
   if (expiring.length)
     parts.push(
       `Órdenes por caducar: ${expiring.map((r) => `${name(r)} (${r.metrics.orderDaysLeft! < 0 ? 'caducada' : `${r.metrics.orderDaysLeft} d`})`).join(', ')}.`,
@@ -140,7 +142,7 @@ export function evaluateAlerts(
       next.levels[key] = level.status;
       // Primera vez que se ve este nivel (valor nuevo o nivel editado): avisa si ya está cerca o en zona.
       const worsened =
-        prev == null ? level.status === 'reached' || level.status === 'near' : STATUS_RANK[level.status] > STATUS_RANK[prev];
+        prev == null ? level.status === 'reached' || level.status === 'veryNear' : STATUS_RANK[level.status] > STATUS_RANK[prev];
       if (!worsened) return;
       const noteKey = `${key}:${level.status}`;
       if (recently(noteKey)) return;
@@ -151,11 +153,11 @@ export function evaluateAlerts(
           title: `${name}: en zona de compra`,
           body: `Cotiza a ${money(price, cur)}, por debajo de tu compra ${i + 1} (${money(level.price, cur)}).`,
         });
-      } else if (level.status === 'near' && prefs.near && level.distancePct != null) {
+      } else if (level.status === 'veryNear' && prefs.near && level.distancePct != null) {
         push(noteKey, {
           kind: 'near',
           itemId: item.id,
-          title: `${name}: cerca de tu compra ${i + 1}`,
+          title: `${name}: muy cerca de tu compra ${i + 1}`,
           body: `Cotiza a ${money(price, cur)}; le falta caer un ${pctText(level.distancePct)} hasta ${money(level.price, cur)}.`,
         });
       }

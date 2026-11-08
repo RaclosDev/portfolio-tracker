@@ -300,8 +300,8 @@ export function App() {
               {view && (
                 <StatusFilter
                   rows={tagged}
-                  nearPct={settings.nearThresholdPct}
-                  farPct={settings.farThresholdPct}
+                  bands={settings.bands}
+                  names={settings.statusNames}
                   value={filter}
                   onChange={setFilter}
                 />

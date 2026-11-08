@@ -1,4 +1,4 @@
-import { COLOR_DEFS, DEFAULT_COLORS, DEFAULT_SETTINGS, type Colors, type Settings, type WatchList } from '@watchlist/shared';
+import { COLOR_DEFS, DEFAULT_COLORS, DEFAULT_SETTINGS, DEFAULT_STATUS_NAMES, STATUS_DEFS, type Colors, type Settings, type StatusNames, type WatchList } from '@watchlist/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../api/client.ts';
@@ -8,6 +8,7 @@ import { usePrompt } from '../../components/usePrompt.tsx';
 import { exportExcel, readSpreadsheet, type ReadSheet } from '../../lib/excel.ts';
 import { parseDecimal } from '../../lib/format.ts';
 import { ImportDialog } from '../import/ImportDialog.tsx';
+import { BandsEditor } from './BandsEditor.tsx';
 import { NotificationsPanel } from './NotificationsPanel.tsx';
 import { applyAppearance, applyColors } from '../../lib/theme.ts';
 import { COLUMN_OPTIONS } from '../watchlist/WatchlistTable.tsx';
@@ -84,8 +85,8 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
   const [invest, setInvest] = useState(str(settings.defaultInvest));
   const [baseCurrency, setBaseCurrency] = useState(settings.baseCurrency);
   const [refresh, setRefresh] = useState(String(settings.refreshSeconds));
-  const [near, setNear] = useState(str(settings.nearThresholdPct));
-  const [far, setFar] = useState(str(settings.farThresholdPct));
+  const [bands, setBands] = useState(settings.bands);
+  const [names, setNames] = useState<StatusNames>(settings.statusNames);
   const [sellNear, setSellNear] = useState(str(settings.sellNearPct));
   const [blink, setBlink] = useState(settings.blinkReached);
   const [theme, setTheme] = useState(settings.theme);
@@ -115,18 +116,19 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
 
   const save = async () => {
     setError(null);
-    const nearN = parseDecimal(near) ?? settings.nearThresholdPct;
-    const farN = parseDecimal(far) ?? settings.farThresholdPct;
-    if (farN < nearN) {
+    if (!(bands.veryNear <= bands.near && bands.near <= bands.far)) {
       setSection('estados');
-      return setError('El umbral de "lejos" tiene que ser mayor o igual que el de "cerca".');
+      return setError('Los límites tienen que ir de menor a mayor: muy cerca ≤ cerca ≤ lejos.');
     }
+    const cleanNames = Object.fromEntries(
+      STATUS_DEFS.map(({ key }) => [key, names[key].trim() || DEFAULT_STATUS_NAMES[key]]),
+    ) as StatusNames;
     const next: Partial<Settings> = {
       defaultInvest: parseDecimal(invest) ?? settings.defaultInvest,
       baseCurrency,
       refreshSeconds: Math.min(3600, Math.max(15, Math.round(parseDecimal(refresh) ?? settings.refreshSeconds))),
-      nearThresholdPct: nearN,
-      farThresholdPct: farN,
+      bands,
+      statusNames: cleanNames,
       sellNearPct: Math.min(100, Math.max(0, parseDecimal(sellNear) ?? settings.sellNearPct)),
       blinkReached: blink,
       theme,
@@ -190,9 +192,6 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
     }
   };
 
-  const nearN = parseDecimal(near) ?? 0;
-  const farN = parseDecimal(far) ?? 0;
-
   const panels: Record<Section, ReactNode> = {
     general: (
       <>
@@ -229,24 +228,25 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
       <>
         <h3>Estados y umbrales</h3>
         <p className="intro">
-          Cómo se clasifica cada nivel de compra según lo que le falta caer al precio. Afecta a los colores, las tarjetas,
-          los filtros y las notificaciones.
+          Cómo se clasifica cada nivel de compra según lo que le falta caer al precio. Afecta a los colores, los filtros
+          y las notificaciones. Los nombres se pueden cambiar; los colores, en Aspecto.
         </p>
-        <Row label="Cerca" hint="Le falta caer como mucho este porcentaje.">
-          <NumberInput label="Umbral cerca" value={near} onChange={setNear} suffix="%" />
-        </Row>
-        <Row label="Lejos" hint="Hasta este porcentaje; por encima es «muy lejos».">
-          <NumberInput label="Umbral lejos" value={far} onChange={setFar} suffix="%" />
-        </Row>
+        <BandsEditor bands={bands} names={names} onBands={setBands} onNames={setNames} />
+        <div className="bands__reset">
+          <button
+            type="button"
+            className="btn btn--small btn--ghost"
+            onClick={() => {
+              setBands(DEFAULT_SETTINGS.bands);
+              setNames(DEFAULT_STATUS_NAMES);
+            }}
+          >
+            Volver a 5 · 10 · 20 % y los nombres de serie
+          </button>
+        </div>
         <Row label="Parpadear los valores en zona de compra" hint="Para que no se te pasen. Se desactiva si Windows tiene reducidas las animaciones.">
           <Switch label="Parpadeo" checked={blink} onChange={setBlink} />
         </Row>
-        <div className="threshold-preview" aria-label="Ejemplo">
-          <span className="pill pill--reached">✓ En zona</span>
-          <span className="pill pill--near">Cerca: hasta −{str(nearN)} %</span>
-          <span className="pill pill--far">Lejos: hasta −{str(farN)} %</span>
-          <span className="pill pill--veryFar">Muy lejos: más de −{str(farN)} %</span>
-        </div>
         <Row label="Cerca del objetivo de venta" hint="Cartera: te aviso cuando al precio le falte subir como mucho este porcentaje.">
           <NumberInput label="Umbral cerca de vender" value={sellNear} onChange={setSellNear} suffix="%" />
         </Row>
@@ -339,8 +339,9 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
           </div>
           <div className="color-preview" aria-label="Vista previa">
             <span className="pill pill--reached">✓ -1,2 %</span>
-            <span className="pill pill--near">-3,4 %</span>
-            <span className="pill pill--far">-11,0 %</span>
+            <span className="pill pill--veryNear">-3,4 %</span>
+            <span className="pill pill--near">-7,5 %</span>
+            <span className="pill pill--far">-14,0 %</span>
             <span className="pill pill--veryFar">-24,0 %</span>
             <span className="badge badge--order">Activa @ 64,20</span>
             <span className="badge badge--danger">Caducada</span>

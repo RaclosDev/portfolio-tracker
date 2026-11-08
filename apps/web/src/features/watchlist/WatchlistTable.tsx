@@ -1,4 +1,5 @@
-import { isMuted, localToday, MAX_BUY_LEVELS, type LevelView, type WatchlistRow } from '@watchlist/shared';
+import { DEFAULT_STATUS_NAMES, isMuted, localToday, MAX_BUY_LEVELS, type LevelView, type WatchlistRow } from '@watchlist/shared';
+import { useSettings } from '../../api/hooks.ts';
 import { Fragment, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Icon } from '../../components/Icon.tsx';
 import {
@@ -45,7 +46,7 @@ const nextEvent = (r: WatchlistRow) => upcoming(r)[0];
 /** Etiqueta pulsable de una fila (divisa o tipo) que activa el filtro correspondiente. */
 export type Tag = { kind: 'currency'; value: string } | { kind: 'type'; value: 'ETF' | 'EQUITY' };
 
-const STATUS_LABEL = { reached: 'En zona', near: 'Cerca', far: 'Lejos', veryFar: 'Muy lejos', unknown: '' } as const;
+
 
 function TagButton({ tag, className, title, onTag }: { tag: Tag; className: string; title?: string; onTag: (t: Tag) => void }) {
   return (
@@ -67,6 +68,7 @@ function TagButton({ tag, className, title, onTag }: { tag: Tag; className: stri
 /** Precio de compra editable en la propia celda: clic para cambiarlo, Enter guarda, Esc cancela. */
 function LevelCell({ row, index, onSave }: { row: WatchlistRow; index: number; onSave: CellCtx['onSaveLevel'] }) {
   const level: LevelView | undefined = row.metrics.levels[index];
+  const names = useSettings().data?.statusNames ?? DEFAULT_STATUS_NAMES;
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState('');
   // Solo se puede añadir el siguiente nivel libre (no dejar huecos: 1, 2, 3).
@@ -124,7 +126,7 @@ function LevelCell({ row, index, onSave }: { row: WatchlistRow; index: number; o
       title="Pulsa para cambiar el precio"
     >
       <span className="num">{price(level.price)}</span>
-      <span className={`pill pill--${level.status}`} title={STATUS_LABEL[level.status]}>
+      <span className={`pill pill--${level.status}`} title={level.status === 'unknown' ? undefined : names[level.status]}>
         {level.status === 'reached' ? '✓ ' : ''}
         {pct(level.distancePct)}
       </span>

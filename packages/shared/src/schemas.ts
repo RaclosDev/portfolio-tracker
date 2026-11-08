@@ -99,9 +99,10 @@ export const listInputSchema = z.object({ name: z.string().trim().min(1).max(60)
 
 /** Colores configurables de la interfaz. El orden y los grupos son los del formulario de Ajustes. */
 export const COLOR_DEFS = [
-  { key: 'reached', label: 'En zona de compra', group: 'Estados', default: '#16a34a' },
-  { key: 'near', label: 'Cerca', group: 'Estados', default: '#d97706' },
-  { key: 'far', label: 'Lejos', group: 'Estados', default: '#64748b' },
+  { key: 'reached', label: 'En zona de compra', group: 'Estados', default: '#15803d' },
+  { key: 'veryNear', label: 'Muy cerca', group: 'Estados', default: '#22c55e' },
+  { key: 'near', label: 'Cerca', group: 'Estados', default: '#eab308' },
+  { key: 'far', label: 'Lejos', group: 'Estados', default: '#f97316' },
   { key: 'veryFar', label: 'Muy lejos', group: 'Estados', default: '#a1a1aa' },
   { key: 'order', label: 'Orden activa', group: 'Estados', default: '#eab308' },
   { key: 'expired', label: 'Orden caducada', group: 'Estados', default: '#dc2626' },
@@ -143,13 +144,55 @@ export const notificationSettingsSchema = z.object({
 });
 export type NotificationSettings = z.output<typeof notificationSettingsSchema>;
 
+/**
+ * Tramos según lo que le falta caer al precio hasta un nivel de compra:
+ * en zona (ya está por debajo) · muy cerca (0–veryNear %) · cerca (–near %) · lejos (–far %) · muy lejos.
+ */
+export const STATUS_DEFS = [
+  { key: 'reached', name: 'En zona' },
+  { key: 'veryNear', name: 'Muy cerca' },
+  { key: 'near', name: 'Cerca' },
+  { key: 'far', name: 'Lejos' },
+  { key: 'veryFar', name: 'Muy lejos' },
+] as const;
+export type StatusKey = (typeof STATUS_DEFS)[number]['key'];
+
+const bandPct = z.number().min(0).max(100);
+export const bandsSchema = z.object({
+  veryNear: bandPct.default(5),
+  near: bandPct.default(10),
+  far: bandPct.default(20),
+});
+export type Bands = z.output<typeof bandsSchema>;
+export const DEFAULT_BANDS: Bands = bandsSchema.parse({});
+
+export const statusNamesSchema = z.object(
+  Object.fromEntries(STATUS_DEFS.map((s) => [s.key, z.string().trim().min(1).max(24).catch(s.name)])) as {
+    [K in StatusKey]: z.ZodCatch<z.ZodString>;
+  },
+);
+export type StatusNames = z.output<typeof statusNamesSchema>;
+export const DEFAULT_STATUS_NAMES: StatusNames = statusNamesSchema.parse({});
+
+/**
+ * Ajustes guardados antes de los cinco tramos (umbrales «cerca 5 % / lejos 15 %»):
+ * se descartan los colores de los estados antiguos para que entren los nuevos por defecto.
+ */
+export function upgradeSettings(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || 'bands' in raw || !('colors' in raw)) return raw;
+  const old = raw as Record<string, unknown>;
+  const colors = { ...(old.colors as Record<string, unknown>) };
+  for (const k of ['reached', 'near', 'far', 'veryFar']) delete colors[k];
+  return { ...old, colors };
+}
+
 export const settingsSchema = z.object({
   baseCurrency: z.string().length(3).default('EUR'),
   defaultInvest: price.default(2500),
-  /** Hasta este % por encima del nivel de compra: "cerca". */
-  nearThresholdPct: z.number().min(0).max(100).default(5),
-  /** Hasta este % : "lejos"; más allá: "muy lejos". */
-  farThresholdPct: z.number().min(0).max(100).default(15),
+  /** Límites (% que le falta caer) de cada tramo; por encima de `far`, "muy lejos". */
+  bands: bandsSchema.default(DEFAULT_BANDS),
+  /** Nombre que se muestra para cada estado. */
+  statusNames: statusNamesSchema.default(DEFAULT_STATUS_NAMES),
   /** Hacer parpadear los valores en zona de compra. */
   blinkReached: z.boolean().default(true),
   refreshSeconds: z.number().int().min(15).max(3600).default(60),
@@ -172,7 +215,7 @@ export const DEFAULT_SETTINGS: Settings = settingsSchema.parse({});
 export const backupSchema = z.object({
   version: z.literal(1),
   exportedAt: z.string().optional(),
-  settings: settingsSchema.partial().optional(),
+  settings: z.preprocess(upgradeSettings, settingsSchema.partial()).optional(),
   lists: z.array(
     z.object({
       name: z.string().min(1),

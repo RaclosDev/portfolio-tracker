@@ -1,4 +1,4 @@
-import { settingsSchema, type Settings } from '@watchlist/shared';
+import { settingsSchema, upgradeSettings, type Settings } from '@watchlist/shared';
 import type { Db } from '../../db/database.ts';
 
 export class SettingsRepository {
@@ -6,13 +6,15 @@ export class SettingsRepository {
 
   async get(): Promise<Settings> {
     const rows = await this.db.query<{ key: string; value: unknown }>('SELECT key, value FROM settings');
-    const parsed = settingsSchema.safeParse(Object.fromEntries(rows.map((r) => [r.key, r.value])));
+    const parsed = settingsSchema.safeParse(upgradeSettings(Object.fromEntries(rows.map((r) => [r.key, r.value]))));
     return parsed.success ? parsed.data : settingsSchema.parse({});
   }
 
   async update(patch: Partial<Settings>): Promise<Settings> {
     const next = settingsSchema.parse({ ...(await this.get()), ...patch });
     await this.db.tx(async (t) => {
+      // Claves de versiones anteriores que ya no existen (p. ej. los umbrales de antes de los cinco tramos).
+      await t.query('DELETE FROM settings WHERE NOT (key = ANY($1::text[]))', [Object.keys(next)]);
       for (const [k, v] of Object.entries(next)) {
         await t.query(
           'INSERT INTO settings (key, value) VALUES ($1, $2::jsonb) ON CONFLICT (key) DO UPDATE SET value = excluded.value',

@@ -52,6 +52,11 @@ describe('evaluateAlerts', () => {
     expect(run([20, 17.5, 17.4, 16.9, 16.8])).toEqual([[], ['near'], [], ['reached'], []]);
   });
 
+  it('el tramo «cerca» (5–10 %) no avisa; solo «muy cerca» y «en zona»', () => {
+    // 20 € (lejos) → 18,5 € (cerca, 8 %) → 17,5 € (muy cerca, 3 %)
+    expect(run([20, 18.5, 17.5])).toEqual([[], [], ['near']]);
+  });
+
   it('la primera vez avisa si ya está cerca o en zona, no si está lejos', () => {
     expect(run([20])).toEqual([[]]);
     expect(run([17.5])).toEqual([['near']]);
@@ -97,7 +102,7 @@ describe('silenciar y resumen diario', () => {
     const { buildDailySummary } = await import('./alerts.ts');
     const s = buildDailySummary([row(16), row(17.5, { id: 8, name: 'Viscofan' })])!;
     expect(s.body).toContain('En zona: Fluidra');
-    expect(s.body).toContain('Cerca: Viscofan');
+    expect(s.body).toContain('Muy cerca: Viscofan');
   });
 
   it('el resumen diario menciona los resultados de hoy o mañana', async () => {

@@ -20,7 +20,7 @@ const str = (v: string | null | undefined, style: object = {}): Cell => ({ value
 const date = (iso: string | null | undefined, style: object = {}): Cell =>
   iso ? { value: new Date(`${iso.slice(0, 10)}T00:00:00Z`), type: Date, format: 'dd/mm/yyyy', ...style } : { value: undefined, ...style };
 
-const STATUS = { reached: 'En zona', near: 'Cerca', far: 'Lejos', veryFar: 'Muy lejos', unknown: '' } as const;
+
 
 /** Nombre de hoja válido para Excel y sin repetir. */
 function sheetName(name: string, used: Set<string>) {
@@ -60,7 +60,7 @@ function watchlistSheet(v: WatchlistView, name: string): Sheet<never> {
       num(lvl(1)?.distancePct, PCT, style),
       num(lvl(2)?.price, PRICE, style),
       num(lvl(2)?.distancePct, PCT, style),
-      str(STATUS[metrics.status], style),
+      str(metrics.status === 'unknown' ? null : v.settings.statusNames[metrics.status], style),
       num(item.brokerTarget, PRICE, style),
       str(item.brokerTarget ? item.brokerName : null, style),
       num(metrics.upsideBrokerPct, PCT, style),

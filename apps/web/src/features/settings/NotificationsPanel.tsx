@@ -131,8 +131,8 @@ export function NotificationsPanel({ value: n, onChange, refreshSeconds, onGoGen
       <Row label="En zona de compra" hint="El precio baja de alguno de tus niveles de compra.">
         <Switch label="Avisar en zona de compra" checked={n.reached} onChange={(v) => set('reached', v)} />
       </Row>
-      <Row label="Cerca de un nivel" hint="Según el umbral de «cerca» de Estados y umbrales.">
-        <Switch label="Avisar cerca" checked={n.near} onChange={(v) => set('near', v)} />
+      <Row label="Muy cerca de un nivel" hint="Cuando entra en el primer tramo de Estados y umbrales (por defecto, a menos de un 5 %).">
+        <Switch label="Avisar muy cerca" checked={n.near} onChange={(v) => set('near', v)} />
       </Row>
       <Row label="Órdenes" hint="El precio toca tu orden puesta o la orden está a punto de caducar.">
         <Switch label="Avisar de órdenes" checked={n.orders} onChange={(v) => set('orders', v)} />
