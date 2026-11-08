@@ -1,4 +1,4 @@
-import type { WatchlistRow } from '@watchlist/shared';
+import type { TagNames, WatchlistRow } from '@watchlist/shared';
 
 export type TypeFilter = 'all' | 'EQUITY' | 'ETF';
 
@@ -12,16 +12,16 @@ interface Props {
   currency: string;
   currencies: string[];
   onCurrency: (c: string) => void;
+  names: TagNames;
 }
 
-const TYPES: { id: TypeFilter; label: string }[] = [
-  { id: 'all', label: 'Todos' },
-  { id: 'EQUITY', label: 'Acciones' },
-  { id: 'ETF', label: 'ETF' },
-];
-
 /** Filtros por etiqueta: tipo de valor y divisa. */
-export function TagFilters({ type, onType, currency, currencies, onCurrency }: Props) {
+export function TagFilters({ type, onType, currency, currencies, onCurrency, names }: Props) {
+  const TYPES: { id: TypeFilter; label: string; title?: string }[] = [
+    { id: 'all', label: 'Todos' },
+    { id: 'EQUITY', label: names.equity, title: 'Solo acciones' },
+    { id: 'ETF', label: names.etf, title: 'Solo ETF' },
+  ];
   return (
     <div className="tag-filters">
       <div className="segmented" role="group" aria-label="Filtrar por tipo">
@@ -31,6 +31,7 @@ export function TagFilters({ type, onType, currency, currencies, onCurrency }: P
             type="button"
             className={type === t.id ? 'on' : ''}
             aria-pressed={type === t.id}
+            title={t.title}
             onClick={() => onType(t.id)}
           >
             {t.label}

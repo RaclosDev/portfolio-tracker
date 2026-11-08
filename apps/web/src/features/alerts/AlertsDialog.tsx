@@ -5,7 +5,7 @@ import { goToRow } from '../watchlist/Highlights.tsx';
 
 const KIND_LABEL = {
   reached: 'En zona',
-  near: 'Cerca',
+  near: 'Muy cerca',
   orderTouched: 'Orden',
   orderExpiring: 'Caducidad',
   sellReached: 'Venta',
@@ -14,7 +14,7 @@ const KIND_LABEL = {
 
 const PILL = {
   reached: 'pill--reached',
-  near: 'pill--near',
+  near: 'pill--veryNear',
   orderTouched: 'badge--order',
   orderExpiring: 'badge--danger',
   sellReached: 'pill--reached',

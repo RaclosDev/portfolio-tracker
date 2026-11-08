@@ -1,4 +1,5 @@
 import { isMuted, localToday, type PortfolioRow, type PortfolioView } from '@watchlist/shared';
+import { TagName } from '../../components/TagName.tsx';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Icon } from '../../components/Icon.tsx';
 import { MINOR_CURRENCY, money, num, pct, price, shortDate } from '../../lib/format.ts';
@@ -36,7 +37,7 @@ const columns: Col[] = [
               {r.quote.currency}
             </span>
           )}
-          {isMuted(r.position.mutedUntil, localToday()) && <span className="badge badge--muted">Sin avisos</span>}
+          {isMuted(r.position.mutedUntil, localToday()) && <span className="badge badge--muted"><TagName k="muted" /></span>}
         </span>
       </div>
     ),

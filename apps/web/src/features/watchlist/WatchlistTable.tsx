@@ -1,6 +1,8 @@
-import { isMuted, localToday, MAX_BUY_LEVELS, type LevelView, type WatchlistRow } from '@watchlist/shared';
+import { DEFAULT_STATUS_NAMES, DEFAULT_TAG_NAMES, isMuted, localToday, MAX_BUY_LEVELS, type LevelView, type WatchlistRow } from '@watchlist/shared';
+import { useSettings } from '../../api/hooks.ts';
 import { Fragment, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Icon } from '../../components/Icon.tsx';
+import { TagName } from '../../components/TagName.tsx';
 import {
   compact,
   MINOR_CURRENCY,
@@ -45,9 +47,10 @@ const nextEvent = (r: WatchlistRow) => upcoming(r)[0];
 /** Etiqueta pulsable de una fila (divisa o tipo) que activa el filtro correspondiente. */
 export type Tag = { kind: 'currency'; value: string } | { kind: 'type'; value: 'ETF' | 'EQUITY' };
 
-const STATUS_LABEL = { reached: 'En zona', near: 'Cerca', far: 'Lejos', veryFar: 'Muy lejos', unknown: '' } as const;
+
 
 function TagButton({ tag, className, title, onTag }: { tag: Tag; className: string; title?: string; onTag: (t: Tag) => void }) {
+  const names = useSettings().data?.tagNames ?? DEFAULT_TAG_NAMES;
   return (
     <button
       type="button"
@@ -59,7 +62,7 @@ function TagButton({ tag, className, title, onTag }: { tag: Tag; className: stri
       }}
       onDoubleClick={(e) => e.stopPropagation()}
     >
-      {tag.kind === 'type' ? (tag.value === 'ETF' ? 'ETF' : 'ACC') : tag.value}
+      {tag.kind === 'type' ? (tag.value === 'ETF' ? names.etf : names.equity) : tag.value}
     </button>
   );
 }
@@ -67,6 +70,7 @@ function TagButton({ tag, className, title, onTag }: { tag: Tag; className: stri
 /** Precio de compra editable en la propia celda: clic para cambiarlo, Enter guarda, Esc cancela. */
 function LevelCell({ row, index, onSave }: { row: WatchlistRow; index: number; onSave: CellCtx['onSaveLevel'] }) {
   const level: LevelView | undefined = row.metrics.levels[index];
+  const names = useSettings().data?.statusNames ?? DEFAULT_STATUS_NAMES;
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState('');
   // Solo se puede añadir el siguiente nivel libre (no dejar huecos: 1, 2, 3).
@@ -124,7 +128,7 @@ function LevelCell({ row, index, onSave }: { row: WatchlistRow; index: number; o
       title="Pulsa para cambiar el precio"
     >
       <span className="num">{price(level.price)}</span>
-      <span className={`pill pill--${level.status}`} title={STATUS_LABEL[level.status]}>
+      <span className={`pill pill--${level.status}`} title={level.status === 'unknown' ? undefined : names[level.status]}>
         {level.status === 'reached' ? '✓ ' : ''}
         {pct(level.distancePct)}
       </span>
@@ -170,7 +174,7 @@ const columns: Column[] = [
             {(quote?.quoteType === 'ETF' || quote?.quoteType === 'EQUITY') && (
               <TagButton
                 tag={{ kind: 'type', value: quote.quoteType }}
-                className=""
+                className={quote.quoteType === 'ETF' ? 'badge--etf' : 'badge--equity'}
                 title={`Pulsa para ver solo ${quote.quoteType === 'ETF' ? 'ETF' : 'acciones'}`}
                 onTag={onTag}
               />
@@ -180,7 +184,7 @@ const columns: Column[] = [
                 className="badge badge--muted"
                 title={item.mutedUntil === 'always' ? 'Avisos silenciados' : `Avisos silenciados hasta el ${shortDate(item.mutedUntil)}`}
               >
-                Sin avisos
+                <TagName k="muted" />
               </span>
             )}
           </span>

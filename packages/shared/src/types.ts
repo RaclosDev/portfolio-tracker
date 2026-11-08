@@ -54,7 +54,7 @@ export interface SymbolSearchResult {
   type: string | null;
 }
 
-export type LevelStatus = 'reached' | 'near' | 'far' | 'veryFar' | 'unknown';
+export type LevelStatus = 'reached' | 'veryNear' | 'near' | 'far' | 'veryFar' | 'unknown';
 
 export interface LevelView {
   price: number;

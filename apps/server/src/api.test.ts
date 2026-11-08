@@ -2,7 +2,7 @@
  * Tests de la API de punta a punta (Fastify inject) con un Postgres en memoria (PGlite) y un
  * proveedor de cotizaciones simulado: no dependen de internet, de Neon ni de Yahoo.
  */
-import type { PortfolioView, WatchlistView } from '@watchlist/shared';
+import { DEFAULT_COLORS, DEFAULT_SETTINGS, type PortfolioView, type Settings, type WatchlistView } from '@watchlist/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from './app.ts';
 import { migrate, openPGlite, type Db } from './db/database.ts';
@@ -118,7 +118,7 @@ describe('valores y vista', () => {
     expect(aaa.targets?.trailingPE).toBe(18.5);
     expect(view.fx.USD).toBe(1.1);
     expect(bbb.metrics.netBase).toBeCloseTo((10 * 40) / 1.1, 6); // importe en euros
-    expect(bbb.metrics.status).toBe('veryFar'); // le falta caer un 20 %
+    expect(bbb.metrics.status).toBe('far'); // le falta caer un 20 % (límite de «lejos»)
   });
 
   it('valida los datos con mensajes en español', async () => {
@@ -138,11 +138,31 @@ describe('valores y vista', () => {
 
 describe('ajustes', () => {
   it('guarda cambios parciales y rechaza valores no válidos', async () => {
-    const s = (await send('PUT', '/api/settings', { nearThresholdPct: 3, theme: 'dark' })).json() as { nearThresholdPct: number; farThresholdPct: number; theme: string };
-    expect(s.nearThresholdPct).toBe(3);
-    expect(s.farThresholdPct).toBe(15);
+    const s = (await send('PUT', '/api/settings', { bands: { veryNear: 3, near: 8, far: 25 }, theme: 'dark' })).json() as Settings;
+    expect(s.bands).toEqual({ veryNear: 3, near: 8, far: 25 });
+    expect(s.statusNames.veryNear).toBe('Muy cerca');
     expect(s.theme).toBe('dark');
+    const named = (await send('PUT', '/api/settings', { statusNames: { ...s.statusNames, veryNear: 'A tiro', far: '' } })).json() as Settings;
+    expect(named.statusNames.veryNear).toBe('A tiro');
+    expect(named.statusNames.far).toBe('Lejos'); // vacío: vuelve al de serie
     expect((await send('PUT', '/api/settings', { theme: 'rosa' })).statusCode).toBe(400);
+  });
+
+  it('pasa los ajustes antiguos (cerca 5 % / lejos 15 %) a los cinco tramos con sus colores', async () => {
+    await db.query(
+      `INSERT INTO settings (key, value) VALUES ('nearThresholdPct', '5'::jsonb), ('farThresholdPct', '15'::jsonb), ('colors', $1::jsonb)
+       ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+      [JSON.stringify({ ...DEFAULT_COLORS, near: '#d97706', far: '#64748b', fx: '#123456' })],
+    );
+    const s = (await get('/api/settings')).json() as Settings;
+    expect(s.bands).toEqual(DEFAULT_SETTINGS.bands);
+    expect(s.colors.near).toBe(DEFAULT_COLORS.near);
+    expect(s.colors.far).toBe(DEFAULT_COLORS.far);
+    expect(s.colors.fx).toBe('#123456'); // los demás colores elegidos se respetan
+    await send('PUT', '/api/settings', { theme: 'light' });
+    const keys = (await db.query<{ key: string }>('SELECT key FROM settings')).map((r) => r.key);
+    expect(keys).not.toContain('nearThresholdPct');
+    expect(keys).toContain('bands');
   });
 });
 

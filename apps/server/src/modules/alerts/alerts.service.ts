@@ -87,11 +87,16 @@ export class AlertsService {
       const held = portfolio.filter((r) => !isMuted(r.position.mutedUntil, today));
       const prefs = { reached: n.reached, near: n.near, orders: n.orders, sell: n.sell };
 
-      const before = await this.state.get<AlertMemory>('avisos', emptyMemory());
+      const before = await this.state.get<AlertMemory & { bands?: string }>('avisos', emptyMemory());
+      // Si han cambiado los tramos, el primer repaso solo recoloca los estados: mover un umbral no es
+      // que el precio se haya acercado, así que no se avisa de «muy cerca» (sí de «en zona»).
+      const bands = `${s.bands.veryNear}/${s.bands.near}/${s.bands.far}`;
+      const rebase = before.bands !== bands;
       const buy = evaluateAlerts(watched, before, prefs, now);
       const sell = evaluateSellAlerts(held, buy.memory, prefs, now);
-      const alerts = [...buy.alerts, ...sell.alerts];
-      if (JSON.stringify(sell.memory) !== JSON.stringify(before)) await this.state.set('avisos', sell.memory);
+      const alerts = [...buy.alerts.filter((a) => !(rebase && a.kind === 'near')), ...sell.alerts];
+      const memory = { ...sell.memory, bands };
+      if (JSON.stringify(memory) !== JSON.stringify(before)) await this.state.set('avisos', memory);
 
       if (alerts.length) {
         await this.saveHistory(alerts);
@@ -104,7 +109,7 @@ export class AlertsService {
       // Resumen del día: una vez, a partir de la hora elegida.
       if (n.dailySummary && hhmmOf(now) >= n.dailySummaryAt && (await this.state.get('ultimoResumen', '')) !== today) {
         await this.state.set('ultimoResumen', today);
-        const summary = buildDailySummary(rows, now, portfolio);
+        const summary = buildDailySummary(rows, now, portfolio, s.statusNames);
         if (summary) await this.push.sendAll({ ...summary, tag: 'resumen', url: '/' });
       }
       return alerts;

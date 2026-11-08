@@ -40,13 +40,20 @@ const quote = (price: number): Quote => ({
 const base = { targets: null, settings: DEFAULT_SETTINGS, today: '2026-11-07' };
 
 describe('levelStatus', () => {
-  it('clasifica alcanzado / cerca / lejos', () => {
-    expect(levelStatus(10, 9.9, 5)).toBe('reached');
-    expect(levelStatus(10, 10.4, 5)).toBe('near');
-    expect(levelStatus(10, 11, 5, 15)).toBe('far'); // falta caer 9 %
-    expect(levelStatus(10, 12, 5, 15)).toBe('veryFar'); // falta caer 16,7 %
-    expect(levelStatus(10, 12, 5)).toBe('far'); // sin umbral de lejos
-    expect(levelStatus(10, null, 5)).toBe('unknown');
+  it('clasifica en los cinco tramos (5 · 10 · 20 % por defecto)', () => {
+    const b = DEFAULT_SETTINGS.bands;
+    expect(levelStatus(10, 9.9, b)).toBe('reached');
+    expect(levelStatus(10, 10.4, b)).toBe('veryNear'); // falta caer 3,8 %
+    expect(levelStatus(10, 11, b)).toBe('near'); // 9,1 %
+    expect(levelStatus(10, 12, b)).toBe('far'); // 16,7 %
+    expect(levelStatus(10, 12.5, b)).toBe('far'); // 20 % justo
+    expect(levelStatus(10, 13, b)).toBe('veryFar'); // 23 %
+    expect(levelStatus(10, null, b)).toBe('unknown');
+  });
+
+  it('tolera límites desordenados sin saltarse tramos', () => {
+    expect(levelStatus(10, 11, { veryNear: 12, near: 5, far: 8 })).toBe('veryNear');
+    expect(levelStatus(10, 12, { veryNear: 5, near: 25, far: 8 })).toBe('near');
   });
 });
 

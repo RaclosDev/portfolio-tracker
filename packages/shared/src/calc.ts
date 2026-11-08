@@ -1,4 +1,4 @@
-import type { Settings } from './schemas.ts';
+import type { Bands, Settings } from './schemas.ts';
 import type {
   AnalystTargets,
   Item,
@@ -17,18 +17,20 @@ const pct = (to: number, from: number) => (to - from) / from;
 
 /**
  * Estado de un nivel de compra respecto al precio actual:
- * en zona (precio ≤ nivel) · cerca (≤ nearPct %) · lejos (≤ farPct %) · muy lejos.
+ * en zona (precio ≤ nivel) · muy cerca (≤ veryNear %) · cerca (≤ near %) · lejos (≤ far %) · muy lejos.
  */
-export function levelStatus(level: number, price: number | null, nearPct: number, farPct = Infinity): LevelStatus {
+export function levelStatus(level: number, price: number | null, bands: Bands): LevelStatus {
   if (price == null || price <= 0) return 'unknown';
   if (price <= level) return 'reached';
   const dist = -pct(level, price) * 100; // % que tiene que caer
-  if (dist <= nearPct) return 'near';
-  return dist <= Math.max(farPct, nearPct) ? 'far' : 'veryFar';
+  const near = Math.max(bands.near, bands.veryNear);
+  if (dist <= bands.veryNear) return 'veryNear';
+  if (dist <= near) return 'near';
+  return dist <= Math.max(bands.far, near) ? 'far' : 'veryFar';
 }
 
 /** Mayor = más urgente. */
-export const STATUS_RANK: Record<LevelStatus, number> = { reached: 4, near: 3, far: 2, veryFar: 1, unknown: 0 };
+export const STATUS_RANK: Record<LevelStatus, number> = { reached: 5, veryNear: 4, near: 3, far: 2, veryFar: 1, unknown: 0 };
 
 export function bestStatus(statuses: LevelStatus[]): LevelStatus {
   return statuses.reduce<LevelStatus>((a, s) => (STATUS_RANK[s] > STATUS_RANK[a] ? s : a), 'unknown');
@@ -68,7 +70,7 @@ export function computeMetrics({ item, quote, targets, fxRate, settings, today }
   const levels: LevelView[] = item.buyPrices.map((lp) => ({
     price: lp,
     distancePct: price ? pct(lp, price) : null,
-    status: levelStatus(lp, price, settings.nearThresholdPct, settings.farThresholdPct),
+    status: levelStatus(lp, price, settings.bands),
   }));
   const status = bestStatus(levels.map((l) => l.status));
   const pending = levels.filter((l) => l.distancePct != null && l.status !== 'reached');
