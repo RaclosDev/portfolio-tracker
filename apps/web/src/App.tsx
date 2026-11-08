@@ -174,7 +174,22 @@ export function App() {
   const anyStale = onPortfolio ? pf.data?.rows.some((r) => r.quote?.stale) : view?.rows.some((r) => r.quote?.stale);
   const fetching = onPortfolio ? pf.isFetching || pfRefreshing : wl.isFetching || refresh.isPending;
   const generatedAt = onPortfolio ? pf.data?.generatedAt : view?.generatedAt;
+  const refetchFailed = onPortfolio ? pf.isRefetchError : wl.isRefetchError;
+
+  // Con la app en segundo plano (pantalla apagada, ventana minimizada) el navegador para los
+  // temporizadores. Si al volver los precios llevan más de dos ciclos sin renovarse, se piden ya.
+  const ageMs = generatedAt ? now - Date.parse(generatedAt) : 0;
+  const tooOld = ageMs > Math.max(2 * settings.refreshSeconds * 1000, 90_000);
+  useEffect(() => {
+    if (!tooOld || fetching || document.visibilityState !== 'visible') return;
+    if (onPortfolio) void pf.refetch();
+    else if (listId) void wl.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tooOld, now]);
   const throttledUntil = onPortfolio ? pf.data?.throttledUntil : view?.throttledUntil;
+  // Las pausas cortas (1–2 min, suelen pasar tras publicar una versión) no merecen aviso.
+  const throttleLeftMs = throttledUntil ? Date.parse(throttledUntil) - now : 0;
+  const throttleMin = throttleLeftMs > 3 * 60_000 ? Math.ceil(throttleLeftMs / 60_000) : null;
 
   return (
     <div className="app">
@@ -234,10 +249,12 @@ export function App() {
               {base}/{c} <strong>{num(r, 4)}</strong>
             </span>
           ))}
-          <span className={`updated${anyStale ? ' updated--stale' : ''}`} aria-live="polite">
+          <span className={`updated${anyStale || refetchFailed ? ' updated--stale' : ''}`} aria-live="polite">
             {fetching
               ? 'Actualizando…'
-              : anyStale
+              : refetchFailed
+                ? `Sin conexión con el servidor · precios de ${timeAgo(generatedAt, now)}`
+                : anyStale
                 ? 'Sin conexión: datos guardados'
                 : `Actualizado ${timeAgo(generatedAt, now)}`}
           </span>
@@ -273,10 +290,10 @@ export function App() {
       <main className="content">
         <UpdateBanner />
         <PushBanner />
-        {throttledUntil && (
+        {throttleMin != null && (
           <p className="notice" role="status">
-            Yahoo está limitando las consultas. Se muestran los últimos precios guardados y se vuelve a intentar a las{' '}
-            {new Date(throttledUntil).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}.
+            Yahoo ha pedido ir más despacio. Mientras tanto ves los últimos precios guardados; se vuelve a consultar en{' '}
+            {throttleMin} min.
           </p>
         )}
         {onPortfolio ? (

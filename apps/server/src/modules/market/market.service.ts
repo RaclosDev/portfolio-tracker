@@ -190,7 +190,13 @@ export class MarketService {
   async getHistory(symbol: string, range: HistoryRange): Promise<{ points: PricePoint[]; stale: boolean }> {
     const kind = `history-${range}`;
     const key = `${kind}:${symbol}`;
-    const hit = this.mem.get(key) as Entry<PricePoint[]> | undefined;
+    let hit = this.mem.get(key) as Entry<PricePoint[]> | undefined;
+    // Tras un reinicio (cada publicación) la memoria está vacía: lo guardado en la base de datos vale si
+    // es reciente, para no pedir a Yahoo el histórico de toda la lista de golpe (eso es lo que le hace limitarnos).
+    if (!hit) {
+      hit = await this.load<PricePoint[]>(kind, symbol);
+      if (hit) this.mem.set(key, hit);
+    }
     if (hit && Date.now() - hit.fetchedAt < HISTORY_TTL_MS) return { points: hit.value, stale: false };
     if (!this.throttled) {
       try {
