@@ -1,11 +1,11 @@
 import { DEFAULT_STATUS_NAMES, type LevelStatus, type WatchlistRow } from '@watchlist/shared';
-import { useLayoutEffect, useRef, useState } from 'react';
 import { useSettings } from '../../api/hooks.ts';
 import { pct, price as fp } from '../../lib/format.ts';
+import { useWidth } from '../../lib/useWidth.ts';
 
 const PAD = 14;
-const LANE = 20; // alto de cada fila de rótulos
-const AXIS_BLOCK = 44; // alto de la zona del eje (marcas incluidas)
+const LANE = 24; // alto de cada fila de rótulos
+const AXIS_BLOCK = 72; // alto de la zona del eje (marcas incluidas)
 const CHAR = 7.4; // ancho medio de un carácter a 13 px
 
 interface Label {
@@ -29,20 +29,6 @@ function placeLabels(labels: Label[], width: number, maxLanes = 4) {
     Object.assign(l, { lane, left, w });
   }
   return lanes.length;
-}
-
-function useWidth<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [width, setWidth] = useState(0);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([e]) => setWidth(Math.round(e!.contentRect.width)));
-    ro.observe(el);
-    setWidth(Math.round(el.getBoundingClientRect().width));
-    return () => ro.disconnect();
-  }, []);
-  return [ref, width] as const;
 }
 
 /**
@@ -96,7 +82,7 @@ export function PriceMapLarge({ row }: { row: WatchlistRow }) {
   const H = axisY + AXIS_BLOCK / 2 + bottomLanes * LANE + 4;
   const labelTopY = (lane: number) => (topLanes - lane) * LANE - 6;
   const labelBottomY = (lane: number) => axisY + AXIS_BLOCK / 2 + (lane + 1) * LANE - 6;
-  const tick = 13;
+  const tick = 20;
 
   const summary = [
     `Precio ${fp(p)}`,
@@ -114,7 +100,7 @@ export function PriceMapLarge({ row }: { row: WatchlistRow }) {
         <svg width={w} height={H} viewBox={`0 0 ${w} ${H}`} role="img" aria-label={summary} className="price-map">
           {zoneTop != null && (
             <>
-              <rect className={`pm-zone${metrics.status === 'reached' ? ' pm-zone--in' : ''}`} x={PAD} y={axisY - 14} width={Math.max(0, x(zoneTop) - PAD)} height={28} rx={3} />
+              <rect className={`pm-zone${metrics.status === 'reached' ? ' pm-zone--in' : ''}`} x={PAD} y={axisY - 18} width={Math.max(0, x(zoneTop) - PAD)} height={36} rx={4} />
             </>
           )}
           <line className="pm-axis" x1={PAD} x2={w - PAD} y1={axisY} y2={axisY} />

@@ -18,6 +18,7 @@ import { KEY_DATE_LABEL, upcoming } from '../../lib/keyDates.ts';
 import { PriceMap } from './PriceMap.tsx';
 import { Sparkline } from './Sparkline.tsx';
 import { ValueExpanded } from './ValueExpanded.tsx';
+import { useWidth } from '../../lib/useWidth.ts';
 
 type SortDir = 'asc' | 'desc';
 
@@ -434,7 +435,6 @@ interface Props {
   extraColumns: string[];
   sparks: Record<string, number[]> | undefined;
   onEdit: (row: WatchlistRow) => void;
-  onOpen: (row: WatchlistRow) => void;
   onTag: (tag: Tag) => void;
   onSaveLevel: CellCtx['onSaveLevel'];
 }
@@ -451,7 +451,8 @@ export const isColumnVisible = (c: { id: string; optional?: boolean }, hidden: s
 const DEFAULT_SORT = { id: 'map', dir: 'desc' as SortDir }; // lo más cercano a un nivel de compra, arriba
 const sortKey = (listId: number) => `watchlist.orden.${listId}`;
 
-export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumns, extraColumns, sparks, onEdit, onOpen, onTag, onSaveLevel }: Props) {
+export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumns, extraColumns, sparks, onEdit, onTag, onSaveLevel }: Props) {
+  const [wrapRef, wrapWidth] = useWidth<HTMLDivElement>();
   const visible = useMemo(
     () => columns.filter((c) => isColumnVisible(c, hiddenColumns, extraColumns)),
     [hiddenColumns, extraColumns],
@@ -511,7 +512,7 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
   const ctx: CellCtx = { base: baseCurrency, onTag, sparks, onToggle, isOpen, onSaveLevel };
 
   return (
-    <div className="table-wrap">
+    <div className="table-wrap" ref={wrapRef}>
       <table className={`wl-table${blink ? ' wl-table--blink' : ''}`}>
         <thead>
           {hasGroups && (
@@ -586,7 +587,7 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
                   <ValueExpanded
                     row={r}
                     base={baseCurrency}
-                    onChart={() => onOpen(r)}
+                    width={wrapWidth || undefined}
                     onEdit={() => onEdit(r)}
                     onClose={() => onToggle(r)}
                   />
