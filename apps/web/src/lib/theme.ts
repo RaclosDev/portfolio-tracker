@@ -49,6 +49,10 @@ const BADGES: { key: keyof Colors; fg: string; bg: string; bgPct: number }[] = [
   { key: 'veryFar', fg: '--veryFar-fg', bg: '--veryFar-bg', bgPct: 14 },
   { key: 'expired', fg: '--expired-fg', bg: '--expired-bg', bgPct: 22 },
   { key: 'fx', fg: '--fx-fg', bg: '--fx-bg', bgPct: 18 },
+  { key: 'equity', fg: '--equity-fg', bg: '--equity-bg', bgPct: 16 },
+  { key: 'etf', fg: '--etf-fg', bg: '--etf-bg', bgPct: 16 },
+  { key: 'base', fg: '--base-fg', bg: '--base-bg', bgPct: 16 },
+  { key: 'muted', fg: '--muted-fg', bg: '--muted-bg', bgPct: 14 },
   { key: 'order', fg: '--order-fg', bg: '--order-badge-bg', bgPct: 26 },
 ];
 

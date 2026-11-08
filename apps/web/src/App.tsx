@@ -312,6 +312,7 @@ export function App() {
                 currency={currencyFilter}
                 currencies={currencies}
                 onCurrency={setCurrencyFilter}
+                names={settings.tagNames}
               />
               <span className="spacer" />
               <input

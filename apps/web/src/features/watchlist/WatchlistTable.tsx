@@ -1,7 +1,8 @@
-import { DEFAULT_STATUS_NAMES, isMuted, localToday, MAX_BUY_LEVELS, type LevelView, type WatchlistRow } from '@watchlist/shared';
+import { DEFAULT_STATUS_NAMES, DEFAULT_TAG_NAMES, isMuted, localToday, MAX_BUY_LEVELS, type LevelView, type WatchlistRow } from '@watchlist/shared';
 import { useSettings } from '../../api/hooks.ts';
 import { Fragment, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Icon } from '../../components/Icon.tsx';
+import { TagName } from '../../components/TagName.tsx';
 import {
   compact,
   MINOR_CURRENCY,
@@ -49,6 +50,7 @@ export type Tag = { kind: 'currency'; value: string } | { kind: 'type'; value: '
 
 
 function TagButton({ tag, className, title, onTag }: { tag: Tag; className: string; title?: string; onTag: (t: Tag) => void }) {
+  const names = useSettings().data?.tagNames ?? DEFAULT_TAG_NAMES;
   return (
     <button
       type="button"
@@ -60,7 +62,7 @@ function TagButton({ tag, className, title, onTag }: { tag: Tag; className: stri
       }}
       onDoubleClick={(e) => e.stopPropagation()}
     >
-      {tag.kind === 'type' ? (tag.value === 'ETF' ? 'ETF' : 'ACC') : tag.value}
+      {tag.kind === 'type' ? (tag.value === 'ETF' ? names.etf : names.equity) : tag.value}
     </button>
   );
 }
@@ -172,7 +174,7 @@ const columns: Column[] = [
             {(quote?.quoteType === 'ETF' || quote?.quoteType === 'EQUITY') && (
               <TagButton
                 tag={{ kind: 'type', value: quote.quoteType }}
-                className=""
+                className={quote.quoteType === 'ETF' ? 'badge--etf' : 'badge--equity'}
                 title={`Pulsa para ver solo ${quote.quoteType === 'ETF' ? 'ETF' : 'acciones'}`}
                 onTag={onTag}
               />
@@ -182,7 +184,7 @@ const columns: Column[] = [
                 className="badge badge--muted"
                 title={item.mutedUntil === 'always' ? 'Avisos silenciados' : `Avisos silenciados hasta el ${shortDate(item.mutedUntil)}`}
               >
-                Sin avisos
+                <TagName k="muted" />
               </span>
             )}
           </span>

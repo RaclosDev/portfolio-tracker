@@ -104,9 +104,13 @@ export const COLOR_DEFS = [
   { key: 'near', label: 'Cerca', group: 'Estados', default: '#eab308' },
   { key: 'far', label: 'Lejos', group: 'Estados', default: '#f97316' },
   { key: 'veryFar', label: 'Muy lejos', group: 'Estados', default: '#a1a1aa' },
-  { key: 'order', label: 'Orden activa', group: 'Estados', default: '#eab308' },
-  { key: 'expired', label: 'Orden caducada', group: 'Estados', default: '#dc2626' },
-  { key: 'fx', label: 'Otra divisa (USD…)', group: 'Tabla', default: '#0284c7' },
+  { key: 'equity', label: 'Acción', group: 'Etiquetas', default: '#64748b' },
+  { key: 'etf', label: 'ETF', group: 'Etiquetas', default: '#64748b' },
+  { key: 'base', label: 'Divisa base', group: 'Etiquetas', default: '#64748b' },
+  { key: 'fx', label: 'Otra divisa (USD…)', group: 'Etiquetas', default: '#0284c7' },
+  { key: 'order', label: 'Orden activa', group: 'Etiquetas', default: '#eab308' },
+  { key: 'expired', label: 'Orden caducada', group: 'Etiquetas', default: '#dc2626' },
+  { key: 'muted', label: 'Sin avisos', group: 'Etiquetas', default: '#a1a1aa' },
   { key: 'up', label: 'Sube en el día / potencial', group: 'Tabla', default: '#16a34a' },
   { key: 'down', label: 'Baja en el día', group: 'Tabla', default: '#ea580c' },
   { key: 'broker', label: 'Objetivo bróker', group: 'Mapa de precios', default: '#7c3aed' },
@@ -174,6 +178,21 @@ export const statusNamesSchema = z.object(
 export type StatusNames = z.output<typeof statusNamesSchema>;
 export const DEFAULT_STATUS_NAMES: StatusNames = statusNamesSchema.parse({});
 
+/** Etiquetas de las filas con nombre editable (las de divisa muestran el código: EUR, USD…). */
+export const TAG_DEFS = [
+  { key: 'equity', name: 'ACC' },
+  { key: 'etf', name: 'ETF' },
+  { key: 'muted', name: 'Sin avisos' },
+] as const;
+export type TagKey = (typeof TAG_DEFS)[number]['key'];
+export const tagNamesSchema = z.object(
+  Object.fromEntries(TAG_DEFS.map((t) => [t.key, z.string().trim().min(1).max(16).catch(t.name)])) as {
+    [K in TagKey]: z.ZodCatch<z.ZodString>;
+  },
+);
+export type TagNames = z.output<typeof tagNamesSchema>;
+export const DEFAULT_TAG_NAMES: TagNames = tagNamesSchema.parse({});
+
 /**
  * Ajustes guardados antes de los cinco tramos (umbrales «cerca 5 % / lejos 15 %»):
  * se descartan los colores de los estados antiguos para que entren los nuevos por defecto.
@@ -193,6 +212,8 @@ export const settingsSchema = z.object({
   bands: bandsSchema.default(DEFAULT_BANDS),
   /** Nombre que se muestra para cada estado. */
   statusNames: statusNamesSchema.default(DEFAULT_STATUS_NAMES),
+  /** Nombre de las etiquetas de tipo (ACC, ETF) y de «Sin avisos». */
+  tagNames: tagNamesSchema.default(DEFAULT_TAG_NAMES),
   /** Hacer parpadear los valores en zona de compra. */
   blinkReached: z.boolean().default(true),
   refreshSeconds: z.number().int().min(15).max(3600).default(60),

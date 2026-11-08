@@ -1,4 +1,18 @@
-import { COLOR_DEFS, DEFAULT_COLORS, DEFAULT_SETTINGS, DEFAULT_STATUS_NAMES, STATUS_DEFS, type Colors, type Settings, type StatusNames, type WatchList } from '@watchlist/shared';
+import {
+  COLOR_DEFS,
+  DEFAULT_COLORS,
+  DEFAULT_SETTINGS,
+  DEFAULT_STATUS_NAMES,
+  DEFAULT_TAG_NAMES,
+  STATUS_DEFS,
+  TAG_DEFS,
+  type ColorKey,
+  type Colors,
+  type Settings,
+  type StatusNames,
+  type TagNames,
+  type WatchList,
+} from '@watchlist/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../api/client.ts';
@@ -13,18 +27,44 @@ import { NotificationsPanel } from './NotificationsPanel.tsx';
 import { applyAppearance, applyColors } from '../../lib/theme.ts';
 import { COLUMN_OPTIONS } from '../watchlist/WatchlistTable.tsx';
 
-type Section = 'general' | 'estados' | 'aspecto' | 'notificaciones' | 'listas' | 'copias';
+type Section = 'general' | 'estados' | 'etiquetas' | 'tema' | 'columnas' | 'colores' | 'notificaciones' | 'listas' | 'copias';
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'estados', label: 'Estados y umbrales' },
-  { id: 'aspecto', label: 'Aspecto' },
+  { id: 'etiquetas', label: 'Etiquetas' },
+  { id: 'tema', label: 'Tema y tamaño' },
+  { id: 'columnas', label: 'Columnas' },
+  { id: 'colores', label: 'Colores' },
   { id: 'notificaciones', label: 'Notificaciones' },
   { id: 'listas', label: 'Listas' },
   { id: 'copias', label: 'Copias y Excel' },
 ];
 
-const COLOR_GROUPS = [...new Set(COLOR_DEFS.map((c) => c.group))];
+/** Los colores de estados y etiquetas se eligen en su propio apartado; aquí quedan los demás. */
+const OTHER_COLOR_GROUPS: string[] = [...new Set<string>(COLOR_DEFS.map((c) => c.group))].filter((g) => g !== 'Estados' && g !== 'Etiquetas');
+const keysOf = (groups: string[]) => COLOR_DEFS.filter((c) => groups.includes(c.group)).map((c) => c.key);
+const pickDefaults = (keys: ColorKey[]) => Object.fromEntries(keys.map((k) => [k, DEFAULT_COLORS[k]])) as Partial<Colors>;
+
+/** Etiquetas de las filas: color y, si lo tiene, nombre. */
+const TAG_ROWS: { color: ColorKey; name?: keyof TagNames; label: string; hint: string }[] = [
+  { color: 'equity', name: 'equity', label: 'Acción', hint: 'Tipo de valor' },
+  { color: 'etf', name: 'etf', label: 'ETF', hint: 'Tipo de valor' },
+  { color: 'base', label: 'Divisa base', hint: 'Cotiza en tu divisa' },
+  { color: 'fx', label: 'Otra divisa', hint: 'USD, GBP…' },
+  { color: 'order', label: 'Orden activa', hint: 'Orden puesta en el banco' },
+  { color: 'expired', label: 'Orden caducada', hint: 'Ya pasó su fecha' },
+  { color: 'muted', name: 'muted', label: 'Sin avisos', hint: 'Avisos silenciados' },
+];
+
+const TAG_CLASS: Partial<Record<ColorKey, string>> = {
+  equity: 'badge--equity',
+  etf: 'badge--etf',
+  fx: 'badge--fx',
+  order: 'badge--order',
+  expired: 'badge--danger',
+  muted: 'badge--muted',
+};
 const CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF'];
 
 interface Props {
@@ -87,6 +127,7 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
   const [refresh, setRefresh] = useState(String(settings.refreshSeconds));
   const [bands, setBands] = useState(settings.bands);
   const [names, setNames] = useState<StatusNames>(settings.statusNames);
+  const [tagNames, setTagNames] = useState<TagNames>(settings.tagNames ?? DEFAULT_TAG_NAMES);
   const [sellNear, setSellNear] = useState(str(settings.sellNearPct));
   const [blink, setBlink] = useState(settings.blinkReached);
   const [theme, setTheme] = useState(settings.theme);
@@ -95,6 +136,14 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
   const [hidden, setHidden] = useState<string[]>(settings.hiddenColumns);
   const [extra, setExtra] = useState<string[]>(settings.extraColumns ?? []);
   const [colors, setColors] = useState<Colors>({ ...DEFAULT_COLORS, ...settings.colors });
+
+  const setColor = (key: ColorKey, value: string) => setColors((prev) => ({ ...prev, [key]: value }));
+  const tagSample = (k: ColorKey): string => {
+    if (k === 'equity' || k === 'etf' || k === 'muted') return tagNames[k].trim() || DEFAULT_TAG_NAMES[k];
+    if (k === 'base') return baseCurrency;
+    if (k === 'fx') return baseCurrency === 'USD' ? 'EUR' : 'USD';
+    return k === 'order' ? 'Activa @ 64,20' : 'Caducada';
+  };
 
   // Vista previa en vivo del aspecto; si se cancela, se vuelve a lo guardado.
   const saved = useRef(settings);
@@ -123,12 +172,16 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
     const cleanNames = Object.fromEntries(
       STATUS_DEFS.map(({ key }) => [key, names[key].trim() || DEFAULT_STATUS_NAMES[key]]),
     ) as StatusNames;
+    const cleanTags = Object.fromEntries(
+      TAG_DEFS.map(({ key }) => [key, tagNames[key].trim() || DEFAULT_TAG_NAMES[key]]),
+    ) as TagNames;
     const next: Partial<Settings> = {
       defaultInvest: parseDecimal(invest) ?? settings.defaultInvest,
       baseCurrency,
       refreshSeconds: Math.min(3600, Math.max(15, Math.round(parseDecimal(refresh) ?? settings.refreshSeconds))),
       bands,
       statusNames: cleanNames,
+      tagNames: cleanTags,
       sellNearPct: Math.min(100, Math.max(0, parseDecimal(sellNear) ?? settings.sellNearPct)),
       blinkReached: blink,
       theme,
@@ -229,9 +282,9 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
         <h3>Estados y umbrales</h3>
         <p className="intro">
           Cómo se clasifica cada nivel de compra según lo que le falta caer al precio. Afecta a los colores, los filtros
-          y las notificaciones. Los nombres se pueden cambiar; los colores, en Aspecto.
+          y las notificaciones. Pulsa el cuadro de color para cambiarlo y escribe encima del nombre para renombrarlo.
         </p>
-        <BandsEditor bands={bands} names={names} onBands={setBands} onNames={setNames} />
+        <BandsEditor bands={bands} names={names} onBands={setBands} onNames={setNames} colors={colors} onColor={setColor} />
         <div className="bands__reset">
           <button
             type="button"
@@ -239,9 +292,10 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
             onClick={() => {
               setBands(DEFAULT_SETTINGS.bands);
               setNames(DEFAULT_STATUS_NAMES);
+              setColors((c) => ({ ...c, ...pickDefaults(keysOf(['Estados'])) }));
             }}
           >
-            Volver a 5 · 10 · 20 % y los nombres de serie
+            Volver a 5 · 10 · 20 % con los nombres y colores de serie
           </button>
         </div>
         <Row label="Parpadear los valores en zona de compra" hint="Para que no se te pasen. Se desactiva si Windows tiene reducidas las animaciones.">
@@ -252,13 +306,64 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
         </Row>
       </>
     ),
-    aspecto: (
+    etiquetas: (
       <>
-        <h3>Aspecto</h3>
+        <h3>Etiquetas</h3>
+        <p className="intro">
+          Las marcas pequeñas junto a cada valor. Pulsa una en la tabla para ver solo esos valores. Puedes cambiar el color
+          de todas y el nombre de las que no son una divisa.
+        </p>
+        <div className="tag-rows">
+          {TAG_ROWS.map((t) => (
+            <div key={t.color} className="tag-row">
+              <input
+                type="color"
+                className="tag-row__color"
+                aria-label={`Color de la etiqueta «${t.label}»`}
+                title="Cambiar el color"
+                value={colors[t.color]}
+                onChange={(e) => setColor(t.color, e.target.value)}
+              />
+              <span className="tag-row__label">
+                {t.label}
+                <small>{t.hint}</small>
+              </span>
+              {t.name ? (
+                <input
+                  type="text"
+                  className="tag-row__name"
+                  aria-label={`Nombre de la etiqueta «${t.label}»`}
+                  maxLength={16}
+                  value={tagNames[t.name]}
+                  placeholder={DEFAULT_TAG_NAMES[t.name]}
+                  onChange={(e) => setTagNames((n) => ({ ...n, [t.name!]: e.target.value }))}
+                />
+              ) : (
+                <span />
+              )}
+              <span className={`badge ${TAG_CLASS[t.color] ?? ''}`}>{tagSample(t.color)}</span>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="btn btn--small btn--ghost"
+          onClick={() => {
+            setTagNames(DEFAULT_TAG_NAMES);
+            setColors((c) => ({ ...c, ...pickDefaults(keysOf(['Etiquetas'])) }));
+          }}
+        >
+          Volver a los nombres y colores de serie
+        </button>
+      </>
+    ),
+    tema: (
+      <>
+        <h3>Tema y tamaño</h3>
         <p className="intro">Los cambios se ven al momento; si cancelas, se deshacen.</p>
         <Row label="Tema">
           <select aria-label="Tema" value={theme} onChange={(e) => setTheme(e.target.value as Settings['theme'])}>
-            <option value="system">Como Windows</option>
+            <option value="system">Como el dispositivo</option>
             <option value="light">Claro</option>
             <option value="dark">Oscuro</option>
           </select>
@@ -277,6 +382,12 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
             <option value="large">Grande</option>
           </select>
         </Row>
+      </>
+    ),
+    columnas: (
+      <>
+        <h3>Columnas</h3>
+        <p className="intro">Qué columnas se ven en la tabla de cada lista.</p>
         <div className="setting-row" style={{ display: 'block' }}>
           <div className="setting-row__label">
             <strong>Columnas visibles</strong>
@@ -313,56 +424,51 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
             ))}
           </div>
         </div>
-        <div className="setting-row" style={{ display: 'block' }}>
-          <div className="setting-row__label">
-            <strong>Colores</strong>
-            <span>Eliges uno por estado; la app ajusta fondos y textos para que se lean bien en claro y oscuro.</span>
-          </div>
-          <div className="color-groups" style={{ marginTop: 10 }}>
-            {COLOR_GROUPS.map((group) => (
-              <div key={group} className="color-group">
-                <h4>{group}</h4>
-                <div className="color-grid">
-                  {COLOR_DEFS.filter((c) => c.group === group).map((c) => (
-                    <label key={c.key} className="color-field">
-                      <input
-                        type="color"
-                        value={colors[c.key]}
-                        onChange={(e) => setColors((prev) => ({ ...prev, [c.key]: e.target.value }))}
-                      />
-                      {c.label}
-                    </label>
-                  ))}
-                </div>
+        <button
+          type="button"
+          className="btn btn--small btn--ghost"
+          onClick={() => {
+            setHidden([]);
+            setExtra([]);
+          }}
+        >
+          Volver a las columnas de serie
+        </button>
+      </>
+    ),
+    colores: (
+      <>
+        <h3>Colores</h3>
+        <p className="intro">
+          Los de los estados y las etiquetas se cambian en sus apartados. La app ajusta fondos y textos para que se lean
+          bien en claro y oscuro.
+        </p>
+        <div className="color-groups" style={{ marginTop: 10 }}>
+          {OTHER_COLOR_GROUPS.map((group) => (
+            <div key={group} className="color-group">
+              <h4>{group}</h4>
+              <div className="color-grid">
+                {COLOR_DEFS.filter((c) => c.group === group).map((c) => (
+                  <label key={c.key} className="color-field">
+                    <input type="color" value={colors[c.key]} onChange={(e) => setColor(c.key, e.target.value)} />
+                    {c.label}
+                  </label>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="color-preview" aria-label="Vista previa">
-            <span className="pill pill--reached">✓ -1,2 %</span>
-            <span className="pill pill--veryNear">-3,4 %</span>
-            <span className="pill pill--near">-7,5 %</span>
-            <span className="pill pill--far">-14,0 %</span>
-            <span className="pill pill--veryFar">-24,0 %</span>
-            <span className="badge badge--order">Activa @ 64,20</span>
-            <span className="badge badge--danger">Caducada</span>
-            <span className="badge badge--fx">USD</span>
-            <span className="delta up">+1,25 %</span>
-            <span className="delta down">-0,80 %</span>
-            <span className="spacer" />
-            <button
-              type="button"
-              className="btn btn--small btn--ghost"
-              onClick={() => {
-                setColors(DEFAULT_COLORS);
-                setTheme(DEFAULT_SETTINGS.theme);
-                setDensity(DEFAULT_SETTINGS.density);
-                setFontSize(DEFAULT_SETTINGS.fontSize);
-                setHidden([]);
-              }}
-            >
-              Restablecer aspecto
-            </button>
-          </div>
+            </div>
+          ))}
+        </div>
+        <div className="color-preview" aria-label="Vista previa">
+          <span className="delta up">+1,25 %</span>
+          <span className="delta down">-0,80 %</span>
+          <span className="spacer" />
+          <button
+            type="button"
+            className="btn btn--small btn--ghost"
+            onClick={() => setColors((c) => ({ ...c, ...pickDefaults(keysOf(OTHER_COLOR_GROUPS)) }))}
+          >
+            Volver a los colores de serie
+          </button>
         </div>
       </>
     ),

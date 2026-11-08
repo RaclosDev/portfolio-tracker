@@ -1,4 +1,4 @@
-import { DEFAULT_STATUS_NAMES, STATUS_DEFS, type Bands, type StatusKey, type StatusNames } from '@watchlist/shared';
+import { DEFAULT_STATUS_NAMES, STATUS_DEFS, type Bands, type Colors, type StatusKey, type StatusNames } from '@watchlist/shared';
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { parseDecimal } from '../../lib/format.ts';
 
@@ -51,13 +51,15 @@ interface Props {
   names: StatusNames;
   onBands: (b: Bands) => void;
   onNames: (n: StatusNames) => void;
+  colors: Colors;
+  onColor: (key: StatusKey, value: string) => void;
 }
 
 /**
  * Los cinco estados con su nombre y su tramo, y debajo la barra con los límites arrastrables
  * (también con el teclado: flechas ±0,5 %, Re Pág/Av Pág ±5 %).
  */
-export function BandsEditor({ bands, names, onBands, onNames }: Props) {
+export function BandsEditor({ bands, names, onBands, onNames, colors, onColor }: Props) {
   // Escala fija mientras se edita, para que la barra no se mueva bajo el dedo; crece si hace falta.
   const [scaleBase] = useState(() => Math.max(30, Math.ceil((bands.far * 1.5) / 5) * 5));
   const max = Math.max(scaleBase, Math.ceil((bands.far * 1.15) / 5) * 5);
@@ -122,7 +124,14 @@ export function BandsEditor({ bands, names, onBands, onNames }: Props) {
       <div className="bands__rows">
         {STATUS_DEFS.map(({ key }) => (
           <div key={key} className="bands__row">
-            <i className={`swatch swatch--${key}`} aria-hidden />
+            <input
+              type="color"
+              className="bands__color"
+              aria-label={`Color de «${names[key] || DEFAULT_STATUS_NAMES[key]}»`}
+              title="Cambiar el color"
+              value={colors[key]}
+              onChange={(e) => onColor(key, e.target.value)}
+            />
             <input
               type="text"
               className="bands__name"
