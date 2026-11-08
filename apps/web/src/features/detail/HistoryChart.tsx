@@ -6,7 +6,7 @@ export interface RefLine {
   label: string;
   value: number;
   /** Determina el color: estado del nivel de compra, orden u objetivo. */
-  kind: LevelStatus | 'order' | 'broker' | 'consensus';
+  kind: LevelStatus | 'order' | 'broker' | 'consensus' | 'price';
 }
 
 const W = 640;
@@ -30,13 +30,26 @@ const fmtDate = (iso: string, range: HistoryRange) =>
  * Gráfico de precios con tus referencias encima. Las etiquetas de las líneas van a la derecha,
  * fuera del área de datos, para no tapar la curva. Al pasar el ratón se lee fecha y precio.
  */
-export function HistoryChart({ points, refs, range }: { points: PricePoint[]; refs: RefLine[]; range: HistoryRange }) {
+export function HistoryChart({
+  points,
+  refs,
+  range,
+  current,
+}: {
+  points: PricePoint[];
+  refs: RefLine[];
+  range: HistoryRange;
+  /** Precio actual (si no, el último cierre): se rotula a la derecha como una referencia más. */
+  current?: number | null;
+}) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
 
   const geo = useMemo(() => {
     const closes = points.map((p) => p.c);
-    const values = [...closes, ...refs.map((r) => r.value)];
+    const now = current ?? closes[closes.length - 1];
+    const all: RefLine[] = now != null ? [...refs, { label: 'Precio', value: now, kind: 'price' }] : refs;
+    const values = [...closes, ...all.map((r) => r.value)];
     let min = Math.min(...values);
     let max = Math.max(...values);
     const pad = (max - min || max * 0.1 || 1) * 0.06;
@@ -48,7 +61,7 @@ export function HistoryChart({ points, refs, range }: { points: PricePoint[]; re
     const area = `${line}L${x(points.length - 1).toFixed(1)} ${H - M.bottom}L${x(0).toFixed(1)} ${H - M.bottom}Z`;
     const xTicks = points.length > 1 ? [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(f * (points.length - 1))) : [];
     // Etiquetas de referencia sin solaparse: se separan al menos 13 px en vertical.
-    const labels = refs
+    const labels = all
       .map((r) => ({ ...r, y: y(r.value) }))
       .sort((a, b) => a.y - b.y)
       .reduce<(RefLine & { y: number; ly: number })[]>((acc, r) => {
@@ -57,7 +70,7 @@ export function HistoryChart({ points, refs, range }: { points: PricePoint[]; re
         return acc;
       }, []);
     return { x, y, line, area, yTicks: niceTicks(min, max), xTicks, labels, min, max };
-  }, [points, refs]);
+  }, [points, refs, current]);
 
   if (points.length < 2) return <p className="muted chart-empty">No hay datos de cotización para este periodo.</p>;
 
@@ -103,14 +116,25 @@ export function HistoryChart({ points, refs, range }: { points: PricePoint[]; re
         <path className="chart__area" d={geo.area} />
         <path className="chart__line" d={geo.line} />
 
-        {geo.labels.map((r) => (
-          <g key={`${r.label}-${r.value}`} className={`chart__ref chart__ref--${r.kind}`}>
-            <line x1={M.left} x2={W - M.right} y1={r.y} y2={r.y} />
-            <text x={W - M.right + 6} y={r.ly + 3.5}>
-              {r.label} {price(r.value)}
-            </text>
-          </g>
-        ))}
+        {geo.labels.map((r) =>
+          r.kind === 'price' ? (
+            // El precio actual va en un recuadro, como en los gráficos de los brókers.
+            <g key="precio" className="chart__ref chart__ref--price">
+              <line x1={geo.x(points.length - 1)} x2={W - M.right} y1={r.y} y2={r.y} />
+              <rect x={W - M.right + 2} y={r.ly - 7.5} width={(r.label.length + price(r.value).length + 1) * 6.2 + 8} height={15} rx={3} />
+              <text x={W - M.right + 6} y={r.ly + 3.5}>
+                {r.label} {price(r.value)}
+              </text>
+            </g>
+          ) : (
+            <g key={`${r.label}-${r.value}`} className={`chart__ref chart__ref--${r.kind}`}>
+              <line x1={M.left} x2={W - M.right} y1={r.y} y2={r.y} />
+              <text x={W - M.right + 6} y={r.ly + 3.5}>
+                {r.label} {price(r.value)}
+              </text>
+            </g>
+          ),
+        )}
 
         <circle className="chart__last" cx={geo.x(points.length - 1)} cy={geo.y(last.c)} r={3.5} />
 

@@ -45,7 +45,7 @@ export function HistoryView({ row }: { row: WatchlistRow }) {
       {history.isError && <p className="error-box">No se pudo cargar el histórico. Prueba otro periodo.</p>}
       {history.data && (
         <>
-          <HistoryChart points={history.data.points} refs={refs} range={range} />
+          <HistoryChart points={history.data.points} refs={refs} range={range} current={row.quote?.price} />
           {history.data.stale && <p className="muted small">Sin conexión: se muestra el último histórico guardado.</p>}
         </>
       )}
