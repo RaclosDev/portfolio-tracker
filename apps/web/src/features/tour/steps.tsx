@@ -17,7 +17,7 @@ export const TOUR_STEPS: TourStep[] = [
     ),
   },
   {
-    target: '.tabs',
+    target: ['.tabs', '.list-picker'],
     title: 'Listas',
     body: (
       <p>
@@ -27,7 +27,7 @@ export const TOUR_STEPS: TourStep[] = [
     ),
   },
   {
-    target: '[data-tour="portfolio"]',
+    target: ['[data-tour="portfolio"]', '.list-picker'],
     title: 'Cartera',
     body: (
       <>

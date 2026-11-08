@@ -719,6 +719,41 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .pf-table tr.row td.col-actions { position: static; grid-column: 1 / -1; }
   .pf-table .row-actions { justify-content: flex-start; }
   .weight { align-items: flex-start; }
+
+  /* Cada valor es una tarjeta independiente, separada de la siguiente. */
+  .table-wrap { border: 0; background: none; box-shadow: none; border-radius: 0; }
+  .wl-table tbody { display: grid; gap: 10px; }
+  .wl-table tr.row {
+    border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .wl-table tr.row--order { background: var(--order-bg); }
+  /* En pantallas táctiles el :hover se queda pegado al tocar: sin fondo por celda. */
+  .wl-table tbody tr:hover td { background: none; }
+  .row--reached { box-shadow: inset 3px 0 0 var(--reached-fg), var(--shadow); }
+  .row--veryNear { box-shadow: inset 3px 0 0 var(--veryNear-fg), var(--shadow); }
+  .row--near { box-shadow: inset 3px 0 0 var(--near-fg), var(--shadow); }
+  .row--order { box-shadow: inset 3px 0 0 var(--order-edge), var(--shadow); }
+  .wl-table--blink .row--reached td { animation: none; }
+
+  /* Nombre: puede ocupar dos líneas; deja sitio al botón de editar. */
+  .wl-table tr.row td.col-name { padding-right: 40px; }
+  .wl-table .name-btn { white-space: normal; font-size: 15px; line-height: 1.3; }
+  .wl-table tr.row td::before { font-size: 11.5px; margin-bottom: 1px; }
+  .wl-table td.col-price .num.strong { font-size: 18px; }
+  .wl-table td.col-trend .spark { margin-top: 4px; }
+
+  /* Mapa de precios a todo el ancho de la tarjeta, separado de las cifras por una línea. */
+  .wl-table tr.row td.col-map { padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 2px; }
+  .wl-table td.col-map .price-map { width: 100%; max-width: 420px; height: auto; }
+  .wl-table td.col-notes .notes { white-space: normal; max-width: none; font-size: 13px; }
+
+  /* Fuera lo que no aporta en la tarjeta: celdas vacías ("–") y el botón "Añadir" (se añade desde Editar). */
+  .wl-table tr.row td:has(> .muted:only-child),
+  .wl-table tr.row td:has(> .cell-add) { display: none; }
+  .wl-table .cell-edit { align-items: flex-start; margin: 0; padding: 0; }
+  .wl-table tr.row td.al-right { text-align: left !important; }
+  .wl-table td.col-order .badge { align-self: flex-start; }
 }
 
 /* Importar desde Excel/CSV */
@@ -753,14 +788,71 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .topbar .btn { padding: 0 10px; }
   .topbar .tabs { order: 3; }
   .topbar .chip, .topbar .updated { order: 4; font-size: 12px; }
-  .topbar .updated { text-align: left; flex: 1; }
+  .topbar .updated { text-align: left; flex: 1 1 auto; }
   .content { padding: 12px 12px 32px; }
   .toolbar { gap: 8px; }
   .toolbar .spacer { display: none; }
   .toolbar .search { flex: 1 1 160px; width: auto; }
   .hl-cell { flex-basis: 100%; padding: 10px 12px; }
   .hl-big { font-size: 22px; }
+
+  /* Cabecera: selector de lista a la izquierda y tres botones de icono a la derecha (sin logo ni pestañas). */
+  .topbar { padding: 6px 8px 8px 12px; padding-top: max(6px, env(safe-area-inset-top)); gap: 4px 2px; }
+  .topbar .brand, .topbar .tabs { display: none; }
+  .topbar .list-picker { display: flex; align-items: center; gap: 2px; flex: 1 1 calc(100% - 140px); min-width: 0; }
+  .topbar__right .btn { flex: none; }
+  .topbar .btn {
+    width: 44px; height: 44px; min-height: 44px; padding: 0; justify-content: center;
+    border-color: transparent; background: transparent; color: var(--text);
+  }
+  .topbar [data-tour='refresh'] { margin-left: 0; }
+  .topbar .btn__label { display: none; }
+  .topbar .btn__icon { display: inline-flex; }
+  .topbar .chip { margin-left: 4px; }
+  .search { font-size: 16px; } /* 16 px: el iPhone no amplía la pantalla al escribir */
+
+  /* Filtros: chips sueltos que se desplazan en horizontal, cada grupo en su línea. */
+  .toolbar .segmented {
+    flex: 1 1 100%; display: flex; gap: 6px; max-width: none;
+    border: 0; border-radius: 0; background: none; overflow-x: auto;
+    margin: 0 -12px; padding: 0 12px; scrollbar-width: none;
+  }
+  .toolbar .segmented::-webkit-scrollbar { display: none; }
+  .toolbar .tag-filters { flex: 1 1 100%; flex-wrap: nowrap; gap: 6px; }
+  .toolbar .tag-filters .segmented { flex: 0 0 auto; margin: 0; padding: 0; }
+  .toolbar .segmented button {
+    flex: none; min-height: 36px; padding: 0 12px; font-size: 13px;
+    border: 1px solid var(--border); border-radius: 99px; background: var(--surface);
+  }
+  .toolbar .segmented button + button { border-left: 1px solid var(--border); }
+  .toolbar .segmented button.on { border-color: var(--accent); background: var(--accent); }
+  .toolbar .segmented button:focus-visible { outline-offset: 2px; }
+  .toolbar .search { height: 40px; }
+  .toolbar .btn--primary { height: 40px; min-height: 40px; }
+
+  /* Tarjeta del valor: tres columnas de cifras; precio y tendencia en la misma línea. */
+  .wl-table tr.row { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; padding: 12px 14px 14px; }
+  .wl-table td.col-price { grid-column: 1; }
+  .wl-table td.col-trend { grid-column: 2 / -1; align-items: flex-end !important; }
+  .wl-table td.col-notes, .wl-table td.col-order { grid-column: 1 / -1; }
+  .content { padding-bottom: max(32px, env(safe-area-inset-bottom)); }
 }
+
+/* Selector de lista e iconos de la cabecera: solo en el móvil. */
+.list-picker { display: none; }
+.btn__icon { display: none; }
+.btn__icon--spin .icon { animation: spin 0.9s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .btn__icon--spin .icon { animation: none; } }
+.list-picker__select {
+  flex: 0 1 auto; min-width: 0; max-width: 100%; height: 44px; padding: 0 30px 0 10px;
+  border: 0; border-radius: 8px; background: transparent; color: var(--text);
+  font-size: 17px; font-weight: 650; letter-spacing: -0.01em; text-overflow: ellipsis;
+  appearance: none; -webkit-appearance: none; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%239aa3b0' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center;
+}
+.list-picker__select:hover { background-color: var(--surface-2); }
+.list-picker .icon-btn { color: var(--text-2); }
 
 /* Tablet en vertical: las tarjetas en dos columnas. */
 @media (min-width: 701px) and (max-width: 1023px) {

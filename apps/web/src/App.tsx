@@ -19,6 +19,7 @@ import { Tour } from './features/tour/Tour.tsx';
 import { num, timeAgo } from './lib/format.ts';
 import { applyAppearance, applyColors } from './lib/theme.ts';
 import { usePrompt } from './components/usePrompt.tsx';
+import { Icon } from './components/Icon.tsx';
 import { PushBanner } from './components/PushBanner.tsx';
 import { UpdateBanner } from './components/UpdateBanner.tsx';
 import { AlertsDialog } from './features/alerts/AlertsDialog.tsx';
@@ -191,6 +192,14 @@ export function App() {
   const throttleLeftMs = throttledUntil ? Date.parse(throttledUntil) - now : 0;
   const throttleMin = throttleLeftMs > 3 * 60_000 ? Math.ceil(throttleLeftMs / 60_000) : null;
 
+  const newList = async () => {
+    const name = await ask('Nueva lista', 'Nombre de la lista');
+    if (name) {
+      setListId((await createList.mutateAsync(name)).id);
+      setPage('lista');
+    }
+  };
+
   return (
     <div className="app">
       <header className="topbar">
@@ -215,18 +224,7 @@ export function App() {
               <span className="tab__count">{l.itemCount}</span>
             </button>
           ))}
-          <button
-            type="button"
-            className="tab tab--add"
-            title="Nueva lista"
-            onClick={async () => {
-              const name = await ask('Nueva lista', 'Nombre de la lista');
-              if (name) {
-                setListId((await createList.mutateAsync(name)).id);
-                setPage('lista');
-              }
-            }}
-          >
+          <button type="button" className="tab tab--add" title="Nueva lista" onClick={newList}>
             Nueva lista
           </button>
           <span className="tabs__sep" aria-hidden />
@@ -242,6 +240,34 @@ export function App() {
             {pf.data && <span className="tab__count">{pf.data.rows.length}</span>}
           </button>
         </nav>
+
+        {/* Móvil: un selector con las listas y la cartera, y un botón para crear lista. */}
+        <div className="list-picker">
+          <select
+            className="list-picker__select"
+            aria-label="Lista"
+            value={onPortfolio ? 'cartera' : String(listId ?? '')}
+            onChange={(e) => {
+              if (e.target.value === 'cartera') setPage('cartera');
+              else {
+                setListId(Number(e.target.value));
+                setPage('lista');
+              }
+            }}
+          >
+            <optgroup label="Listas">
+              {lists.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </optgroup>
+            <option value="cartera">Cartera</option>
+          </select>
+          <button type="button" className="icon-btn" aria-label="Nueva lista" title="Nueva lista" onClick={newList}>
+            <Icon name="plus" size={20} />
+          </button>
+        </div>
 
         <div className="topbar__right">
           {fxChips.map(([c, r]) => (
@@ -265,11 +291,18 @@ export function App() {
             onClick={() => (onPortfolio ? void refreshPortfolio() : listId && refresh.mutate(listId))}
             disabled={onPortfolio ? pfRefreshing : !listId || refresh.isPending}
             title="Forzar actualización de cotizaciones"
+            aria-label="Actualizar"
           >
-            Actualizar
+            <span className={`btn__icon${fetching ? ' btn__icon--spin' : ''}`}>
+              <Icon name="refresh" size={20} />
+            </span>
+            <span className="btn__label">Actualizar</span>
           </button>
-          <button type="button" className="btn btn--ghost" data-tour="alerts" onClick={() => setShowAlerts(true)}>
-            Avisos
+          <button type="button" className="btn btn--ghost" data-tour="alerts" aria-label="Avisos" title="Avisos" onClick={() => setShowAlerts(true)}>
+            <span className="btn__icon">
+              <Icon name="bell" size={20} />
+            </span>
+            <span className="btn__label">Avisos</span>
           </button>
           <button
             type="button"
@@ -281,8 +314,11 @@ export function App() {
           >
             Guía
           </button>
-          <button type="button" className="btn btn--ghost" data-tour="settings" onClick={() => setShowSettings(true)}>
-            Ajustes
+          <button type="button" className="btn btn--ghost" data-tour="settings" aria-label="Ajustes" title="Ajustes" onClick={() => setShowSettings(true)}>
+            <span className="btn__icon">
+              <Icon name="gear" size={20} />
+            </span>
+            <span className="btn__label">Ajustes</span>
           </button>
         </div>
       </header>
