@@ -1,22 +1,13 @@
-import { HISTORY_RANGES, isMuted, localToday, type HistoryRange, type WatchlistRow } from '@watchlist/shared';
+import { HISTORY_RANGES, type HistoryRange, type WatchlistRow } from '@watchlist/shared';
 import { useQuery } from '@tanstack/react-query';
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { api } from '../../api/client.ts';
 import { Dialog } from '../../components/Dialog.tsx';
-import { compact, money, num, pct, price, RECOMMENDATION_ES, shortDate } from '../../lib/format.ts';
-import { KEY_DATE_LABEL, upcoming } from '../../lib/keyDates.ts';
+import { pct, price } from '../../lib/format.ts';
 import { HistoryChart, type RefLine } from './HistoryChart.tsx';
+import { ValueFacts } from './ValueFacts.tsx';
 
 const RANGE_KEY = 'watchlist.ficha.periodo';
-
-function Fact({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="fact">
-      <dt>{label}</dt>
-      <dd>{children}</dd>
-    </div>
-  );
-}
 
 /** Ficha de un valor: gráfico histórico con tus niveles y objetivos, y todos sus datos. */
 export function DetailPanel({ row, base, onEdit, onClose }: { row: WatchlistRow; base: string; onEdit: () => void; onClose: () => void }) {
@@ -35,8 +26,6 @@ export function DetailPanel({ row, base, onEdit, onClose }: { row: WatchlistRow;
     ...(targets?.mean ? [{ label: 'Consenso', value: targets.mean, kind: 'consensus' as const }] : []),
   ];
   const name = item.name ?? quote?.name ?? item.symbol;
-  const cur = quote?.currency ?? base;
-  const keyDates = upcoming(row);
 
   return (
     <Dialog
@@ -95,90 +84,7 @@ export function DetailPanel({ row, base, onEdit, onClose }: { row: WatchlistRow;
         </>
       )}
 
-      <dl className="facts">
-        <Fact label="Rango 52 semanas">
-          {quote?.low52 != null && quote.high52 != null ? `${price(quote.low52)} a ${price(quote.high52)}` : '–'}
-        </Fact>
-        {metrics.levels.map((l, i) => (
-          <Fact key={i} label={`Compra ${i + 1}`}>
-            {price(l.price)} <span className={`pill pill--${l.status}`}>{pct(l.distancePct)}</span>
-          </Fact>
-        ))}
-        <Fact label="Objetivo del bróker">
-          {item.brokerTarget ? (
-            <>
-              {price(item.brokerTarget)} <span className="muted">({pct(metrics.upsideBrokerPct)}{item.brokerName ? `, ${item.brokerName}` : ''})</span>
-            </>
-          ) : (
-            '–'
-          )}
-        </Fact>
-        <Fact label="Consenso de analistas">
-          {targets?.mean ? (
-            <>
-              {price(targets.mean)} <span className="muted">({pct(metrics.upsideConsensusPct)})</span>
-              <span className="fact__sub">
-                {targets.analysts ?? '?'} analistas
-                {targets.recommendation && targets.recommendation !== 'none' && ` · ${RECOMMENDATION_ES[targets.recommendation] ?? targets.recommendation}`}
-                {targets.low != null && targets.high != null && ` · de ${price(targets.low)} a ${price(targets.high)}`}
-              </span>
-            </>
-          ) : (
-            '–'
-          )}
-        </Fact>
-        {(keyDates.length > 0 || targets?.trailingPE != null || targets?.dividendYield || targets?.marketCap != null) && (
-          <Fact label="Datos de la empresa">
-            {[
-              targets?.trailingPE != null && `PER ${num(targets.trailingPE, 1)}`,
-              targets?.dividendYield ? `rent. dividendo ${pct(targets.dividendYield).replace('+', '')}` : null,
-              targets?.marketCap != null && `capitalización ${compact(targets.marketCap, cur === 'GBp' ? 'GBP' : cur)}`,
-            ]
-              .filter(Boolean)
-              .join(' · ') || '–'}
-            {keyDates.map((d) => (
-              <span key={d.kind} className="fact__sub">
-                {KEY_DATE_LABEL[d.kind]} el {shortDate(d.date)} ({d.days === 0 ? 'hoy' : `en ${d.days} d`})
-              </span>
-            ))}
-          </Fact>
-        )}
-        <Fact label="Compra prevista">
-          {metrics.shares != null ? (
-            <>
-              {num(metrics.shares)} acciones · {money(metrics.netBase, base)}
-              {cur !== base && metrics.netNative != null && <span className="muted"> ({money(metrics.netNative, cur)})</span>}
-              <span className="fact__sub">Ahorro frente a comprar hoy: {money(metrics.diffBase, base)}</span>
-            </>
-          ) : (
-            '–'
-          )}
-        </Fact>
-        <Fact label="Orden en el banco">
-          {item.orderActive ? (
-            <>
-              {item.orderPrice != null ? price(item.orderPrice) : 'Sin precio'}
-              {item.orderUntil && (
-                <span className="muted">
-                  {' '}
-                  hasta el {shortDate(item.orderUntil)}
-                  {metrics.orderExpired ? ' (caducada)' : metrics.orderDaysLeft != null ? ` (${metrics.orderDaysLeft} d)` : ''}
-                </span>
-              )}
-            </>
-          ) : (
-            'No'
-          )}
-        </Fact>
-        <Fact label="Avisos">
-          {isMuted(item.mutedUntil, localToday())
-            ? item.mutedUntil === 'always'
-              ? 'Silenciados'
-              : `Silenciados hasta el ${shortDate(item.mutedUntil)}`
-            : 'Activados'}
-        </Fact>
-        {item.notes && <Fact label="Notas">{item.notes}</Fact>}
-      </dl>
+      <ValueFacts row={row} base={base} />
     </Dialog>
   );
 }

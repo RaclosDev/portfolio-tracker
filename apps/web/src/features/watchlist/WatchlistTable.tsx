@@ -1,6 +1,6 @@
 import { DEFAULT_STATUS_NAMES, DEFAULT_TAG_NAMES, isMuted, localToday, MAX_BUY_LEVELS, type LevelView, type WatchlistRow } from '@watchlist/shared';
 import { useSettings } from '../../api/hooks.ts';
-import { Fragment, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Icon } from '../../components/Icon.tsx';
 import { TagName } from '../../components/TagName.tsx';
 import {
@@ -17,6 +17,7 @@ import {
 import { KEY_DATE_LABEL, upcoming } from '../../lib/keyDates.ts';
 import { PriceMap } from './PriceMap.tsx';
 import { Sparkline } from './Sparkline.tsx';
+import { ValueExpanded } from './ValueExpanded.tsx';
 
 type SortDir = 'asc' | 'desc';
 
@@ -25,7 +26,9 @@ interface CellCtx {
   base: string;
   onTag: (tag: Tag) => void;
   sparks: Record<string, number[]> | undefined;
-  onOpen: (row: WatchlistRow) => void;
+  /** Despliega o recoge la vista ampliada del valor. */
+  onToggle: (row: WatchlistRow) => void;
+  isOpen: (row: WatchlistRow) => boolean;
   onSaveLevel: (row: WatchlistRow, index: number, value: number | null) => void;
 }
 
@@ -146,15 +149,17 @@ const columns: Column[] = [
     id: 'name',
     label: 'Valor',
     sort: (r) => (r.item.name ?? r.item.symbol).toLowerCase(),
-    cell: (r, { base, onTag, onOpen }) => {
+    cell: (r, { base, onTag, onToggle, isOpen }) => {
       const { item, quote } = r;
       return (
         <div className="stack">
           <button
             type="button"
             className="name name-btn"
-            title="Ver ficha y gráfico"
-            onClick={() => onOpen(r)}
+            title={isOpen(r) ? 'Recoger el detalle' : 'Ver el detalle'}
+            aria-expanded={isOpen(r)}
+            aria-controls={`detalle-${item.id}`}
+            onClick={() => onToggle(r)}
             onDoubleClick={(e) => e.stopPropagation()}
           >
             {item.name ?? item.symbol}
@@ -488,7 +493,22 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
   }, [visible]);
   const hasGroups = groups.some((g) => g.label);
 
-  const ctx: CellCtx = { base: baseCurrency, onTag, sparks, onOpen, onSaveLevel };
+  // Valores desplegados (vista ampliada bajo su fila). Un clic en la fila la abre o la cierra.
+  const [open, setOpen] = useState<Set<number>>(() => new Set());
+  const onToggle = (r: WatchlistRow) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(r.item.id)) next.add(r.item.id);
+      return next;
+    });
+  const isOpen = (r: WatchlistRow) => open.has(r.item.id);
+  const onRowClick = (r: WatchlistRow) => (e: MouseEvent<HTMLTableRowElement>) => {
+    // Los botones, campos y etiquetas de la fila hacen lo suyo; el segundo clic de un doble clic, tampoco.
+    if (e.detail > 1 || (e.target as HTMLElement).closest('button, a, input, select, textarea, label')) return;
+    onToggle(r);
+  };
+
+  const ctx: CellCtx = { base: baseCurrency, onTag, sparks, onToggle, isOpen, onSaveLevel };
 
   return (
     <div className="table-wrap">
@@ -531,11 +551,15 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
         </thead>
         <tbody>
           {sorted.map((r) => (
+            <Fragment key={r.item.id}>
             <tr
-              key={r.item.id}
               id={`fila-${r.item.id}`}
-              className={`row row--${r.metrics.status}${r.item.orderActive ? ' row--order' : ''}`}
-              onDoubleClick={() => onEdit(r)}
+              className={`row row--${r.metrics.status}${r.item.orderActive ? ' row--order' : ''}${isOpen(r) ? ' row--open' : ''}`}
+              onClick={onRowClick(r)}
+              onDoubleClick={() => {
+                onToggle(r); // deshace el despliegue del primer clic
+                onEdit(r);
+              }}
             >
               {visible.map((c) => (
                 <Fragment key={c.id}>
@@ -556,6 +580,20 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
                 </button>
               </td>
             </tr>
+            {isOpen(r) && (
+              <tr className="row-expand" id={`detalle-${r.item.id}`}>
+                <td colSpan={visible.length + 1}>
+                  <ValueExpanded
+                    row={r}
+                    base={baseCurrency}
+                    onChart={() => onOpen(r)}
+                    onEdit={() => onEdit(r)}
+                    onClose={() => onToggle(r)}
+                  />
+                </td>
+              </tr>
+            )}
+            </Fragment>
           ))}
         </tbody>
       </table>

@@ -684,7 +684,14 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .chart__hover circle { fill: var(--surface); stroke: var(--pm-price); stroke-width: 2; }
 .chart__caption { font-size: 12.5px; color: var(--text-2); min-height: 18px; }
 .chart-empty { padding: 40px 0; text-align: center; }
-.facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px 20px; margin: 18px 0 0; }
+.facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px 28px; margin: 0; }
+.dialog--drawer .facts { margin-top: 18px; }
+.facts__group h4 {
+  margin: 0 0 8px; padding-bottom: 5px; font-size: 12px; font-weight: 600; color: var(--text-2);
+  border-bottom: 1px solid var(--border);
+}
+.facts__group dl { margin: 0; display: grid; gap: 10px; }
+.facts__notes { margin: 0; white-space: pre-wrap; }
 .fact dt { font-size: 12px; color: var(--text-2); margin-bottom: 2px; }
 .fact dd { margin: 0; font-variant-numeric: tabular-nums; }
 .fact__sub { display: block; font-size: 12px; color: var(--text-2); }
@@ -856,7 +863,41 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 
 /* Tablet en vertical: las tarjetas en dos columnas. */
 @media (min-width: 701px) and (max-width: 1023px) {
-  .wl-table tbody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .wl-table tbody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 12px; }
   .wl-table tr.row { border: 1px solid var(--border); border-radius: var(--radius); }
   .table-wrap { border: 0; background: none; }
+}
+
+/* ---------- Vista ampliada de un valor (clic en la fila) ---------- */
+.wl-table tr.row { cursor: pointer; }
+@media (min-width: 1024px) { .wl-table tr.row--open td { background: var(--surface-2); } }
+.row-expand > td { padding: 0 !important; background: var(--surface-2); border-bottom: 2px solid var(--border); }
+.xp {
+  /* Si la tabla se desliza de lado, el detalle se queda a la vista. */
+  position: sticky; left: 0; max-width: min(1180px, calc(100vw - 48px));
+  display: grid; gap: 16px; padding: 16px 20px 20px; cursor: auto;
+}
+.xp__head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; }
+.xp__price { display: flex; align-items: baseline; gap: 10px; }
+.xp__price .num { font-size: 26px; font-weight: 650; letter-spacing: -0.01em; }
+.xp__headline { margin: 0; flex: 1 1 280px; font-size: 14px; }
+.xp__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pm-large { width: 100%; min-width: 0; }
+.pm-large .price-map { overflow: visible; }
+.pmL-text { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pmL-guide { stroke: var(--text-2) !important; stroke-width: 1 !important; stroke-dasharray: 2 3; opacity: 0.7; }
+.pmL-price text { fill: var(--pm-price); font-weight: 700; }
+.pmL-broker text { fill: color-mix(in oklab, var(--pm-broker), var(--text) 35%); }
+.pmL-consensus text { fill: color-mix(in oklab, var(--pm-consensus), var(--text) 35%); }
+.pmL-range text { fill: var(--text-2); font-weight: 500; }
+.pmL-order line, .pmL-order-line { stroke: var(--order-edge); stroke-width: 2.5; }
+.pmL-order text { fill: var(--order-fg); }
+.pm-range--large { stroke-width: 10; }
+.pm-zone--in { fill: color-mix(in oklab, var(--c-reached) 38%, var(--surface)); }
+@media (max-width: 1023px) {
+  .wl-table tr.row-expand, .wl-table tr.row-expand > td { display: block; }
+  .wl-table tr.row-expand { grid-column: 1 / -1; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .xp { position: static; max-width: none; padding: 14px; }
+  .wl-table tr.row--open { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .xp__price .num { font-size: 22px; }
 }
