@@ -177,23 +177,40 @@ button, input, textarea, select { font: inherit; color: inherit; }
 /* Línea destacada: el punto focal de la pantalla (lo que está en tu precio o lo más cercano).
    Es el único bloque con fondo propio encima de la tabla. */
 .highlights {
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 24px;
-  margin-bottom: 14px; padding: 12px 16px;
-  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+  /* Bloques separados por líneas de 1 px: el fondo del contenedor asoma por el hueco. */
+  display: flex; flex-wrap: wrap; gap: 1px;
+  margin-bottom: 14px; overflow: hidden;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--border);
 }
-.highlights p { margin: 0; }
-.highlights__main { font-size: 15px; flex: 1 1 420px; }
-.highlights__main--reached strong:first-child { color: var(--reached-fg); }
-.highlights__side { font-size: 13px; color: var(--text-2); }
-.highlights__warn .link-btn { color: var(--expired-fg); }
+.highlights p, .highlights ul { margin: 0; }
+.hl-cell { flex: 1 1 220px; min-width: 0; padding: 10px 16px 12px; background: var(--surface); }
+.hl-cell--main { flex: 2.2 1 340px; }
+.hl-label { font-size: 12px; color: var(--text-2); margin-bottom: 4px !important; }
+.hl-label--reached { color: var(--reached-fg); font-weight: 600; }
+.hl-value { font-size: 15px; }
+.hl-nearest { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.hl-nearest__what { min-width: 0; font-size: 14px; }
+.highlights .link-btn { text-align: left; }
+.hl-big { font-size: 24px; font-weight: 650; line-height: 1.1; letter-spacing: -0.01em; white-space: nowrap; }
+.hl-dist--veryNear { color: var(--veryNear-fg); }
+.hl-dist--near { color: var(--near-fg); }
+.hl-dist--far { color: var(--far-fg); }
+.hl-dist--veryFar, .hl-dist--unknown { color: var(--veryFar-fg); }
+.hl-list { list-style: none; padding: 0; display: grid; gap: 2px; font-size: 14px; }
+.hl-inline { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 13.5px; }
+.hl-inline li { white-space: nowrap; }
+.hl-warn { font-size: 13px; color: var(--expired-fg); margin-top: 2px !important; }
+.hl-warn .link-btn { color: inherit; }
+.hl-cell--full { flex-basis: 100%; }
+.hl-figure { font-size: 19px; font-weight: 600; }
+.hl-figure.delta { font-size: 19px; }
+.hl-figure small { font-size: 13px; font-weight: 500; }
+@media (max-width: 700px) {
+  /* Cartera en el móvil: las cuatro cifras en dos columnas. */
+  .highlights .hl-cell:not(.hl-cell--main):not(.hl-cell--full):has(.hl-figure) { flex-basis: calc(50% - 1px); }
+}
 
 /* Cartera: resumen de totales y tabla de posiciones */
-.pf-summary { display: flex; flex-wrap: wrap; gap: 8px 32px; margin: 0; flex: 1 1 100%; }
-.pf-summary div { display: flex; flex-direction: column; }
-.pf-summary dt { font-size: 12px; color: var(--text-2); }
-.pf-summary dd { margin: 0; font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.pf-summary dd.delta { font-size: 19px; }
-.pf-summary small { font-size: 13px; font-weight: 500; }
 .pf-table .num.delta { font-size: inherit; }
 .pf-total th, .pf-total td { border-top: 2px solid var(--border); font-weight: 600; padding-top: 10px; padding-bottom: 10px; }
 .pf-total th { text-align: left; }
@@ -387,11 +404,13 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 
 @media (max-width: 900px) {
   .topbar { flex-wrap: wrap; gap: 10px; }
-  .topbar__right { margin-left: 0; width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+  .topbar .tabs { order: 3; width: 100%; }
+  .topbar__right { margin-left: auto; justify-content: flex-end; flex-wrap: wrap; }
   .updated { min-width: 0; }
   .grid-3 { grid-template-columns: 1fr; }
   .legend { display: none; }
-  .search { width: 100%; }
+  .toolbar .spacer { display: none; }
+  .toolbar .search { flex: 1 1 200px; width: auto; }
   /* Filtros: se desplazan en horizontal en vez de cortarse, y con altura táctil (44 px). */
   .segmented { max-width: 100%; overflow-x: auto; scrollbar-width: thin; }
   .segmented button { white-space: nowrap; min-height: 44px; }
@@ -670,8 +689,8 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .fact dd { margin: 0; font-variant-numeric: tabular-nums; }
 .fact__sub { display: block; font-size: 12px; color: var(--text-2); }
 
-/* ---------- Pantallas estrechas: cada valor como tarjeta ---------- */
-@media (max-width: 700px) {
+/* ---------- Móvil y tablet en vertical: cada valor como tarjeta ---------- */
+@media (max-width: 1023px) {
   .wl-table thead { display: none; }
   .wl-table, .wl-table tbody { display: block; }
   .wl-table tr.row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; padding: 12px; border-bottom: 1px solid var(--border); }
@@ -685,13 +704,12 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .row--reached { box-shadow: inset 4px 0 0 var(--reached-fg); }
   .row--veryNear { box-shadow: inset 4px 0 0 var(--veryNear-fg); }
   .row--near { box-shadow: inset 4px 0 0 var(--near-fg); }
-  .row--order { box-shadow: inset 4px 0 0 var(--order-edge); }
 }
 .cell-edit { flex-direction: column; align-items: flex-end; gap: 2px; }
 .row .cell-add { opacity: 0; }
 .row:hover .cell-add, .cell-add:focus-visible { opacity: 1; }
 @media (hover: none) { .row .cell-add { opacity: 1; } }
-@media (max-width: 700px) {
+@media (max-width: 1023px) {
   .wl-table tr.row td.col-name::before, .wl-table tr.row td.col-actions::before { content: none; }
   .wl-table tr.row td:empty { display: none; }
   .wl-table tr.row td.col-actions { position: absolute; right: 8px; top: 8px; }
@@ -723,3 +741,30 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .login__card label { font-weight: 600; font-size: 13px; }
 .login-loading { margin-top: 30vh; }
 .snapshot-list li { flex-wrap: wrap; gap: 6px 12px; }
+
+/* ---------- Móvil: cabecera compacta y barra de herramientas en menos líneas ---------- */
+@media (max-width: 700px) {
+  .topbar { position: static; padding: 8px 12px; gap: 6px 4px; }
+  .brand h1 { display: none; }
+  /* Los botones van en la línea del logo; las pestañas debajo, y la hora de actualización al final. */
+  .topbar__right { display: contents; }
+  .topbar [data-tour='refresh'] { margin-left: auto; }
+  .topbar [data-tour='tour'] { display: none; }
+  .topbar .btn { padding: 0 10px; }
+  .topbar .tabs { order: 3; }
+  .topbar .chip, .topbar .updated { order: 4; font-size: 12px; }
+  .topbar .updated { text-align: left; flex: 1; }
+  .content { padding: 12px 12px 32px; }
+  .toolbar { gap: 8px; }
+  .toolbar .spacer { display: none; }
+  .toolbar .search { flex: 1 1 160px; width: auto; }
+  .hl-cell { flex-basis: 100%; padding: 10px 12px; }
+  .hl-big { font-size: 22px; }
+}
+
+/* Tablet en vertical: las tarjetas en dos columnas. */
+@media (min-width: 701px) and (max-width: 1023px) {
+  .wl-table tbody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .wl-table tr.row { border: 1px solid var(--border); border-radius: var(--radius); }
+  .table-wrap { border: 0; background: none; }
+}

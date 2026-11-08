@@ -5,6 +5,15 @@ import { upcoming } from '../../lib/keyDates.ts';
 
 const name = (r: WatchlistRow) => r.item.name ?? r.quote?.name ?? r.item.symbol;
 
+/** Nombre corto para las listas del resumen: sin la forma jurídica («Colonial SFL, Socimi S. A.» → «Colonial SFL»). */
+const shortName = (r: WatchlistRow) =>
+  name(r)
+    .split(',')[0]!
+    .replace(/\s+(S\.?\s?A\.?|N\.?V\.?|Inc\.?|Corp\.?|Corporation|plc|PLC|AG|SE|SOCIMI)$/i, '')
+    .trim();
+
+const when = (days: number) => (days <= 0 ? 'hoy' : days === 1 ? 'mañana' : `en ${days} d`);
+
 /** Lleva la vista a la fila de un valor y la resalta un momento. */
 export function goToRow(id: number) {
   const el = document.getElementById(`fila-${id}`);
@@ -15,17 +24,27 @@ export function goToRow(id: number) {
   el.classList.add('row--located');
 }
 
-function RowLink({ row, children }: { row: WatchlistRow; children: ReactNode }) {
+function RowLink({ row, children, full }: { row: WatchlistRow; children: ReactNode; full?: boolean }) {
   return (
-    <button type="button" className="link-btn" onClick={() => goToRow(row.item.id)} title="Ir a la fila">
+    <button type="button" className="link-btn" onClick={() => goToRow(row.item.id)} title={full ? 'Ir a la fila' : `${name(row)} · ir a la fila`}>
       {children}
     </button>
   );
 }
 
+function Cell({ label, children, wide }: { label: ReactNode; children: ReactNode; wide?: boolean }) {
+  return (
+    <div className={`hl-cell${wide ? ' hl-cell--main' : ''}`}>
+      <p className="hl-label">{label}</p>
+      {children}
+    </div>
+  );
+}
+
 /**
- * La línea que responde a la pregunta principal de la app: ¿qué está ya en mi precio y,
- * si nada lo está, qué es lo que más cerca está? Más las órdenes que caducan pronto.
+ * Resumen encima de la tabla. El primer bloque responde a la pregunta de la app: ¿qué está ya en mi
+ * precio o, si nada, qué es lo que más cerca está? Al lado, las órdenes puestas y los resultados de
+ * la semana (días en que el precio suele moverse mucho).
  */
 export function Highlights({ rows, base }: { rows: WatchlistRow[]; base: string }) {
   if (!rows.length) return null;
@@ -36,7 +55,6 @@ export function Highlights({ rows, base }: { rows: WatchlistRow[]; base: string 
   const orders = rows.filter((r) => r.item.orderActive);
   const expiring = orders.filter((r) => r.metrics.orderDaysLeft != null && r.metrics.orderDaysLeft <= 7);
   const committed = orders.reduce((s, r) => s + (r.metrics.netBase ?? 0), 0);
-  // Resultados en los próximos 7 días: el precio suele moverse mucho ese día.
   const earnings = rows
     .map((r) => ({ r, d: upcoming(r).find((k) => k.kind === 'earnings' && k.days <= 7) }))
     .filter((x) => x.d)
@@ -45,71 +63,86 @@ export function Highlights({ rows, base }: { rows: WatchlistRow[]; base: string 
   let main: ReactNode;
   if (reached.length) {
     main = (
-      <p className="highlights__main highlights__main--reached">
-        <strong>{reached.length === 1 ? 'En zona de compra:' : `${reached.length} valores en zona de compra:`}</strong>{' '}
-        {reached.slice(0, 4).map((r, i) => {
-          const lvl = r.metrics.levels.find((l) => l.status === 'reached');
-          return (
-            <span key={r.item.id}>
-              {i > 0 && ', '}
-              <RowLink row={r}>{name(r)}</RowLink>
-              {lvl && (
-                <span className="muted">
-                  {' '}
-                  ({price(r.quote?.price)} ≤ {price(lvl.price)})
-                </span>
-              )}
-            </span>
-          );
-        })}
-        {reached.length > 4 && <span className="muted"> y {reached.length - 4} más</span>}
-      </p>
+      <Cell wide label={<span className="hl-label--reached">En zona de compra · {reached.length}</span>}>
+        <ul className="hl-list">
+          {reached.slice(0, 4).map((r) => {
+            const lvl = r.metrics.levels.find((l) => l.status === 'reached');
+            return (
+              <li key={r.item.id}>
+                <RowLink row={r} full>
+                  {name(r)}
+                </RowLink>
+                {lvl && (
+                  <span className="muted num">
+                    {' '}
+                    {price(r.quote?.price)} ≤ {price(lvl.price)}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+          {reached.length > 4 && <li className="muted">y {reached.length - 4} más</li>}
+        </ul>
+      </Cell>
     );
   } else if (nearest) {
     const lvlIndex = nearest.metrics.levels.findIndex((l) => l.distancePct === nearest.metrics.nearestDistancePct);
     const lvl = nearest.metrics.levels[lvlIndex];
     main = (
-      <p className="highlights__main">
-        <strong>Nada en zona de compra.</strong> Lo más cerca: <RowLink row={nearest}>{name(nearest)}</RowLink>, le falta
-        caer un {pct(Math.abs(nearest.metrics.nearestDistancePct!)).replace('+', '')} hasta su compra {lvlIndex + 1}
-        {lvl && <> ({price(lvl.price)})</>}.
-      </p>
+      <Cell wide label="Nada en zona de compra · lo más cerca">
+        <p className="hl-nearest">
+          <span className={`hl-big num hl-dist--${lvl?.status ?? 'unknown'}`}>
+            {pct(Math.abs(nearest.metrics.nearestDistancePct!)).replace('+', '−')}
+          </span>
+          <span className="hl-nearest__what">
+            <RowLink row={nearest} full>
+              {name(nearest)}
+            </RowLink>
+            <span className="muted">
+              {' '}
+              hasta su compra {lvlIndex + 1}
+              {lvl && <span className="num"> ({price(lvl.price)})</span>}
+            </span>
+          </span>
+        </p>
+      </Cell>
     );
   } else {
-    main = <p className="highlights__main">Ningún valor tiene precios de compra todavía. Añádelos con el lápiz de cada fila.</p>;
+    main = (
+      <Cell wide label="Precios de compra">
+        <p className="hl-value">Ningún valor tiene todavía. Añádelos con el lápiz de cada fila.</p>
+      </Cell>
+    );
   }
 
   return (
-    <section className="highlights" aria-label="Lo más importante">
+    <section className="highlights" aria-label="Resumen">
       {main}
       {orders.length > 0 && (
-        <p className="highlights__side">
-          {orders.length === 1 ? '1 orden activa' : `${orders.length} órdenes activas`} · {money(committed, base)}
+        <Cell label="Órdenes activas">
+          <p className="hl-value">
+            <strong className="num">{orders.length}</strong> <span className="muted">·</span>{' '}
+            <span className="num">{money(committed, base)}</span>
+          </p>
           {expiring.map((r) => (
-            <span key={r.item.id} className="highlights__warn">
-              {' · '}
-              <RowLink row={r}>{name(r)}</RowLink>{' '}
-              {r.metrics.orderExpired
-                ? 'caducada'
-                : r.metrics.orderDaysLeft === 0
-                  ? 'caduca hoy'
-                  : `caduca en ${r.metrics.orderDaysLeft} d`}
-            </span>
+            <p key={r.item.id} className="hl-warn">
+              <RowLink row={r}>{shortName(r)}</RowLink>{' '}
+              {r.metrics.orderExpired ? 'caducada' : r.metrics.orderDaysLeft === 0 ? 'caduca hoy' : `caduca en ${r.metrics.orderDaysLeft} d`}
+            </p>
           ))}
-        </p>
+        </Cell>
       )}
       {earnings.length > 0 && (
-        <p className="highlights__side">
-          Resultados esta semana:{' '}
-          {earnings.slice(0, 5).map(({ r, d }, i) => (
-            <span key={r.item.id}>
-              {i > 0 && ', '}
-              <RowLink row={r}>{name(r)}</RowLink>{' '}
-              <span className="muted">{d!.days === 0 ? 'hoy' : d!.days === 1 ? 'mañana' : `en ${d!.days} d`}</span>
-            </span>
-          ))}
-          {earnings.length > 5 && <span className="muted"> y {earnings.length - 5} más</span>}
-        </p>
+        <Cell label="Resultados en 7 días">
+          <ul className="hl-inline">
+            {earnings.slice(0, 5).map(({ r, d }) => (
+              <li key={r.item.id}>
+                <RowLink row={r}>{shortName(r)}</RowLink> <span className="muted">{when(d!.days)}</span>
+              </li>
+            ))}
+            {earnings.length > 5 && <li className="muted">y {earnings.length - 5} más</li>}
+          </ul>
+        </Cell>
       )}
     </section>
   );
