@@ -220,36 +220,37 @@ export function PortfolioPage({ view, isPending, error, base, onAdd, onEdit, onT
     <>
       {view.rows.length > 0 && (
         <section className="highlights" aria-label="Resumen de la cartera">
-          <dl className="pf-summary">
-            <div>
-              <dt>Valor actual</dt>
-              <dd>{money(t.valueBase, base)}</dd>
-            </div>
-            <div>
-              <dt>Invertido</dt>
-              <dd>{money(t.costBase, base)}</dd>
-            </div>
-            <div>
-              <dt>Plusvalía</dt>
-              <dd className={`delta ${signed(t.pnlBase)}`}>
-                {money(t.pnlBase, base)} <small>{pct(t.pnlPct)}</small>
-              </dd>
-            </div>
-            <div>
-              <dt>Hoy</dt>
-              <dd className={`delta ${signed(t.dayChangeBase)}`}>{money(t.dayChangeBase, base)}</dd>
-            </div>
-          </dl>
-          {reached.length > 0 && (
-            <p className="highlights__main highlights__main--reached">
-              <strong>Objetivo de venta alcanzado:</strong> {reached.map(positionName).join(', ')}.
+          <div className="hl-cell">
+            <p className="hl-label">Valor actual</p>
+            <p className="hl-figure num">{money(t.valueBase, base)}</p>
+          </div>
+          <div className="hl-cell">
+            <p className="hl-label">Invertido</p>
+            <p className="hl-figure num">{money(t.costBase, base)}</p>
+          </div>
+          <div className="hl-cell">
+            <p className="hl-label">Plusvalía</p>
+            <p className={`hl-figure num delta ${signed(t.pnlBase)}`}>
+              {money(t.pnlBase, base)} <small>{pct(t.pnlPct)}</small>
             </p>
+          </div>
+          <div className="hl-cell">
+            <p className="hl-label">Hoy</p>
+            <p className={`hl-figure num delta ${signed(t.dayChangeBase)}`}>{money(t.dayChangeBase, base)}</p>
+          </div>
+          {reached.length > 0 && (
+            <div className="hl-cell hl-cell--full">
+              <p className="hl-label hl-label--reached">Objetivo de venta alcanzado · {reached.length}</p>
+              <p className="hl-value">{reached.map(positionName).join(', ')}</p>
+            </div>
           )}
           {t.missing > 0 && (
-            <p className="highlights__side">
-              {t.missing === 1 ? '1 posición' : `${t.missing} posiciones`} sin cotización ahora mismo: no suman en los
-              totales.
-            </p>
+            <div className="hl-cell hl-cell--full">
+              <p className="hl-value muted small">
+                {t.missing === 1 ? '1 posición' : `${t.missing} posiciones`} sin cotización ahora mismo: no suman en los
+                totales.
+              </p>
+            </div>
           )}
         </section>
       )}
