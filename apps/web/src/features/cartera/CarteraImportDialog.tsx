@@ -189,7 +189,7 @@ export function CarteraImportDialog({ hasExcelData, onClose }: { hasExcelData: b
                     <td className="al-right num">{money(excelTotals?.incomeEur, 'EUR', 2)}</td>
                   </tr>
                   <tr>
-                    <td title="El scrip se reparte entre todos los lotes (regla fiscal) y el Excel lo sumaba al último: mueve coste entre lo vendido y lo que queda.">
+                    <td title="Cada scrip va al lote de su columna «Lote», como en el Excel.">
                       P/G realizadas
                     </td>
                     <td className="al-right num">{money(preview.realized, 'EUR', 2)}</td>

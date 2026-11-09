@@ -81,6 +81,8 @@ export const operationInputSchema = z
     source: z.enum(['manual', 'excel']).default('manual'),
     /** Nº de la fila en el Excel de origen. */
     sourceRef: z.number().int().nullable().default(null),
+    /** Scrip: Nº (`sourceRef`) de la compra cuyo lote recibe estas acciones. null = se reparten entre los lotes abiertos. */
+    lotRef: z.number().int().nullable().default(null),
   })
   .superRefine((o, ctx) => {
     const need = (cond: boolean, path: string, message: string) => {

@@ -99,6 +99,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
       needsReview: review,
       source: op?.source ?? 'manual',
       sourceRef: op?.sourceRef ?? null,
+      lotRef: type === 'scrip' ? (op?.lotRef ?? null) : null,
     };
     try {
       await save.mutateAsync({

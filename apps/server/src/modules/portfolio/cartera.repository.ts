@@ -19,6 +19,7 @@ interface OperationRow {
   needs_review: boolean;
   source: Operation['source'];
   source_ref: number | null;
+  lot_ref: number | null;
   created_at: Date | string;
   updated_at: Date | string;
 }
@@ -41,6 +42,7 @@ const toOperation = (r: OperationRow): Operation => ({
   needsReview: r.needs_review,
   source: r.source,
   sourceRef: r.source_ref,
+  lotRef: r.lot_ref,
   createdAt: iso(r.created_at),
   updatedAt: iso(r.updated_at),
 });
@@ -62,6 +64,7 @@ const OP_COLUMNS = [
   'needs_review',
   'source',
   'source_ref',
+  'lot_ref',
 ] as const;
 const opValues = (d: OperationData) => [
   d.date,
@@ -80,6 +83,7 @@ const opValues = (d: OperationData) => [
   d.needsReview,
   d.source,
   d.sourceRef,
+  d.lotRef,
 ];
 
 /** Registro de operaciones de la cartera (una fila por movimiento). */

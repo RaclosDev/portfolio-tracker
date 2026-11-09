@@ -78,6 +78,19 @@ describe('scrip, splits, primas y derechos', () => {
     expect(r2(l.byTicker.get('TEF')!.costEur)).toBe(2200);
   });
 
+  it('el scrip con lote (columna «Lote» del Excel) va entero a esa compra', () => {
+    const l = computeLedger([
+      op({ date: '2020-01-01', ticker: 'TEF', type: 'buy', shares: 100, amountEur: 1000, sourceRef: 1 }),
+      op({ date: '2021-01-01', ticker: 'TEF', type: 'buy', shares: 300, amountEur: 1200, sourceRef: 5 }),
+      op({ date: '2021-01-01', ticker: 'TEF', type: 'scrip', shares: 20, amountEur: 0, lotRef: 5 }),
+      sell('2022-01-01', 'TEF', 100, 900),
+    ]);
+    const t = l.byTicker.get('TEF')!;
+    // Se vende el primer lote entero (sin scrip): coste 1000.
+    expect(r2(t.sales[0]!.costEur)).toBe(1000);
+    expect(t.openLots.map((x) => x.shares)).toEqual([320]);
+  });
+
   it('aplica los splits a los lotes abiertos', () => {
     const l = computeLedger([
       buy('2020-01-01', 'X', 10, 1000),

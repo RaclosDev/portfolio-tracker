@@ -29,8 +29,8 @@ describe.skipIf(!file)('Excel de referencia', () => {
         `Cobros: web ${income.toFixed(2)} / Excel ${excel.incomeEur?.toFixed(2)}`,
     );
     expect(income).toBeCloseTo(excel.incomeEur!, 1);
-    // El scrip se reparte entre todos los lotes (regla fiscal); el Excel lo sumaba al último. Eso mueve coste
-    // entre lo vendido y lo que queda, pero «realizado − coste de lo que queda» (y la P/G total) no cambia.
+    // Cada scrip va al lote de su columna «Lote», como en el Excel: lo realizado y el coste de lo que queda cuadran.
+    expect(realized).toBeCloseTo(excel.realizedEur!, 1);
     const openCost = ledger.tickers.reduce((s, t) => s + t.costEur, 0);
     const excelOpenCost = excel.valueEur! - excel.unrealizedEur!;
     console.info(`Realizado − coste de lo que queda: web ${(realized - openCost).toFixed(2)} / Excel ${(excel.realizedEur! - excelOpenCost).toFixed(2)}`);

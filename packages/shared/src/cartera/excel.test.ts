@@ -21,7 +21,7 @@ describe('parseRegistro', () => {
   const rows: Cell[][] = [
     HEADER,
     [1, d('2015-09-04'), '#VALUE!', 'REP', 'Compra', 400, 12, 5.35, 1, 4805.35, null, null, 'C-1'],
-    [2, d('2015-09-04'), '#VALUE!', 'REP', 'Scrip', 18, null, null, 1, 0, null, null, 'C-1'],
+    [2, d('2015-09-04'), '#VALUE!', 'REP', 'Scrip', 18, null, null, 1, 0, null, null, 'C-2015/09/04-00001-REP'],
     [3, d('2016-06-01'), '#VALUE!', 'REP', 'Dividendo', null, null, -100, 1, -100, null, null, null],
     [4, d('2021-01-07'), '#VALUE!', 'REP', 'Vta dchos', null, null, 6.24, 1, 6.24, null, null, null],
     [5, d('2026-07-15'), '#VALUE!', 'IBM', 'Compra', 13, 220, 3.43, 1.139178994495296, 2513.59, null, null, 'C-5'],
@@ -37,7 +37,8 @@ describe('parseRegistro', () => {
     const ops = p.operations.map((o) => operationInputSchema.parse(o));
     expect(ops.map((o) => o.type)).toEqual(['buy', 'scrip', 'dividend', 'rights_sale', 'buy', 'sell', 'issue_premium']);
     expect(ops[0]).toMatchObject({ shares: 400, price: 12, fees: 5.35, amountEur: 4805.35, broker: 'ING', source: 'excel', sourceRef: 1 });
-    expect(ops[2]).toMatchObject({ amountEur: 100 });
+    expect(ops[1]).toMatchObject({ shares: 18, lotRef: 1 });
+    expect(ops[2]).toMatchObject({ amountEur: 100, lotRef: null });
     expect(ops[3]).toMatchObject({ amountEur: 0, fees: 6.24 });
     expect(ops[4]).toMatchObject({ fxRate: 1.139178994495296, needsReview: true, broker: 'MyInvestor' });
     expect(ops[5]).toMatchObject({ shares: 418, amountEur: 7749.78 });

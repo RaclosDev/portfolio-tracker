@@ -47,8 +47,15 @@ const COLUMNS = {
   fx: (h: string) => h === 't/c' || h === 'tc' || h.startsWith('tipo de cambio'),
   amount: (h: string) => h.startsWith('importe'),
   splitRatio: (h: string) => h.startsWith('relac'),
+  lot: (h: string) => h === 'lote',
 } as const;
 type Col = keyof typeof COLUMNS;
+
+/** Nº de la compra en una referencia de lote del Excel («C-2016/06/24-00033-TEF» → 33). */
+export function lotRefOf(v: Cell): number | null {
+  const m = typeof v === 'string' ? v.trim().match(/^C-[\d/]+-0*(\d+)-/i) : null;
+  return m ? Number(m[1]) : null;
+}
 
 /** Número desde una celda (admite «1.234,56» y «1234.56»). */
 export function cellNumber(v: Cell): number | null {
@@ -173,7 +180,7 @@ export function parseRegistro(rows: Cell[][], brokerFor: (ticker: string) => Bro
         break;
       case 'scrip':
         if (!qty) warnings.push(`Fila ${line}: scrip sin acciones (no cambia nada); no se importa.`);
-        else operations.push({ ...common, shares: Math.abs(qty), amountEur: 0 });
+        else operations.push({ ...common, shares: Math.abs(qty), amountEur: 0, lotRef: lotRefOf(get(r, 'lot')) });
         break;
       case 'split': {
         const ratio = cellNumber(get(r, 'splitRatio')) ?? qty;

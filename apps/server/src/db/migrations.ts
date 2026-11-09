@@ -139,4 +139,6 @@ export const migrations: string[] = [
   );
   CREATE INDEX operations_ticker ON operations(ticker, date, id);
   `,
+  // 3: el scrip del Excel va al lote de su compra (columna «Lote»).
+  `ALTER TABLE operations ADD COLUMN lot_ref INTEGER;`,
 ];

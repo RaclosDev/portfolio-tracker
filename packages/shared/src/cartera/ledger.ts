@@ -229,6 +229,10 @@ export function computeLedger(operations: Operation[]): Ledger {
   const income: IncomeItem[] = [];
   const issues: LedgerIssue[] = [];
 
+  // Nº del Excel de cada compra → id de su lote (para el scrip que indica a qué lote va).
+  const lotBySourceRef = new Map<string, number>();
+  for (const o of operations) if (o.type === 'buy' && o.sourceRef != null) lotBySourceRef.set(`${o.ticker}#${o.sourceRef}`, o.id);
+
   for (const op of sortOperations(operations)) {
     let st = states.get(op.ticker);
     if (!st) states.set(op.ticker, (st = { t: newTicker(op.ticker, op.date), pending: [] }));
@@ -296,7 +300,10 @@ export function computeLedger(operations: Operation[]): Ledger {
             matches: [],
           });
         } else {
-          for (const l of t.openLots) l.shares += (shares * l.shares) / total;
+          // Si el Excel dice de qué compra sale, todo a ese lote (conserva su antigüedad); si no, a todos en proporción.
+          const target = op.lotRef != null ? t.openLots.find((l) => l.id === lotBySourceRef.get(`${op.ticker}#${op.lotRef}`)) : undefined;
+          if (target) target.shares += shares;
+          else for (const l of t.openLots) l.shares += (shares * l.shares) / total;
         }
         t.sharesByBroker[bk] = (t.sharesByBroker[bk] ?? 0) + shares;
         break;
