@@ -1,12 +1,13 @@
 import type { AnalystTargets, HistoryRange, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
 import type { Db } from '../../db/database.ts';
 import { isinCandidates, isIsin } from './isin.ts';
-import type { MarketDataProvider } from './provider.ts';
+import type { CompanyProfile, MarketDataProvider } from './provider.ts';
 
 type Kind = string; // 'quote' | TARGETS_KIND | 'history-<periodo>'
 /** Sube la versión cuando AnalystTargets gane campos: así no se sirve la caché antigua sin ellos. */
 const TARGETS_KIND = 'targets-v2';
 const HISTORY_TTL_MS = 60 * 60_000;
+const PROFILE_TTL_MS = 30 * 24 * 60 * 60_000;
 interface Entry<T> {
   value: T;
   fetchedAt: number;
@@ -212,13 +213,29 @@ export class MarketService {
     return { points: stored?.value ?? [], stale: true };
   }
 
-  /** Cierres de los últimos 3 meses de varios valores, para los minigráficos de la tabla. */
-  async getSparklines(symbols: string[]): Promise<Record<string, number[]>> {
+  /** Cierres del periodo (3 meses por defecto) de varios valores, para los minigráficos de las tablas. */
+  async getSparklines(symbols: string[], range: HistoryRange = '3m'): Promise<Record<string, number[]>> {
     const out: Record<string, number[]> = {};
     await mapLimit([...new Set(symbols)], 4, async (sym) => {
-      out[sym] = (await this.getHistory(sym, '3m')).points.map((p) => p.c);
+      out[sym] = (await this.getHistory(sym, range)).points.map((p) => p.c);
     });
     return out;
+  }
+
+  /** Ficha de la empresa (sector y nombre). Cambia poco: se guarda 30 días. null si no hay. */
+  async getProfile(symbol: string): Promise<CompanyProfile | null> {
+    if (!this.provider.getProfile) return null;
+    const stored = await this.load<CompanyProfile | null>('profile', symbol);
+    if (stored && Date.now() - stored.fetchedAt < PROFILE_TTL_MS) return stored.value;
+    if (this.throttled) return stored?.value ?? null;
+    try {
+      const profile = await this.provider.getProfile(symbol);
+      await this.persist('profile', symbol, profile);
+      return profile;
+    } catch (err) {
+      this.onProviderError(err, `Sin ficha de ${symbol}`);
+      return stored?.value ?? null;
+    }
   }
 
   /** Guarda el último dato (si falla la base de datos, se sigue con la memoria). */

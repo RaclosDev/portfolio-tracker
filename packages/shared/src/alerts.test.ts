@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { emptyMemory, evaluateAlerts, evaluateSellAlerts, DEFAULT_ALERT_PREFS, type AlertMemory } from './alerts.ts';
-import { computeMetrics, computePositionMetrics } from './calc.ts';
+import { emptyMemory, evaluateAlerts, DEFAULT_ALERT_PREFS, type AlertMemory } from './alerts.ts';
+import { computeMetrics } from './calc.ts';
 import { DEFAULT_SETTINGS } from './schemas.ts';
-import type { Item, PortfolioRow, Position, WatchlistRow } from './types.ts';
+import type { Item, WatchlistRow } from './types.ts';
 
 const baseItem: Item = {
   id: 7,
@@ -119,35 +119,5 @@ describe('silenciar y resumen diario', () => {
   it('los avisos llevan el ticker del valor', () => {
     const { alerts } = evaluateAlerts([row(16)], emptyMemory(), DEFAULT_ALERT_PREFS, t0);
     expect(alerts[0]!.symbol).toBe('FDR.MC');
-  });
-});
-
-describe('evaluateSellAlerts', () => {
-  const position: Position = {
-    id: 3, symbol: 'ITX.MC', name: 'Inditex', shares: 50, avgPrice: 40, costBase: null, buyDate: null, sellTarget: 50,
-    notes: null, mutedUntil: null, createdAt: '', updatedAt: '',
-  };
-  const prow = (price: number): PortfolioRow => {
-    const quote = {
-      symbol: 'ITX.MC', name: null, currency: 'EUR', price, changePct: 0, previousClose: price, low52: null, high52: null,
-      quoteType: 'EQUITY', exchange: null, marketState: null, fetchedAt: '', stale: false,
-    };
-    return { position, quote, targets: null, metrics: { ...computePositionMetrics({ position, quote, fxRate: 1, sellNearPct: 3 }), weight: 1 } };
-  };
-
-  it('avisa cerca del objetivo y al alcanzarlo, una vez cada cosa', () => {
-    let memory = emptyMemory();
-    const kinds = [45, 48.8, 49, 50.5, 51].map((p, i) => {
-      const res = evaluateSellAlerts([prow(p)], memory, DEFAULT_ALERT_PREFS, later(i));
-      memory = res.memory;
-      return res.alerts.map((a) => a.kind).join();
-    });
-    expect(kinds).toEqual(['', 'sellNear', '', 'sellReached', '']);
-  });
-
-  it('las alertas de compra no borran la memoria de la cartera', () => {
-    const { memory } = evaluateSellAlerts([prow(49)], emptyMemory(), DEFAULT_ALERT_PREFS, t0);
-    const after = evaluateAlerts([row(20)], memory, DEFAULT_ALERT_PREFS, t0).memory;
-    expect(Object.keys(after.levels).some((k) => k.startsWith('sell:'))).toBe(true);
   });
 });

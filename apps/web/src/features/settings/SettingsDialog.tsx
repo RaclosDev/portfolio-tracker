@@ -16,6 +16,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../api/client.ts';
+import { buildModel } from '../cartera/model.ts';
 import { useImportBackup, useListMutations, useUpdateSettings } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
 import { usePrompt } from '../../components/usePrompt.tsx';
@@ -128,7 +129,6 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
   const [bands, setBands] = useState(settings.bands);
   const [names, setNames] = useState<StatusNames>(settings.statusNames);
   const [tagNames, setTagNames] = useState<TagNames>(settings.tagNames ?? DEFAULT_TAG_NAMES);
-  const [sellNear, setSellNear] = useState(str(settings.sellNearPct));
   const [blink, setBlink] = useState(settings.blinkReached);
   const [theme, setTheme] = useState(settings.theme);
   const [density, setDensity] = useState(settings.density);
@@ -182,7 +182,6 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
       bands,
       statusNames: cleanNames,
       tagNames: cleanTags,
-      sellNearPct: Math.min(100, Math.max(0, parseDecimal(sellNear) ?? settings.sellNearPct)),
       blinkReached: blink,
       theme,
       density,
@@ -209,8 +208,8 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
     setExporting(true);
     setMsg(null);
     try {
-      const [views, portfolio] = await Promise.all([Promise.all(lists.map((l) => api.watchlist(l.id))), api.portfolio()]);
-      await exportExcel(views, portfolio);
+      const [views, cartera] = await Promise.all([Promise.all(lists.map((l) => api.watchlist(l.id))), api.portfolio()]);
+      await exportExcel(views, { valuation: buildModel(cartera).valuation, operations: cartera.operations });
     } catch {
       setMsg('No se pudo crear el Excel.');
     } finally {
@@ -300,9 +299,6 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
         </div>
         <Row label="Parpadear los valores en zona de compra" hint="Para que no se te pasen. Se desactiva si Windows tiene reducidas las animaciones.">
           <Switch label="Parpadeo" checked={blink} onChange={setBlink} />
-        </Row>
-        <Row label="Cerca del objetivo de venta" hint="Cartera: te aviso cuando al precio le falte subir como mucho este porcentaje.">
-          <NumberInput label="Umbral cerca de vender" value={sellNear} onChange={setSellNear} suffix="%" />
         </Row>
       </>
     ),
@@ -561,7 +557,7 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
                   {new Date(c.createdAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}
                   <span className="muted small">
                     {' '}
-                    · {c.reason} · {c.items} valores{c.positions ? `, ${c.positions} posiciones` : ''}
+                    · {c.reason} · {c.items} valores{c.operations ? `, ${c.operations} operaciones de cartera` : ''}
                   </span>
                 </span>
                 <span className="list-admin__actions">
@@ -575,7 +571,7 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
                       if (!confirm('Restaurar esta copia REEMPLAZA las listas, valores y cartera actuales (antes se guarda una copia de lo actual). ¿Continuar?')) return;
                       const r = await api.restoreSnapshot(c.id);
                       await qc.invalidateQueries();
-                      setMsg(`Restaurada: ${r.lists} listas, ${r.items} valores y ${r.positions} posiciones.`);
+                      setMsg(`Restaurada: ${r.lists} listas, ${r.items} valores y ${r.operations} operaciones de cartera.`);
                     }}
                   >
                     Restaurar

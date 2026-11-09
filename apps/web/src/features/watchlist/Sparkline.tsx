@@ -7,7 +7,15 @@ const H = 26;
  * Tendencia de los últimos 3 meses en la fila. Color según si sube o baja en el periodo; la línea
  * discontinua es tu compra 1 si cae dentro del rango, para ver si el precio se acerca o se aleja.
  */
-export function Sparkline({ closes, level }: { closes: number[] | undefined; level?: number | null }) {
+export function Sparkline({
+  closes,
+  level,
+  period = '3 meses',
+}: {
+  closes: number[] | undefined;
+  level?: number | null;
+  period?: string;
+}) {
   if (!closes) return <span className="muted small">…</span>;
   if (closes.length < 2) return <span className="muted small">–</span>;
   const min = Math.min(...closes);
@@ -20,7 +28,7 @@ export function Sparkline({ closes, level }: { closes: number[] | undefined; lev
   const change = (last - first) / first;
   const d = closes.map((c, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(c).toFixed(1)}`).join('');
   const showLevel = level != null && level >= min && level <= max;
-  const label = `Últimos 3 meses: ${pct(change)} (de ${price(first)} a ${price(last)})`;
+  const label = `Últimos ${period}: ${pct(change)} (de ${price(first)} a ${price(last)})`;
   return (
     <svg className={`spark spark--${change >= 0 ? 'up' : 'down'}`} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
       <title>{label}</title>

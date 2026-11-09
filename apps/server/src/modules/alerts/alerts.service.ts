@@ -1,13 +1,12 @@
 /**
  * Vigilancia de precios en el servidor: cada minuto (o lo que diga Ajustes) calcula el estado de
- * todos los valores y de la cartera, decide qué avisar, lo guarda en el historial y lo envía como
+ * todos los valores de las listas, decide qué avisar, lo guarda en el historial y lo envía como
  * notificación a los dispositivos suscritos. También manda el resumen diario y hace la copia diaria.
  */
 import {
   buildDailySummary,
   emptyMemory,
   evaluateAlerts,
-  evaluateSellAlerts,
   hhmmOf,
   inTimeRange,
   isMuted,
@@ -15,13 +14,11 @@ import {
   type Alert,
   type AlertMemory,
   type AlertRecord,
-  type PortfolioRow,
   type WatchlistRow,
 } from '@watchlist/shared';
 import { iso, type Db } from '../../db/database.ts';
 import type { BackupService } from '../backup/backup.service.ts';
 import type { ListsRepository } from '../lists/lists.repository.ts';
-import type { PortfolioService } from '../portfolio/portfolio.service.ts';
 import type { SettingsRepository, StateRepository } from '../settings/settings.repository.ts';
 import type { WatchlistService } from '../watchlist/watchlist.service.ts';
 import type { PushService } from './push.service.ts';
@@ -40,7 +37,6 @@ export class AlertsService {
     private settings: SettingsRepository,
     private state: StateRepository,
     private watchlist: WatchlistService,
-    private portfolio: PortfolioService,
     private push: PushService,
     private backup: BackupService,
     private log: (msg: string, err?: unknown) => void = () => {},
@@ -81,11 +77,10 @@ export class AlertsService {
         if (n.quietHours && inTimeRange(hhmmOf(now), n.quietFrom, n.quietTo)) return [];
       }
 
-      const { rows, portfolio } = await this.loadRows();
+      const rows = await this.loadRows();
       this.lastCheck = now;
       const watched = rows.filter((r) => !isMuted(r.item.mutedUntil, today));
-      const held = portfolio.filter((r) => !isMuted(r.position.mutedUntil, today));
-      const prefs = { reached: n.reached, near: n.near, orders: n.orders, sell: n.sell };
+      const prefs = { reached: n.reached, near: n.near, orders: n.orders };
 
       const before = await this.state.get<AlertMemory & { bands?: string }>('avisos', emptyMemory());
       // Si han cambiado los tramos, el primer repaso solo recoloca los estados: mover un umbral no es
@@ -93,9 +88,8 @@ export class AlertsService {
       const bands = `${s.bands.veryNear}/${s.bands.near}/${s.bands.far}`;
       const rebase = before.bands !== bands;
       const buy = evaluateAlerts(watched, before, prefs, now);
-      const sell = evaluateSellAlerts(held, buy.memory, prefs, now);
-      const alerts = [...buy.alerts.filter((a) => !(rebase && a.kind === 'near')), ...sell.alerts];
-      const memory = { ...sell.memory, bands };
+      const alerts = buy.alerts.filter((a) => !(rebase && a.kind === 'near'));
+      const memory = { ...buy.memory, bands };
       if (JSON.stringify(memory) !== JSON.stringify(before)) await this.state.set('avisos', memory);
 
       if (alerts.length) {
@@ -109,7 +103,7 @@ export class AlertsService {
       // Resumen del día: una vez, a partir de la hora elegida.
       if (n.dailySummary && hhmmOf(now) >= n.dailySummaryAt && (await this.state.get('ultimoResumen', '')) !== today) {
         await this.state.set('ultimoResumen', today);
-        const summary = buildDailySummary(rows, now, portfolio, s.statusNames);
+        const summary = buildDailySummary(rows, now, s.statusNames);
         if (summary) await this.push.sendAll({ ...summary, tag: 'resumen', url: '/' });
       }
       return alerts;
@@ -118,14 +112,14 @@ export class AlertsService {
     }
   }
 
-  private async loadRows(): Promise<{ rows: WatchlistRow[]; portfolio: PortfolioRow[] }> {
+  private async loadRows(): Promise<WatchlistRow[]> {
     const lists = await this.lists.all();
-    const [views, pf] = await Promise.all([Promise.all(lists.map((l) => this.watchlist.view(l.id))), this.portfolio.view()]);
+    const views = await Promise.all(lists.map((l) => this.watchlist.view(l.id)));
     const seen = new Set<string>();
     const rows = views
       .flatMap((v) => v?.rows ?? [])
       .filter((r) => (seen.has(r.item.symbol) ? false : (seen.add(r.item.symbol), true)));
-    return { rows, portfolio: pf.rows };
+    return rows;
   }
 
   private async saveHistory(alerts: Alert[]) {

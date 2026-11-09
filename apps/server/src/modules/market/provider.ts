@@ -14,4 +14,11 @@ export interface MarketDataProvider {
   search(query: string): Promise<SymbolSearchResult[]>;
   /** Cierres históricos del periodo, del más antiguo al más reciente. */
   getHistory(symbol: string, range: HistoryRange): Promise<PricePoint[]>;
+  /** Ficha de la empresa (sector en español). Opcional: sin ella la cartera queda «Sin sector». */
+  getProfile?(symbol: string): Promise<CompanyProfile | null>;
+}
+
+export interface CompanyProfile {
+  name: string | null;
+  sector: string | null;
 }

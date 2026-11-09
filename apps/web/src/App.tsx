@@ -1,11 +1,11 @@
-import { DEFAULT_SETTINGS, type PortfolioRow, type WatchlistRow } from '@watchlist/shared';
+import { DEFAULT_SETTINGS, type WatchlistRow } from '@watchlist/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from './api/client.ts';
 import { keys, useForceRefresh, useListMutations, useLists, usePortfolio, useSaveItem, useSettings, useWatchlist } from './api/hooks.ts';
-import { PortfolioPage } from './features/portfolio/PortfolioPage.tsx';
-import { PositionDialog, type PositionDraft } from './features/portfolio/PositionDialog.tsx';
-import { TradeDialog } from './features/portfolio/TradeDialog.tsx';
+import { CarteraPage } from './features/cartera/CarteraPage.tsx';
+import type { OperationDraft } from './features/cartera/OperationDialog.tsx';
+import { useCarteraModel } from './features/cartera/model.ts';
 import { ItemDialog } from './features/items/ItemDialog.tsx';
 import { SettingsDialog } from './features/settings/SettingsDialog.tsx';
 import { PriceMapLegend } from './features/watchlist/PriceMap.tsx';
@@ -62,6 +62,7 @@ export function App() {
   const wl = useWatchlist(listId, settings.refreshSeconds);
   // La cartera se refresca al ritmo normal solo cuando se está viendo; si no, cada 5 min (para el contador).
   const pf = usePortfolio(onPortfolio ? settings.refreshSeconds : 300);
+  const carteraModel = useCarteraModel(pf.data);
   const refresh = useForceRefresh();
   const qc = useQueryClient();
   const [pfRefreshing, setPfRefreshing] = useState(false);
@@ -73,9 +74,8 @@ export function App() {
       setPfRefreshing(false);
     }
   };
-  const [posEditing, setPosEditing] = useState<PortfolioRow | 'new' | null>(null);
-  const [posDraft, setPosDraft] = useState<PositionDraft | undefined>();
-  const [trading, setTrading] = useState<{ row: PortfolioRow; type: 'buy' | 'sell' } | null>(null);
+  const [buyDraft, setBuyDraft] = useState<OperationDraft | null>(null);
+  const clearDraft = useCallback(() => setBuyDraft(null), []);
   const { create: createList } = useListMutations();
   const now = useNow(10_000);
 
@@ -169,7 +169,9 @@ export function App() {
 
   // Solo divisas principales: GBp (peniques) comparte tipo con GBP y no se repite.
   const fxChips = Object.entries((onPortfolio ? pf.data?.fx : view?.fx) ?? {}).filter(([c]) => c !== base && /^[A-Z]{3}$/.test(c));
-  const anyStale = onPortfolio ? pf.data?.rows.some((r) => r.quote?.stale) : view?.rows.some((r) => r.quote?.stale);
+  const anyStale = onPortfolio
+    ? Object.values(pf.data?.quotes ?? {}).some((q) => q.stale)
+    : view?.rows.some((r) => r.quote?.stale);
   const fetching = onPortfolio ? pf.isFetching || pfRefreshing : wl.isFetching || refresh.isPending;
   const generatedAt = onPortfolio ? pf.data?.generatedAt : view?.generatedAt;
   const refetchFailed = onPortfolio ? pf.isRefetchError : wl.isRefetchError;
@@ -234,7 +236,7 @@ export function App() {
             title="Lo que ya tienes comprado"
           >
             Cartera
-            {pf.data && <span className="tab__count">{pf.data.rows.length}</span>}
+            {carteraModel && <span className="tab__count">{carteraModel.valuation.open.length}</span>}
           </button>
         </nav>
 
@@ -330,17 +332,12 @@ export function App() {
           </p>
         )}
         {onPortfolio ? (
-          <PortfolioPage
-            view={pf.data}
+          <CarteraPage
+            model={carteraModel}
             isPending={pf.isPending}
             error={pf.error}
-            base={base}
-            onAdd={() => {
-              setPosDraft(undefined);
-              setPosEditing('new');
-            }}
-            onEdit={setPosEditing}
-            onTrade={(row, type) => setTrading({ row, type })}
+            draft={buyDraft}
+            onDraftUsed={clearDraft}
           />
         ) : (
           <>
@@ -444,21 +441,11 @@ export function App() {
           onClose={() => setEditing(null)}
           onBought={(draft) => {
             setEditing(null);
-            setPosDraft(draft);
-            setPosEditing('new');
+            setBuyDraft(draft);
             setPage('cartera');
           }}
         />
       )}
-      {posEditing && (
-        <PositionDialog
-          row={posEditing === 'new' ? null : posEditing}
-          draft={posEditing === 'new' ? posDraft : undefined}
-          base={base}
-          onClose={() => setPosEditing(null)}
-        />
-      )}
-      {trading && <TradeDialog row={trading.row} type={trading.type} base={base} onClose={() => setTrading(null)} />}
       {promptEl}
       {tourOpen && <Tour steps={TOUR_STEPS} onClose={closeTour} />}
       {showSettings && <SettingsDialog settings={settings} lists={lists} onClose={() => setShowSettings(false)} />}

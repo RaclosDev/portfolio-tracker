@@ -84,7 +84,7 @@ Flujo: el navegador pide `GET /api/lists/:id/watchlist`; el servidor combina los
 
 ## 5. Avisos
 
-El servidor ejecuta `AlertsService` cada minuto (o la frecuencia de Ajustes): calcula todas las listas y la
-cartera, compara con la memoria de avisos (`app_state`), guarda lo nuevo en `alert_history` y lo envía a cada
+El servidor ejecuta `AlertsService` cada minuto (o la frecuencia de Ajustes): calcula todas las listas (la
+cartera no genera avisos), compara con la memoria de avisos (`app_state`), guarda lo nuevo en `alert_history` y lo envía a cada
 suscripción de `push_subscriptions`. Respeta fines de semana, horas de silencio y el resumen diario (hora de
 España, `TZ=Europe/Madrid`). También guarda una copia diaria en `snapshots`.

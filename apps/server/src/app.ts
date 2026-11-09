@@ -24,7 +24,8 @@ export async function buildApp(services: Services, { logLevel = 'warn', webRoot 
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:'],
         connectSrc: ["'self'"],
-        workerSrc: ["'self'"],
+        // read-excel-file descomprime el .xlsx en workers creados desde blob:; sin esto la lectura se cuelga sin error.
+        workerSrc: ["'self'", 'blob:'],
         manifestSrc: ["'self'"],
         objectSrc: ["'none'"],
         frameAncestors: ["'none'"],

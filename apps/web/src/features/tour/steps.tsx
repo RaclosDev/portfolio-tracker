@@ -32,8 +32,8 @@ export const TOUR_STEPS: TourStep[] = [
     body: (
       <>
         <p>
-          Lo que ya tienes comprado: acciones, precio medio, cuánto vale hoy, tu plusvalía y el peso de cada valor. Si le
-          pones un <strong>objetivo de venta</strong>, te aviso cuando el precio llegue o se acerque.
+          Tu cartera real a partir del registro de operaciones (compras, ventas, dividendos, scrip…): lo que tienes, lo
+          que ya vendiste, lo cobrado y el informe para la <strong>Renta</strong>. Puedes importar tu Excel de cartera.
         </p>
         <p>
           Cuando compres algo de esta lista, ábrelo con el lápiz y pulsa <strong>«Lo he comprado»</strong>: pasa a la

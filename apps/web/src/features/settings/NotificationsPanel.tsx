@@ -137,9 +137,6 @@ export function NotificationsPanel({ value: n, onChange, refreshSeconds, onGoGen
       <Row label="Órdenes" hint="El precio toca tu orden puesta o la orden está a punto de caducar.">
         <Switch label="Avisar de órdenes" checked={n.orders} onChange={(v) => set('orders', v)} />
       </Row>
-      <Row label="Objetivo de venta" hint="Un valor de tu cartera llega a su objetivo de venta o se queda cerca.">
-        <Switch label="Avisar del objetivo de venta" checked={n.sell} onChange={(v) => set('sell', v)} />
-      </Row>
 
       <h4 className="settings-sub">Cuándo</h4>
       <Row label="Frecuencia" hint={`Los precios se comprueban cada ${Math.max(60, refreshSeconds)} segundos. Se cambia en General.`}>
