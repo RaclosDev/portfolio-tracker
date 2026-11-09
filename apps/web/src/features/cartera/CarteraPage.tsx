@@ -36,20 +36,20 @@ function Totals({ model }: { model: CarteraModel }) {
   const s = model.valuation.summary;
   return (
     <section className="highlights" aria-label="Resumen de la cartera">
-      <Figure label="Valor actual" value={money(s.valueEur)} />
-      <Figure label="Hoy" value={money(s.dayChangeEur)} sub={pct(s.dayChangePct, 2)} delta={s.dayChangeEur} />
+      <Figure label="Valor actual" value={money(s.valueEur, 'EUR', 2)} />
+      <Figure label="Hoy" value={money(s.dayChangeEur, 'EUR', 2)} sub={pct(s.dayChangePct, 2)} delta={s.dayChangeEur} />
       <Figure
         label="Latente"
-        value={money(s.unrealizedEur)}
+        value={money(s.unrealizedEur, 'EUR', 2)}
         sub={pct(s.costEur ? s.unrealizedEur / s.costEur : null)}
         delta={s.unrealizedEur}
         title="Plusvalía de lo que tienes si vendieras hoy"
       />
-      <Figure label="Realizado" value={money(s.realizedEur)} delta={s.realizedEur} title="Resultado de todas las ventas" />
-      <Figure label="Cobros" value={money(s.incomeEur)} title="Dividendos y primas (bruto − comisiones − retención en origen)" />
+      <Figure label="Realizado" value={money(s.realizedEur, 'EUR', 2)} delta={s.realizedEur} title="Resultado de todas las ventas" />
+      <Figure label="Cobros" value={money(s.incomeEur, 'EUR', 2)} title="Dividendos y primas (bruto − comisiones − retención en origen)" />
       <Figure
         label="Total"
-        value={money(s.totalEur)}
+        value={money(s.totalEur, 'EUR', 2)}
         sub={s.xirr != null ? `TIR ${pct(s.xirr).replace('+', '')}` : undefined}
         delta={s.totalEur}
         title="Latente + realizado + cobros. TIR: rentabilidad anual del dinero invertido"
@@ -118,9 +118,9 @@ function ResumenView({ model }: { model: CarteraModel }) {
                   return (
                     <tr key={y}>
                       <td className="num">{y}</td>
-                      <td className={`al-right num delta ${signed(v.realized)}`}>{money(v.realized)}</td>
-                      <td className="al-right num">{money(v.dividends)}</td>
-                      <td className="al-right num">{v.other ? money(v.other) : ''}</td>
+                      <td className={`al-right num delta ${signed(v.realized)}`}>{money(v.realized, 'EUR', 2)}</td>
+                      <td className="al-right num">{money(v.dividends, 'EUR', 2)}</td>
+                      <td className="al-right num">{v.other ? money(v.other, 'EUR', 2) : ''}</td>
                       <td className="al-right">
                         <span className="databar">
                           <span
@@ -128,7 +128,7 @@ function ResumenView({ model }: { model: CarteraModel }) {
                             style={{ width: `${(Math.abs(total) / max) * 100}%` }}
                             aria-hidden
                           />
-                          <span className={`databar__text num delta ${signed(total)}`}>{money(total)}</span>
+                          <span className={`databar__text num delta ${signed(total)}`}>{money(total, 'EUR', 2)}</span>
                         </span>
                       </td>
                     </tr>
@@ -144,19 +144,19 @@ function ResumenView({ model }: { model: CarteraModel }) {
             <tbody>
               <tr>
                 <th scope="row">Invertido en compras</th>
-                <td className="al-right num">{money(s.boughtEur)}</td>
+                <td className="al-right num">{money(s.boughtEur, 'EUR', 2)}</td>
               </tr>
               <tr>
                 <th scope="row">Coste de lo que tienes</th>
-                <td className="al-right num">{money(s.costEur)}</td>
+                <td className="al-right num">{money(s.costEur, 'EUR', 2)}</td>
               </tr>
               <tr>
                 <th scope="row">Dividendos</th>
-                <td className="al-right num">{money(s.dividendsEur)}</td>
+                <td className="al-right num">{money(s.dividendsEur, 'EUR', 2)}</td>
               </tr>
               <tr>
                 <th scope="row">Primas y derechos</th>
-                <td className="al-right num">{money(s.otherIncomeEur)}</td>
+                <td className="al-right num">{money(s.otherIncomeEur, 'EUR', 2)}</td>
               </tr>
               <tr>
                 <th scope="row">Valores en cartera / cerrados</th>

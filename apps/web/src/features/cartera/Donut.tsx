@@ -43,7 +43,7 @@ export function Donut({ title, slices }: { title: string; slices: Slice[] }) {
                   strokeDashoffset={-offset}
                   transform="rotate(-90 70 70)"
                 >
-                  <title>{`${s.label}: ${money(s.value)} (${pct(s.value / total).replace('+', '')})`}</title>
+                  <title>{`${s.label}: ${money(s.value, 'EUR', 2)} (${pct(s.value / total).replace('+', '')})`}</title>
                 </circle>
               );
               offset += len;

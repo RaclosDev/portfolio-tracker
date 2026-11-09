@@ -8,7 +8,7 @@ import { DataBar, SortTable, type Column } from './SortTable.tsx';
 
 const Delta = ({ v, sub }: { v: number | null | undefined; sub?: number | null }) => (
   <div className="stack stack--right">
-    <span className={`num delta ${signed(v)}`}>{money(v)}</span>
+    <span className={`num delta ${signed(v)}`}>{money(v, 'EUR', 2)}</span>
     {sub !== undefined && <span className={`sub num delta ${signed(sub)}`}>{pct(sub)}</span>}
   </div>
 );
@@ -90,10 +90,10 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
       sort: (r) => r.valueEur,
       cell: (r) => (
         <DataBar value={r.valueEur} max={maxValue}>
-          <span className="num">{money(r.valueEur)}</span>
+          <span className="num">{money(r.valueEur, 'EUR', 2)}</span>
         </DataBar>
       ),
-      total: <span className="num">{money(s.valueEur)}</span>,
+      total: <span className="num">{money(s.valueEur, 'EUR', 2)}</span>,
     },
     {
       id: 'cost',
@@ -101,8 +101,8 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
       align: 'right',
       title: 'Lo que costaron las acciones que quedan (FIFO, con comisiones)',
       sort: (r) => r.ledger.costEur,
-      cell: (r) => <span className="num">{money(r.ledger.costEur)}</span>,
-      total: <span className="num">{money(s.costEur)}</span>,
+      cell: (r) => <span className="num">{money(r.ledger.costEur, 'EUR', 2)}</span>,
+      total: <span className="num">{money(s.costEur, 'EUR', 2)}</span>,
     },
     {
       id: 'unrealized',
@@ -129,8 +129,8 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
       sort: (r) => r.ledger.realizedEur + r.ledger.dividendsEur + r.ledger.otherIncomeEur,
       cell: (r) => (
         <div className="stack stack--right">
-          <span className={`num delta ${signed(r.ledger.realizedEur)}`}>{money(r.ledger.realizedEur)}</span>
-          <span className="sub num">{money(r.ledger.dividendsEur + r.ledger.otherIncomeEur)} cobros</span>
+          <span className={`num delta ${signed(r.ledger.realizedEur)}`}>{money(r.ledger.realizedEur, 'EUR', 2)}</span>
+          <span className="sub num">{money(r.ledger.dividendsEur + r.ledger.otherIncomeEur, 'EUR', 2)} cobros</span>
         </div>
       ),
     },
@@ -142,7 +142,7 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
       sort: (r) => r.historicEur,
       cell: (r) => (
         <DataBar value={r.historicEur} max={maxHist}>
-          <span className={`num delta ${signed(r.historicEur)}`}>{money(r.historicEur)}</span>
+          <span className={`num delta ${signed(r.historicEur)}`}>{money(r.historicEur, 'EUR', 2)}</span>
         </DataBar>
       ),
     },
@@ -190,7 +190,7 @@ export function ClosedView({ model, onOpen }: { model: CarteraModel; onOpen: (ti
       label: 'Invertido',
       align: 'right',
       sort: (r) => r.ledger.boughtEur,
-      cell: (r) => <span className="num">{money(r.ledger.boughtEur)}</span>,
+      cell: (r) => <span className="num">{money(r.ledger.boughtEur, 'EUR', 2)}</span>,
     },
     {
       id: 'realized',
@@ -206,8 +206,8 @@ export function ClosedView({ model, onOpen }: { model: CarteraModel; onOpen: (ti
       label: 'Cobros',
       align: 'right',
       sort: (r) => r.ledger.dividendsEur + r.ledger.otherIncomeEur,
-      cell: (r) => <span className="num">{money(r.ledger.dividendsEur + r.ledger.otherIncomeEur)}</span>,
-      total: <span className="num">{money(sum((r) => r.ledger.dividendsEur + r.ledger.otherIncomeEur))}</span>,
+      cell: (r) => <span className="num">{money(r.ledger.dividendsEur + r.ledger.otherIncomeEur, 'EUR', 2)}</span>,
+      total: <span className="num">{money(sum((r) => r.ledger.dividendsEur + r.ledger.otherIncomeEur), 'EUR', 2)}</span>,
     },
     {
       id: 'total',
@@ -216,7 +216,7 @@ export function ClosedView({ model, onOpen }: { model: CarteraModel; onOpen: (ti
       sort: (r) => r.totalEur,
       cell: (r) => (
         <DataBar value={r.totalEur} max={max}>
-          <span className={`num delta ${signed(r.totalEur)}`}>{money(r.totalEur)}</span>
+          <span className={`num delta ${signed(r.totalEur)}`}>{money(r.totalEur, 'EUR', 2)}</span>
         </DataBar>
       ),
       total: <Delta v={sum((r) => r.totalEur)} />,

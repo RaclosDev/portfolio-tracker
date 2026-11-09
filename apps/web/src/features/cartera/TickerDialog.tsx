@@ -83,17 +83,17 @@ export function TickerDialog({
           <div className="hl-cell">
             <p className="hl-label">Latente</p>
             <p className={`hl-figure num delta ${signed(row.unrealizedEur)}`}>
-              {money(row.unrealizedEur)} <small>{pct(row.unrealizedPct)}</small>
+              {money(row.unrealizedEur, 'EUR', 2)} <small>{pct(row.unrealizedPct)}</small>
             </p>
           </div>
         )}
         <div className="hl-cell">
           <p className="hl-label">Ventas</p>
-          <p className={`hl-figure num delta ${signed(t.realizedEur)}`}>{money(t.realizedEur)}</p>
+          <p className={`hl-figure num delta ${signed(t.realizedEur)}`}>{money(t.realizedEur, 'EUR', 2)}</p>
         </div>
         <div className="hl-cell">
           <p className="hl-label">Cobros</p>
-          <p className="hl-figure num">{money(t.dividendsEur + t.otherIncomeEur)}</p>
+          <p className="hl-figure num">{money(t.dividendsEur + t.otherIncomeEur, 'EUR', 2)}</p>
         </div>
       </section>
 
