@@ -1,12 +1,11 @@
-import { DEFAULT_SETTINGS, type PortfolioRow, type WatchlistRow } from '@watchlist/shared';
+import { DEFAULT_SETTINGS, type WatchlistRow } from '@watchlist/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from './api/client.ts';
 import { keys, useForceRefresh, useListMutations, useLists, usePortfolio, useSaveItem, useSettings, useWatchlist } from './api/hooks.ts';
-import { PortfolioPage } from './features/portfolio/PortfolioPage.tsx';
-import { PositionDialog, type PositionDraft } from './features/portfolio/PositionDialog.tsx';
-import { TradeDialog } from './features/portfolio/TradeDialog.tsx';
-import { DetailPanel } from './features/detail/DetailPanel.tsx';
+import { CarteraPage } from './features/cartera/CarteraPage.tsx';
+import type { OperationDraft } from './features/cartera/OperationDialog.tsx';
+import { useCarteraModel } from './features/cartera/model.ts';
 import { ItemDialog } from './features/items/ItemDialog.tsx';
 import { SettingsDialog } from './features/settings/SettingsDialog.tsx';
 import { PriceMapLegend } from './features/watchlist/PriceMap.tsx';
@@ -19,6 +18,7 @@ import { Tour } from './features/tour/Tour.tsx';
 import { num, timeAgo } from './lib/format.ts';
 import { applyAppearance, applyColors } from './lib/theme.ts';
 import { usePrompt } from './components/usePrompt.tsx';
+import { Icon } from './components/Icon.tsx';
 import { PushBanner } from './components/PushBanner.tsx';
 import { UpdateBanner } from './components/UpdateBanner.tsx';
 import { AlertsDialog } from './features/alerts/AlertsDialog.tsx';
@@ -62,6 +62,7 @@ export function App() {
   const wl = useWatchlist(listId, settings.refreshSeconds);
   // La cartera se refresca al ritmo normal solo cuando se está viendo; si no, cada 5 min (para el contador).
   const pf = usePortfolio(onPortfolio ? settings.refreshSeconds : 300);
+  const carteraModel = useCarteraModel(pf.data);
   const refresh = useForceRefresh();
   const qc = useQueryClient();
   const [pfRefreshing, setPfRefreshing] = useState(false);
@@ -73,9 +74,8 @@ export function App() {
       setPfRefreshing(false);
     }
   };
-  const [posEditing, setPosEditing] = useState<PortfolioRow | 'new' | null>(null);
-  const [posDraft, setPosDraft] = useState<PositionDraft | undefined>();
-  const [trading, setTrading] = useState<{ row: PortfolioRow; type: 'buy' | 'sell' } | null>(null);
+  const [buyDraft, setBuyDraft] = useState<OperationDraft | null>(null);
+  const clearDraft = useCallback(() => setBuyDraft(null), []);
   const { create: createList } = useListMutations();
   const now = useNow(10_000);
 
@@ -89,7 +89,6 @@ export function App() {
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [currencyFilter, setCurrencyFilter] = useState<string>('all');
-  const [detailId, setDetailId] = useState<number | null>(null);
 
   // Los filtros se recuerdan por lista (se restauran al volver a ella o al reabrir la app).
   const filtersKey = listId ? `watchlist.filtros.${listId}` : null;
@@ -125,7 +124,6 @@ export function App() {
     staleTime: 30 * 60_000,
     refetchInterval: 30 * 60_000,
   });
-  const detailRow = view?.rows.find((r) => r.item.id === detailId) ?? null;
   const base = view?.settings.baseCurrency ?? settings.baseCurrency;
   // Filtros por etiqueta: se aplican antes de las tarjetas, que cuentan sobre lo filtrado.
   const tagged = useMemo(
@@ -171,10 +169,35 @@ export function App() {
 
   // Solo divisas principales: GBp (peniques) comparte tipo con GBP y no se repite.
   const fxChips = Object.entries((onPortfolio ? pf.data?.fx : view?.fx) ?? {}).filter(([c]) => c !== base && /^[A-Z]{3}$/.test(c));
-  const anyStale = onPortfolio ? pf.data?.rows.some((r) => r.quote?.stale) : view?.rows.some((r) => r.quote?.stale);
+  const anyStale = onPortfolio
+    ? Object.values(pf.data?.quotes ?? {}).some((q) => q.stale)
+    : view?.rows.some((r) => r.quote?.stale);
   const fetching = onPortfolio ? pf.isFetching || pfRefreshing : wl.isFetching || refresh.isPending;
   const generatedAt = onPortfolio ? pf.data?.generatedAt : view?.generatedAt;
+  const refetchFailed = onPortfolio ? pf.isRefetchError : wl.isRefetchError;
+
+  // Con la app en segundo plano (pantalla apagada, ventana minimizada) el navegador para los
+  // temporizadores. Si al volver los precios llevan más de dos ciclos sin renovarse, se piden ya.
+  const ageMs = generatedAt ? now - Date.parse(generatedAt) : 0;
+  const tooOld = ageMs > Math.max(2 * settings.refreshSeconds * 1000, 90_000);
+  useEffect(() => {
+    if (!tooOld || fetching || document.visibilityState !== 'visible') return;
+    if (onPortfolio) void pf.refetch();
+    else if (listId) void wl.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tooOld, now]);
   const throttledUntil = onPortfolio ? pf.data?.throttledUntil : view?.throttledUntil;
+  // Las pausas cortas (1–2 min, suelen pasar tras publicar una versión) no merecen aviso.
+  const throttleLeftMs = throttledUntil ? Date.parse(throttledUntil) - now : 0;
+  const throttleMin = throttleLeftMs > 3 * 60_000 ? Math.ceil(throttleLeftMs / 60_000) : null;
+
+  const newList = async () => {
+    const name = await ask('Nueva lista', 'Nombre de la lista');
+    if (name) {
+      setListId((await createList.mutateAsync(name)).id);
+      setPage('lista');
+    }
+  };
 
   return (
     <div className="app">
@@ -200,18 +223,7 @@ export function App() {
               <span className="tab__count">{l.itemCount}</span>
             </button>
           ))}
-          <button
-            type="button"
-            className="tab tab--add"
-            title="Nueva lista"
-            onClick={async () => {
-              const name = await ask('Nueva lista', 'Nombre de la lista');
-              if (name) {
-                setListId((await createList.mutateAsync(name)).id);
-                setPage('lista');
-              }
-            }}
-          >
+          <button type="button" className="tab tab--add" title="Nueva lista" onClick={newList}>
             Nueva lista
           </button>
           <span className="tabs__sep" aria-hidden />
@@ -224,9 +236,37 @@ export function App() {
             title="Lo que ya tienes comprado"
           >
             Cartera
-            {pf.data && <span className="tab__count">{pf.data.rows.length}</span>}
+            {carteraModel && <span className="tab__count">{carteraModel.valuation.open.length}</span>}
           </button>
         </nav>
+
+        {/* Móvil: un selector con las listas y la cartera, y un botón para crear lista. */}
+        <div className="list-picker">
+          <select
+            className="list-picker__select"
+            aria-label="Lista"
+            value={onPortfolio ? 'cartera' : String(listId ?? '')}
+            onChange={(e) => {
+              if (e.target.value === 'cartera') setPage('cartera');
+              else {
+                setListId(Number(e.target.value));
+                setPage('lista');
+              }
+            }}
+          >
+            <optgroup label="Listas">
+              {lists.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </optgroup>
+            <option value="cartera">Cartera</option>
+          </select>
+          <button type="button" className="icon-btn" aria-label="Nueva lista" title="Nueva lista" onClick={newList}>
+            <Icon name="plus" size={20} />
+          </button>
+        </div>
 
         <div className="topbar__right">
           {fxChips.map(([c, r]) => (
@@ -234,10 +274,12 @@ export function App() {
               {base}/{c} <strong>{num(r, 4)}</strong>
             </span>
           ))}
-          <span className={`updated${anyStale ? ' updated--stale' : ''}`} aria-live="polite">
+          <span className={`updated${anyStale || refetchFailed ? ' updated--stale' : ''}`} aria-live="polite">
             {fetching
               ? 'Actualizando…'
-              : anyStale
+              : refetchFailed
+                ? `Sin conexión con el servidor · precios de ${timeAgo(generatedAt, now)}`
+                : anyStale
                 ? 'Sin conexión: datos guardados'
                 : `Actualizado ${timeAgo(generatedAt, now)}`}
           </span>
@@ -248,11 +290,18 @@ export function App() {
             onClick={() => (onPortfolio ? void refreshPortfolio() : listId && refresh.mutate(listId))}
             disabled={onPortfolio ? pfRefreshing : !listId || refresh.isPending}
             title="Forzar actualización de cotizaciones"
+            aria-label="Actualizar"
           >
-            Actualizar
+            <span className={`btn__icon${fetching ? ' btn__icon--spin' : ''}`}>
+              <Icon name="refresh" size={20} />
+            </span>
+            <span className="btn__label">Actualizar</span>
           </button>
-          <button type="button" className="btn btn--ghost" data-tour="alerts" onClick={() => setShowAlerts(true)}>
-            Avisos
+          <button type="button" className="btn btn--ghost" data-tour="alerts" aria-label="Avisos" title="Avisos" onClick={() => setShowAlerts(true)}>
+            <span className="btn__icon">
+              <Icon name="bell" size={20} />
+            </span>
+            <span className="btn__label">Avisos</span>
           </button>
           <button
             type="button"
@@ -264,8 +313,11 @@ export function App() {
           >
             Guía
           </button>
-          <button type="button" className="btn btn--ghost" data-tour="settings" onClick={() => setShowSettings(true)}>
-            Ajustes
+          <button type="button" className="btn btn--ghost" data-tour="settings" aria-label="Ajustes" title="Ajustes" onClick={() => setShowSettings(true)}>
+            <span className="btn__icon">
+              <Icon name="gear" size={20} />
+            </span>
+            <span className="btn__label">Ajustes</span>
           </button>
         </div>
       </header>
@@ -273,24 +325,19 @@ export function App() {
       <main className="content">
         <UpdateBanner />
         <PushBanner />
-        {throttledUntil && (
+        {throttleMin != null && (
           <p className="notice" role="status">
-            Yahoo está limitando las consultas. Se muestran los últimos precios guardados y se vuelve a intentar a las{' '}
-            {new Date(throttledUntil).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}.
+            Yahoo ha pedido ir más despacio. Mientras tanto ves los últimos precios guardados; se vuelve a consultar en{' '}
+            {throttleMin} min.
           </p>
         )}
         {onPortfolio ? (
-          <PortfolioPage
-            view={pf.data}
+          <CarteraPage
+            model={carteraModel}
             isPending={pf.isPending}
             error={pf.error}
-            base={base}
-            onAdd={() => {
-              setPosDraft(undefined);
-              setPosEditing('new');
-            }}
-            onEdit={setPosEditing}
-            onTrade={(row, type) => setTrading({ row, type })}
+            draft={buyDraft}
+            onDraftUsed={clearDraft}
           />
         ) : (
           <>
@@ -300,8 +347,8 @@ export function App() {
               {view && (
                 <StatusFilter
                   rows={tagged}
-                  nearPct={settings.nearThresholdPct}
-                  farPct={settings.farThresholdPct}
+                  bands={settings.bands}
+                  names={settings.statusNames}
                   value={filter}
                   onChange={setFilter}
                 />
@@ -312,6 +359,7 @@ export function App() {
                 currency={currencyFilter}
                 currencies={currencies}
                 onCurrency={setCurrencyFilter}
+                names={settings.tagNames}
               />
               <span className="spacer" />
               <input
@@ -354,7 +402,6 @@ export function App() {
                   extraColumns={settings.extraColumns ?? []}
                   sparks={sparks.data}
                   onEdit={setEditing}
-                  onOpen={(r) => setDetailId(r.item.id)}
                   onTag={onTag}
                   onSaveLevel={onSaveLevel}
                 />
@@ -394,21 +441,11 @@ export function App() {
           onClose={() => setEditing(null)}
           onBought={(draft) => {
             setEditing(null);
-            setPosDraft(draft);
-            setPosEditing('new');
+            setBuyDraft(draft);
             setPage('cartera');
           }}
         />
       )}
-      {posEditing && (
-        <PositionDialog
-          row={posEditing === 'new' ? null : posEditing}
-          draft={posEditing === 'new' ? posDraft : undefined}
-          base={base}
-          onClose={() => setPosEditing(null)}
-        />
-      )}
-      {trading && <TradeDialog row={trading.row} type={trading.type} base={base} onClose={() => setTrading(null)} />}
       {promptEl}
       {tourOpen && <Tour steps={TOUR_STEPS} onClose={closeTour} />}
       {showSettings && <SettingsDialog settings={settings} lists={lists} onClose={() => setShowSettings(false)} />}
@@ -416,17 +453,6 @@ export function App() {
         <AlertsDialog
           itemIds={new Map((view?.rows ?? []).map((r) => [r.item.symbol, r.item.id]))}
           onClose={() => setShowAlerts(false)}
-        />
-      )}
-      {detailRow && (
-        <DetailPanel
-          row={detailRow}
-          base={base}
-          onClose={() => setDetailId(null)}
-          onEdit={() => {
-            setDetailId(null);
-            setEditing(detailRow);
-          }}
         />
       )}
     </div>

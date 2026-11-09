@@ -1,6 +1,8 @@
-import { isMuted, localToday, MAX_BUY_LEVELS, type LevelView, type WatchlistRow } from '@watchlist/shared';
-import { Fragment, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { DEFAULT_STATUS_NAMES, DEFAULT_TAG_NAMES, isMuted, localToday, MAX_BUY_LEVELS, type LevelView, type WatchlistRow } from '@watchlist/shared';
+import { useSettings } from '../../api/hooks.ts';
+import { Fragment, useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Icon } from '../../components/Icon.tsx';
+import { TagName } from '../../components/TagName.tsx';
 import {
   compact,
   MINOR_CURRENCY,
@@ -15,6 +17,8 @@ import {
 import { KEY_DATE_LABEL, upcoming } from '../../lib/keyDates.ts';
 import { PriceMap } from './PriceMap.tsx';
 import { Sparkline } from './Sparkline.tsx';
+import { ValueExpanded } from './ValueExpanded.tsx';
+import { useWidth } from '../../lib/useWidth.ts';
 
 type SortDir = 'asc' | 'desc';
 
@@ -23,7 +27,9 @@ interface CellCtx {
   base: string;
   onTag: (tag: Tag) => void;
   sparks: Record<string, number[]> | undefined;
-  onOpen: (row: WatchlistRow) => void;
+  /** Despliega o recoge la vista ampliada del valor. */
+  onToggle: (row: WatchlistRow) => void;
+  isOpen: (row: WatchlistRow) => boolean;
   onSaveLevel: (row: WatchlistRow, index: number, value: number | null) => void;
 }
 
@@ -45,9 +51,10 @@ const nextEvent = (r: WatchlistRow) => upcoming(r)[0];
 /** Etiqueta pulsable de una fila (divisa o tipo) que activa el filtro correspondiente. */
 export type Tag = { kind: 'currency'; value: string } | { kind: 'type'; value: 'ETF' | 'EQUITY' };
 
-const STATUS_LABEL = { reached: 'En zona', near: 'Cerca', far: 'Lejos', veryFar: 'Muy lejos', unknown: '' } as const;
+
 
 function TagButton({ tag, className, title, onTag }: { tag: Tag; className: string; title?: string; onTag: (t: Tag) => void }) {
+  const names = useSettings().data?.tagNames ?? DEFAULT_TAG_NAMES;
   return (
     <button
       type="button"
@@ -59,7 +66,7 @@ function TagButton({ tag, className, title, onTag }: { tag: Tag; className: stri
       }}
       onDoubleClick={(e) => e.stopPropagation()}
     >
-      {tag.kind === 'type' ? (tag.value === 'ETF' ? 'ETF' : 'ACC') : tag.value}
+      {tag.kind === 'type' ? (tag.value === 'ETF' ? names.etf : names.equity) : tag.value}
     </button>
   );
 }
@@ -67,6 +74,7 @@ function TagButton({ tag, className, title, onTag }: { tag: Tag; className: stri
 /** Precio de compra editable en la propia celda: clic para cambiarlo, Enter guarda, Esc cancela. */
 function LevelCell({ row, index, onSave }: { row: WatchlistRow; index: number; onSave: CellCtx['onSaveLevel'] }) {
   const level: LevelView | undefined = row.metrics.levels[index];
+  const names = useSettings().data?.statusNames ?? DEFAULT_STATUS_NAMES;
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState('');
   // Solo se puede añadir el siguiente nivel libre (no dejar huecos: 1, 2, 3).
@@ -124,7 +132,7 @@ function LevelCell({ row, index, onSave }: { row: WatchlistRow; index: number; o
       title="Pulsa para cambiar el precio"
     >
       <span className="num">{price(level.price)}</span>
-      <span className={`pill pill--${level.status}`} title={STATUS_LABEL[level.status]}>
+      <span className={`pill pill--${level.status}`} title={level.status === 'unknown' ? undefined : names[level.status]}>
         {level.status === 'reached' ? '✓ ' : ''}
         {pct(level.distancePct)}
       </span>
@@ -142,15 +150,17 @@ const columns: Column[] = [
     id: 'name',
     label: 'Valor',
     sort: (r) => (r.item.name ?? r.item.symbol).toLowerCase(),
-    cell: (r, { base, onTag, onOpen }) => {
+    cell: (r, { base, onTag, onToggle, isOpen }) => {
       const { item, quote } = r;
       return (
         <div className="stack">
           <button
             type="button"
             className="name name-btn"
-            title="Ver ficha y gráfico"
-            onClick={() => onOpen(r)}
+            title={isOpen(r) ? 'Recoger el detalle' : 'Ver el detalle'}
+            aria-expanded={isOpen(r)}
+            aria-controls={`detalle-${item.id}`}
+            onClick={() => onToggle(r)}
             onDoubleClick={(e) => e.stopPropagation()}
           >
             {item.name ?? item.symbol}
@@ -170,7 +180,7 @@ const columns: Column[] = [
             {(quote?.quoteType === 'ETF' || quote?.quoteType === 'EQUITY') && (
               <TagButton
                 tag={{ kind: 'type', value: quote.quoteType }}
-                className=""
+                className={quote.quoteType === 'ETF' ? 'badge--etf' : 'badge--equity'}
                 title={`Pulsa para ver solo ${quote.quoteType === 'ETF' ? 'ETF' : 'acciones'}`}
                 onTag={onTag}
               />
@@ -180,7 +190,7 @@ const columns: Column[] = [
                 className="badge badge--muted"
                 title={item.mutedUntil === 'always' ? 'Avisos silenciados' : `Avisos silenciados hasta el ${shortDate(item.mutedUntil)}`}
               >
-                Sin avisos
+                <TagName k="muted" />
               </span>
             )}
           </span>
@@ -425,7 +435,6 @@ interface Props {
   extraColumns: string[];
   sparks: Record<string, number[]> | undefined;
   onEdit: (row: WatchlistRow) => void;
-  onOpen: (row: WatchlistRow) => void;
   onTag: (tag: Tag) => void;
   onSaveLevel: CellCtx['onSaveLevel'];
 }
@@ -442,7 +451,8 @@ export const isColumnVisible = (c: { id: string; optional?: boolean }, hidden: s
 const DEFAULT_SORT = { id: 'map', dir: 'desc' as SortDir }; // lo más cercano a un nivel de compra, arriba
 const sortKey = (listId: number) => `watchlist.orden.${listId}`;
 
-export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumns, extraColumns, sparks, onEdit, onOpen, onTag, onSaveLevel }: Props) {
+export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumns, extraColumns, sparks, onEdit, onTag, onSaveLevel }: Props) {
+  const [wrapRef, wrapWidth] = useWidth<HTMLDivElement>();
   const visible = useMemo(
     () => columns.filter((c) => isColumnVisible(c, hiddenColumns, extraColumns)),
     [hiddenColumns, extraColumns],
@@ -484,10 +494,25 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
   }, [visible]);
   const hasGroups = groups.some((g) => g.label);
 
-  const ctx: CellCtx = { base: baseCurrency, onTag, sparks, onOpen, onSaveLevel };
+  // Valores desplegados (vista ampliada bajo su fila). Un clic en la fila la abre o la cierra.
+  const [open, setOpen] = useState<Set<number>>(() => new Set());
+  const onToggle = (r: WatchlistRow) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(r.item.id)) next.add(r.item.id);
+      return next;
+    });
+  const isOpen = (r: WatchlistRow) => open.has(r.item.id);
+  const onRowClick = (r: WatchlistRow) => (e: MouseEvent<HTMLTableRowElement>) => {
+    // Los botones, campos y etiquetas de la fila hacen lo suyo; el segundo clic de un doble clic, tampoco.
+    if (e.detail > 1 || (e.target as HTMLElement).closest('button, a, input, select, textarea, label')) return;
+    onToggle(r);
+  };
+
+  const ctx: CellCtx = { base: baseCurrency, onTag, sparks, onToggle, isOpen, onSaveLevel };
 
   return (
-    <div className="table-wrap">
+    <div className="table-wrap" ref={wrapRef}>
       <table className={`wl-table${blink ? ' wl-table--blink' : ''}`}>
         <thead>
           {hasGroups && (
@@ -527,11 +552,15 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
         </thead>
         <tbody>
           {sorted.map((r) => (
+            <Fragment key={r.item.id}>
             <tr
-              key={r.item.id}
               id={`fila-${r.item.id}`}
-              className={`row row--${r.metrics.status}${r.item.orderActive ? ' row--order' : ''}`}
-              onDoubleClick={() => onEdit(r)}
+              className={`row row--${r.metrics.status}${r.item.orderActive ? ' row--order' : ''}${isOpen(r) ? ' row--open' : ''}`}
+              onClick={onRowClick(r)}
+              onDoubleClick={() => {
+                onToggle(r); // deshace el despliegue del primer clic
+                onEdit(r);
+              }}
             >
               {visible.map((c) => (
                 <Fragment key={c.id}>
@@ -552,6 +581,20 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
                 </button>
               </td>
             </tr>
+            {isOpen(r) && (
+              <tr className="row-expand" id={`detalle-${r.item.id}`}>
+                <td colSpan={visible.length + 1}>
+                  <ValueExpanded
+                    row={r}
+                    base={baseCurrency}
+                    width={wrapWidth || undefined}
+                    onEdit={() => onEdit(r)}
+                    onClose={() => onToggle(r)}
+                  />
+                </td>
+              </tr>
+            )}
+            </Fragment>
           ))}
         </tbody>
       </table>

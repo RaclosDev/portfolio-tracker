@@ -17,7 +17,7 @@ export const TOUR_STEPS: TourStep[] = [
     ),
   },
   {
-    target: '.tabs',
+    target: ['.tabs', '.list-picker'],
     title: 'Listas',
     body: (
       <p>
@@ -27,13 +27,13 @@ export const TOUR_STEPS: TourStep[] = [
     ),
   },
   {
-    target: '[data-tour="portfolio"]',
+    target: ['[data-tour="portfolio"]', '.list-picker'],
     title: 'Cartera',
     body: (
       <>
         <p>
-          Lo que ya tienes comprado: acciones, precio medio, cuánto vale hoy, tu plusvalía y el peso de cada valor. Si le
-          pones un <strong>objetivo de venta</strong>, te aviso cuando el precio llegue o se acerque.
+          Tu cartera real a partir del registro de operaciones (compras, ventas, dividendos, scrip…): lo que tienes, lo
+          que ya vendiste, lo cobrado y el informe para la <strong>Renta</strong>. Puedes importar tu Excel de cartera.
         </p>
         <p>
           Cuando compres algo de esta lista, ábrelo con el lápiz y pulsa <strong>«Lo he comprado»</strong>: pasa a la
@@ -131,13 +131,14 @@ export const TOUR_STEPS: TourStep[] = [
           tipo: ACC para acciones y ETF. Pulsa una etiqueta para ver solo esos valores.
         </p>
         <p>
-          <strong>Pulsa el nombre</strong> para abrir su ficha: gráfico de 1 mes a 5 años con tus niveles, la orden y los
-          objetivos dibujados, y todos sus datos.
+          <strong>Pulsa la fila</strong> para desplegar su detalle: el mapa de precios en grande o el gráfico de 1 mes a
+          5 años con tus niveles, la orden y los objetivos, y todos sus datos.
         </p>
         <p>
           La franja de color a la izquierda resume la fila: <span className="tour-key tour-key--reached">verde</span> en
-          zona de compra, <span className="tour-key tour-key--near">ámbar</span> cerca y{' '}
-          <span className="tour-key tour-key--order">amarillo</span> con orden puesta.
+          zona de compra, <span className="tour-key tour-key--veryNear">verde claro</span> muy cerca,{' '}
+          <span className="tour-key tour-key--near">amarillo</span> cerca y un fondo{' '}
+          <span className="tour-key tour-key--order">de color</span> con orden puesta.
         </p>
       </>
     ),
@@ -186,7 +187,8 @@ export const TOUR_STEPS: TourStep[] = [
       <p>
         Tu precio de entrada y cuánto tiene que caer la cotización para llegar (negativo = falta caída). Pulsa el precio
         para cambiarlo ahí mismo (Enter guarda, Esc cancela). Color:{' '}
-        <span className="pill pill--reached">✓ alcanzado</span> <span className="pill pill--near">cerca</span>{' '}
+        <span className="pill pill--reached">✓ alcanzado</span> <span className="pill pill--veryNear">muy cerca</span>{' '}
+        <span className="pill pill--near">cerca</span>{' '}
         <span className="pill pill--far">lejos</span> <span className="pill pill--veryFar">muy lejos</span>
       </p>
     ),

@@ -1,34 +1,31 @@
-import type { Settings } from './schemas.ts';
+import type { Bands, Settings } from './schemas.ts';
 import type {
   AnalystTargets,
   Item,
   LevelStatus,
   LevelView,
-  PortfolioRow,
-  PortfolioTotals,
-  Position,
-  PositionMetrics,
   Quote,
   RowMetrics,
-  SellStatus,
 } from './types.ts';
 
 const pct = (to: number, from: number) => (to - from) / from;
 
 /**
  * Estado de un nivel de compra respecto al precio actual:
- * en zona (precio ≤ nivel) · cerca (≤ nearPct %) · lejos (≤ farPct %) · muy lejos.
+ * en zona (precio ≤ nivel) · muy cerca (≤ veryNear %) · cerca (≤ near %) · lejos (≤ far %) · muy lejos.
  */
-export function levelStatus(level: number, price: number | null, nearPct: number, farPct = Infinity): LevelStatus {
+export function levelStatus(level: number, price: number | null, bands: Bands): LevelStatus {
   if (price == null || price <= 0) return 'unknown';
   if (price <= level) return 'reached';
   const dist = -pct(level, price) * 100; // % que tiene que caer
-  if (dist <= nearPct) return 'near';
-  return dist <= Math.max(farPct, nearPct) ? 'far' : 'veryFar';
+  const near = Math.max(bands.near, bands.veryNear);
+  if (dist <= bands.veryNear) return 'veryNear';
+  if (dist <= near) return 'near';
+  return dist <= Math.max(bands.far, near) ? 'far' : 'veryFar';
 }
 
 /** Mayor = más urgente. */
-export const STATUS_RANK: Record<LevelStatus, number> = { reached: 4, near: 3, far: 2, veryFar: 1, unknown: 0 };
+export const STATUS_RANK: Record<LevelStatus, number> = { reached: 5, veryNear: 4, near: 3, far: 2, veryFar: 1, unknown: 0 };
 
 export function bestStatus(statuses: LevelStatus[]): LevelStatus {
   return statuses.reduce<LevelStatus>((a, s) => (STATUS_RANK[s] > STATUS_RANK[a] ? s : a), 'unknown');
@@ -68,7 +65,7 @@ export function computeMetrics({ item, quote, targets, fxRate, settings, today }
   const levels: LevelView[] = item.buyPrices.map((lp) => ({
     price: lp,
     distancePct: price ? pct(lp, price) : null,
-    status: levelStatus(lp, price, settings.nearThresholdPct, settings.farThresholdPct),
+    status: levelStatus(lp, price, settings.bands),
   }));
   const status = bestStatus(levels.map((l) => l.status));
   const pending = levels.filter((l) => l.distancePct != null && l.status !== 'reached');
@@ -106,65 +103,4 @@ export function computeMetrics({ item, quote, targets, fxRate, settings, today }
     orderDaysLeft,
     orderExpired: orderDaysLeft != null && orderDaysLeft < 0,
   };
-}
-
-/** Estado frente al objetivo de venta: alcanzado (precio ≥ objetivo) · cerca (le falta ≤ nearPct %). */
-export function sellStatus(target: number | null, price: number | null, nearPct: number): SellStatus {
-  if (!target || price == null || price <= 0) return 'none';
-  if (price >= target) return 'reached';
-  return pct(target, price) * 100 <= nearPct ? 'near' : 'below';
-}
-
-/**
- * Métricas de una posición. El coste en divisa base usa lo pagado si se indicó; si no, el cambio
- * actual (aproximado: no tiene en cuenta lo que se ganó o perdió por la divisa).
- */
-export function computePositionMetrics(args: {
-  position: Position;
-  quote: Quote | null;
-  fxRate: number | null;
-  sellNearPct: number;
-}): Omit<PositionMetrics, 'weight'> {
-  const { position: p, quote, fxRate, sellNearPct } = args;
-  const price = quote?.price ?? null;
-  const valueNative = price != null ? p.shares * price : null;
-  const valueBase = valueNative != null && fxRate ? valueNative / fxRate : null;
-  const costNative = p.shares * p.avgPrice;
-  const costBase = p.costBase ?? (fxRate ? costNative / fxRate : null);
-  const pnlBase = valueBase != null && costBase != null ? valueBase - costBase : null;
-  const pnlPct = pnlBase != null && costBase ? pnlBase / costBase : null;
-  const prev = quote?.previousClose ?? (price != null && quote?.changePct != null ? price / (1 + quote.changePct) : null);
-  const dayChangeBase = price != null && prev != null && fxRate ? (p.shares * (price - prev)) / fxRate : null;
-  return {
-    fxRate,
-    valueNative,
-    valueBase,
-    costNative,
-    costBase,
-    pnlBase,
-    pnlPct,
-    dayChangeBase,
-    sellDistancePct: p.sellTarget && price ? pct(p.sellTarget, price) : null,
-    sellStatus: sellStatus(p.sellTarget, price, sellNearPct),
-  };
-}
-
-/** Totales de la cartera y peso de cada posición. Las que no tienen valor no suman. */
-export function portfolioTotals(rows: (Omit<PortfolioRow, 'metrics'> & { metrics: Omit<PositionMetrics, 'weight'> })[]) {
-  const priced = rows.filter((r) => r.metrics.valueBase != null && r.metrics.costBase != null);
-  const valueBase = priced.reduce((s, r) => s + r.metrics.valueBase!, 0);
-  const costBase = priced.reduce((s, r) => s + r.metrics.costBase!, 0);
-  const totals: PortfolioTotals = {
-    valueBase,
-    costBase,
-    pnlBase: valueBase - costBase,
-    pnlPct: costBase ? (valueBase - costBase) / costBase : null,
-    dayChangeBase: priced.reduce((s, r) => s + (r.metrics.dayChangeBase ?? 0), 0),
-    missing: rows.length - priced.length,
-  };
-  const withWeight: PortfolioRow[] = rows.map((r) => ({
-    ...r,
-    metrics: { ...r.metrics, weight: r.metrics.valueBase != null && valueBase ? r.metrics.valueBase / valueBase : null },
-  }));
-  return { totals, rows: withWeight };
 }

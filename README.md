@@ -1,14 +1,16 @@
 # Portfolio Tracker · Watchlist
 
-Web para vigilar acciones y ETF en los que quieres entrar y para llevar la cartera: hasta 3 precios de compra y la distancia a cada uno, objetivo de tu bróker y consenso de analistas, tamaño de la compra con conversión de divisa, órdenes puestas en el banco, posiciones con plusvalías y objetivo de venta.
+Web para vigilar acciones y ETF en los que quieres entrar y para llevar la cartera: hasta 3 precios de compra y la distancia a cada uno, objetivo de tu bróker y consenso de analistas, tamaño de la compra con conversión de divisa, órdenes puestas en el banco y la cartera real a partir del registro de operaciones (FIFO), con lo cobrado y el informe para la Renta.
 
-Está en **https://cartera.raclos.es**, protegida con contraseña. Funciona en el PC, el móvil y la tablet. El servidor vigila los precios todo el día y avisa con **notificaciones** (zona de compra, cerca de un nivel, órdenes, objetivo de venta y un resumen diario). Las cotizaciones vienen de Yahoo Finance.
+Está en **https://cartera.raclos.es**, protegida con contraseña. Funciona en el PC, el móvil y la tablet. El servidor vigila los precios todo el día y avisa con **notificaciones** (zona de compra, cerca de un nivel, órdenes y un resumen diario). Las cotizaciones vienen de Yahoo Finance.
 
 ## Uso
 
 La primera vez se abre una **guía** que explica cada parte (botón **Guía** para repetirla).
 
-- **Listas** en pestañas y la **Cartera** con lo ya comprado.
+- **Listas** en pestañas para vigilar lo que quieres comprar.
+- **Cartera**: se calcula del **registro de operaciones** (compras, ventas, dividendos, scrip, derechos, splits…), por lotes FIFO de cada valor y con el bróker de cada operación. Pestañas *Resumen* (reparto por valor, sector y bróker; resultado por año), *En cartera*, *Cerradas*, *Registro* (filtros y cambio de bróker de varias a la vez) y *Renta* (ganancias y pérdidas por año con la regla de los dos meses, compensación y pérdidas pendientes; se descarga en Excel o PDF). Pulsando un valor se abre su ficha con gráfico, lotes y operaciones.
+- **Importar Excel** (en la Cartera): lee la hoja *Registro* del Excel de cartera. Volver a importar sustituye lo importado antes (lo añadido a mano se queda) y antes guarda una copia.
 - **Mapa de precios**: rango de 52 semanas, precio actual, tus niveles de compra, el objetivo del bróker y el consenso.
 - **Compra 1/2/3**: precio y distancia (%); se editan pulsando en la celda.
 - **Acciones / Importe / Ahorro**: en euros aunque el valor cotice en otra divisa. Las acciones se redondean siempre hacia arriba.
@@ -38,7 +40,7 @@ El servidor solo arranca en producción si `APP_PASSWORD` está definida. Cambia
 ## Copias de seguridad
 
 - Cada día se guarda una copia completa en la propia base de datos (las 40 últimas) y otra antes de cada importación. Se descargan o restauran en *Ajustes → Copias y Excel*.
-- *Exportar JSON* descarga todo (listas, cartera y ajustes); *Exportar a Excel* genera un .xlsx con una hoja por lista y otra con la cartera.
+- *Exportar JSON* descarga todo (listas, cartera y ajustes); *Exportar a Excel* genera un .xlsx con una hoja por lista y otras con la cartera, las posiciones cerradas y el registro de operaciones.
 
 ## Desarrollo
 

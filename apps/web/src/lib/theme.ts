@@ -43,11 +43,16 @@ function readableOn(base: RGB, backgrounds: RGB[], text: RGB) {
 /** Estados con etiqueta (texto sobre fondo suave) y el % de color en su fondo. */
 const BADGES: { key: keyof Colors; fg: string; bg: string; bgPct: number }[] = [
   { key: 'reached', fg: '--reached-fg', bg: '--reached-bg', bgPct: 20 },
-  { key: 'near', fg: '--near-fg', bg: '--near-bg', bgPct: 20 },
+  { key: 'veryNear', fg: '--veryNear-fg', bg: '--veryNear-bg', bgPct: 20 },
+  { key: 'near', fg: '--near-fg', bg: '--near-bg', bgPct: 22 },
   { key: 'far', fg: '--far-fg', bg: '--far-bg', bgPct: 16 },
   { key: 'veryFar', fg: '--veryFar-fg', bg: '--veryFar-bg', bgPct: 14 },
   { key: 'expired', fg: '--expired-fg', bg: '--expired-bg', bgPct: 22 },
   { key: 'fx', fg: '--fx-fg', bg: '--fx-bg', bgPct: 18 },
+  { key: 'equity', fg: '--equity-fg', bg: '--equity-bg', bgPct: 16 },
+  { key: 'etf', fg: '--etf-fg', bg: '--etf-bg', bgPct: 16 },
+  { key: 'base', fg: '--base-fg', bg: '--base-bg', bgPct: 16 },
+  { key: 'muted', fg: '--muted-fg', bg: '--muted-bg', bgPct: 14 },
   { key: 'order', fg: '--order-fg', bg: '--order-badge-bg', bgPct: 26 },
 ];
 
