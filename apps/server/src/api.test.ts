@@ -74,7 +74,10 @@ describe('acceso', () => {
 
   it('sin entrar no se ven los datos; con la contraseña sí', async () => {
     expect((await get('/api/lists')).statusCode).toBe(401);
-    expect((await get('/api/health')).statusCode).toBe(200);
+    const health = await get('/api/health');
+    expect(health.statusCode).toBe(200);
+    // El lector de Excel usa workers blob:; si la CSP los bloquea, importar se cuelga sin error.
+    expect(String(health.headers['content-security-policy'])).toMatch(/worker-src 'self' blob:/);
     expect((await get('/api/session')).json()).toEqual({ authRequired: true, authenticated: false });
     expect((await send('POST', '/api/login', { password: 'otra' })).statusCode).toBe(401);
     const ok = await send('POST', '/api/login', { password: 'pan-con-tomate' });
