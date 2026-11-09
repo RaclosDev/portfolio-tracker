@@ -244,7 +244,7 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
               <span className="label">Consenso analistas</span>
               <span className="field__value">
                 {row?.targets?.mean != null
-                  ? `${price(row.targets.mean)} (${row.targets.analysts ?? '?'} analistas)`
+                  ? `${price(row.targets.mean, row.quote?.currency)} (${row.targets.analysts ?? '?'} analistas)`
                   : 'Se obtiene automáticamente'}
               </span>
             </div>

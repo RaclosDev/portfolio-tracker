@@ -11,10 +11,12 @@ export function Sparkline({
   closes,
   level,
   period = '3 meses',
+  currency,
 }: {
   closes: number[] | undefined;
   level?: number | null;
   period?: string;
+  currency?: string | null;
 }) {
   if (!closes) return <span className="muted small">…</span>;
   if (closes.length < 2) return <span className="muted small">–</span>;
@@ -28,7 +30,7 @@ export function Sparkline({
   const change = (last - first) / first;
   const d = closes.map((c, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(c).toFixed(1)}`).join('');
   const showLevel = level != null && level >= min && level <= max;
-  const label = `Últimos ${period}: ${pct(change)} (de ${price(first)} a ${price(last)})`;
+  const label = `Últimos ${period}: ${pct(change)} (de ${price(first, currency)} a ${price(last, currency)})`;
   return (
     <svg className={`spark spark--${change >= 0 ? 'up' : 'down'}`} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
       <title>{label}</title>

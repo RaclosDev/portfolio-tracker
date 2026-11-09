@@ -261,8 +261,8 @@ export function ImportDialog({ fileName, sheets, lists, defaultListId, defaultIn
                           <span className="error-text">No encontrado</span>
                         )}
                       </td>
-                      <td className="al-right num">{r.buyPrices?.map((p) => price(p)).join(' · ') ?? '–'}</td>
-                      <td className="al-right num">{r.brokerTarget ? price(r.brokerTarget) : '–'}</td>
+                      <td className="al-right num">{r.buyPrices?.map((p) => price(p, q?.currency)).join(' · ') ?? '–'}</td>
+                      <td className="al-right num">{r.brokerTarget ? price(r.brokerTarget, q?.currency) : '–'}</td>
                       <td className="al-right num">{r.investAmount ?? '–'}</td>
                       <td>{r.orderActive ? `Sí${r.orderUntil ? `, hasta ${shortDate(r.orderUntil)}` : ''}` : '–'}</td>
                     </tr>

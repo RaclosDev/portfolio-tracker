@@ -26,6 +26,12 @@ export function RegistroView({
   const { setBroker: bulk } = useOperationMutations();
 
   const years = useMemo(() => [...new Set(ops.map((o) => o.date.slice(0, 4)))].sort().reverse(), [ops]);
+  /** Divisa de cada valor, para rotular su precio por acción. */
+  const currencies = useMemo(() => {
+    const m = new Map<string, string>(model.view.instruments.map((i) => [i.ticker, i.currency]));
+    for (const r of [...model.valuation.open, ...model.valuation.closed]) m.set(r.ticker, r.currency);
+    return m;
+  }, [model.view.instruments, model.valuation]);
   const issues = useMemo(() => new Map(model.ledger.issues.map((i) => [i.opId, i.message])), [model.ledger.issues]);
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -167,7 +173,7 @@ export function RegistroView({
                   {o.type === 'split' && <span className="sub"> ×{num(o.splitRatio, 2)}</span>}
                 </td>
                 <td className="al-right num">{o.shares ? num(o.shares, Number.isInteger(o.shares) ? 0 : 3) : ''}</td>
-                <td className="al-right num">{o.price ? price(o.price) : ''}</td>
+                <td className="al-right num">{o.price ? price(o.price, currencies.get(o.ticker) ?? 'EUR') : ''}</td>
                 <td className="al-right num">{o.amountEur ? money(o.amountEur, 'EUR', 2) : o.fees ? `−${money(o.fees, 'EUR', 2)}` : ''}</td>
                 <td className="al-right num small">
                   {[o.withholdingEs, o.withholdingForeign].some((v) => v != null)

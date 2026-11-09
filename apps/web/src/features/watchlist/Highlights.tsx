@@ -75,7 +75,7 @@ export function Highlights({ rows, base }: { rows: WatchlistRow[]; base: string 
                 {lvl && (
                   <span className="muted num">
                     {' '}
-                    {price(r.quote?.price)} ≤ {price(lvl.price)}
+                    {price(r.quote?.price, r.quote?.currency)} ≤ {price(lvl.price, r.quote?.currency)}
                   </span>
                 )}
               </li>
@@ -101,7 +101,7 @@ export function Highlights({ rows, base }: { rows: WatchlistRow[]; base: string 
             <span className="muted">
               {' '}
               hasta su compra {lvlIndex + 1}
-              {lvl && <span className="num"> ({price(lvl.price)})</span>}
+              {lvl && <span className="num"> ({price(lvl.price, nearest.quote?.currency)})</span>}
             </span>
           </span>
         </p>

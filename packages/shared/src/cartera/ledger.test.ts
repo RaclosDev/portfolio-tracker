@@ -169,6 +169,24 @@ describe('regla de los dos meses', () => {
     ]);
     expect(l.sales[0]!.deferredLossEur).toBe(0);
   });
+
+  it('límites exactos: el mismo día dos meses antes y dos meses después sí cuentan; un día más, no', () => {
+    const back = (buyDate: string) =>
+      computeLedger([buy('2026-01-02', 'B', 100, 2000), buy(buyDate, 'B', 50, 900), sell('2026-06-12', 'B', 100, 1800)]).sales[0]!.deferredLossEur;
+    expect(r2(back('2026-04-12'))).toBe(100);
+    expect(back('2026-04-11')).toBe(0);
+    const fwd = (buyDate: string) =>
+      computeLedger([buy('2026-01-10', 'F', 100, 3000), sell('2026-06-12', 'F', 100, 2500), buy(buyDate, 'F', 100, 2400)]).sales[0]!.deferredLossEur;
+    expect(r2(fwd('2026-08-12'))).toBe(500);
+    expect(fwd('2026-08-13')).toBe(0);
+  });
+
+  it('addMonths ajusta al último día del mes y cruza de año', () => {
+    expect(addMonths('2026-12-31', 2)).toBe('2027-02-28');
+    expect(addMonths('2027-12-31', 2)).toBe('2028-02-29');
+    expect(addMonths('2026-01-31', -2)).toBe('2025-11-30');
+    expect(addMonths('2026-03-31', -2)).toBe('2026-01-31');
+  });
 });
 
 describe('Renta', () => {

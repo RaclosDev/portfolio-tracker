@@ -77,7 +77,7 @@ export function TickerDialog({
         </div>
         <div className="hl-cell">
           <p className="hl-label">Coste medio</p>
-          <p className="hl-figure num">{avgNative ? `${price(avgNative)} ${row?.currency ?? ''}` : '–'}</p>
+          <p className="hl-figure num">{avgNative ? price(avgNative, row?.currency ?? inst?.currency ?? 'EUR') : '–'}</p>
         </div>
         {row && 'valueEur' in row && (
           <div className="hl-cell">
@@ -98,7 +98,7 @@ export function TickerDialog({
       </section>
 
       {sym && history.data && history.data.points.length > 1 && (
-        <HistoryChart points={history.data.points} refs={refs} range={range} current={row?.price} />
+        <HistoryChart points={history.data.points} refs={refs} range={range} current={row?.price} currency={row?.currency} />
       )}
 
       {t.openLots.length > 0 && (
@@ -126,7 +126,7 @@ export function TickerDialog({
                     <td className="al-right num" title={l.deferredLossEur ? `Incluye ${money(l.deferredLossEur, 'EUR', 2)} de pérdida aplazada` : undefined}>
                       {money(l.taxCostEur, 'EUR', 2)}
                     </td>
-                    <td className="al-right num">{price((l.costEur / l.shares) * fx)}</td>
+                    <td className="al-right num">{price((l.costEur / l.shares) * fx, row?.currency ?? inst?.currency ?? 'EUR')}</td>
                   </tr>
                 ))}
               </tbody>
@@ -146,6 +146,19 @@ export function TickerDialog({
       </div>
       <div className="table-wrap ticker-ops">
         <table className="wl-table cartera-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Tipo</th>
+              <th className="al-right">Acciones</th>
+              <th className="al-right">Precio</th>
+              <th className="al-right">Importe €</th>
+              <th className="al-right" title="Ganancia o pérdida de la venta">
+                Resultado
+              </th>
+              <th>Bróker</th>
+            </tr>
+          </thead>
           <tbody>
             {ops.map((o) => {
               const sale = t.sales.find((s) => s.id === o.id);
@@ -154,7 +167,7 @@ export function TickerDialog({
                   <td className="num">{shortDate(o.date)}</td>
                   <td>{OPERATION_LABELS[o.type]}</td>
                   <td className="al-right num">{o.shares ? num(o.shares, Number.isInteger(o.shares) ? 0 : 3) : ''}</td>
-                  <td className="al-right num">{o.price ? price(o.price) : ''}</td>
+                  <td className="al-right num">{o.price ? price(o.price, row?.currency ?? inst?.currency ?? 'EUR') : ''}</td>
                   <td className="al-right num">{o.amountEur ? money(o.amountEur, 'EUR', 2) : ''}</td>
                   <td className={`al-right num delta ${signed(sale?.gainEur)}`}>{sale ? money(sale.gainEur, 'EUR', 2) : ''}</td>
                   <td>{o.broker ?? ''}</td>
