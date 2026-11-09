@@ -19,6 +19,6 @@ if (hasItems && !force) {
   console.log('La base de datos ya tiene valores. Usa --force para reemplazarlos.');
 } else {
   const res = await s.backup.import(JSON.parse(fs.readFileSync(file, 'utf8')));
-  console.log(`Importadas ${res.lists} lista(s) con ${res.items} valores y ${res.positions} posiciones desde ${file}`);
+  console.log(`Importadas ${res.lists} lista(s) con ${res.items} valores y ${res.operations} operaciones de cartera desde ${file}`);
 }
 await s.db.close();

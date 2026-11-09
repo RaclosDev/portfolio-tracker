@@ -17,6 +17,21 @@ const RANGES: Record<HistoryRange, { days: number; interval: '1d' | '1wk' }> = {
   '5y': { days: 5 * 366, interval: '1wk' },
 };
 
+/** Sectores de Yahoo en español. */
+const SECTORS: Record<string, string> = {
+  Technology: 'Tecnología',
+  'Financial Services': 'Financiero',
+  Healthcare: 'Salud',
+  'Consumer Cyclical': 'Consumo cíclico',
+  'Consumer Defensive': 'Consumo básico',
+  Industrials: 'Industria',
+  Energy: 'Energía',
+  Utilities: 'Eléctricas y agua',
+  'Basic Materials': 'Materiales',
+  'Real Estate': 'Inmobiliario',
+  'Communication Services': 'Telecomunicaciones',
+};
+
 export class YahooProvider implements MarketDataProvider {
   readonly id = 'yahoo';
   private yf = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
@@ -31,6 +46,16 @@ export class YahooProvider implements MarketDataProvider {
     return (res.quotes ?? [])
       .filter((q) => n(q.close) != null)
       .map((q) => ({ t: new Date(q.date).toISOString(), c: q.close! }));
+  }
+
+  async getProfile(symbol: string) {
+    const res = (await this.yf.quoteSummary(symbol, { modules: ['assetProfile', 'price'] }, LOOSE)) as {
+      assetProfile?: { sector?: unknown };
+      price?: { longName?: unknown; shortName?: unknown };
+    };
+    const sector = s(res.assetProfile?.sector);
+    const name = s(res.price?.longName) ?? s(res.price?.shortName);
+    return sector || name ? { sector: sector ? (SECTORS[sector] ?? sector) : null, name } : null;
   }
 
   async getQuotes(symbols: string[]) {

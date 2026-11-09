@@ -9,7 +9,7 @@ import { MarketService } from './modules/market/market.service.ts';
 import type { MarketDataProvider } from './modules/market/provider.ts';
 import { YahooProvider } from './modules/market/yahoo.provider.ts';
 import { PortfolioService } from './modules/portfolio/portfolio.service.ts';
-import { PositionsRepository } from './modules/portfolio/positions.repository.ts';
+import { InstrumentsRepository, OperationsRepository } from './modules/portfolio/cartera.repository.ts';
 import { SettingsRepository, StateRepository } from './modules/settings/settings.repository.ts';
 import { WatchlistService } from './modules/watchlist/watchlist.service.ts';
 
@@ -34,12 +34,13 @@ export function createServicesFromDb(
     log,
   );
   const watchlist = new WatchlistService(lists, items, settings, market);
-  const positions = new PositionsRepository(db);
-  const portfolio = new PortfolioService(positions, settings, market);
+  const operations = new OperationsRepository(db);
+  const instruments = new InstrumentsRepository(db);
+  const portfolio = new PortfolioService(operations, instruments, settings, market);
   const backup = new BackupService(db);
   const push = new PushService(db, opts.vapid ?? { publicKey: null, privateKey: null, subject: 'mailto:avisos@raclos.es' }, log);
-  const alerts = new AlertsService(db, lists, settings, state, watchlist, portfolio, push, backup, log);
-  return { db, lists, items, settings, state, market, watchlist, positions, portfolio, backup, push, alerts };
+  const alerts = new AlertsService(db, lists, settings, state, watchlist, push, backup, log);
+  return { db, lists, items, settings, state, market, watchlist, operations, instruments, portfolio, backup, push, alerts };
 }
 
 export async function createServices(opts: Parameters<typeof createServicesFromDb>[1] = {}) {

@@ -1,6 +1,6 @@
-import type { ItemInput, ItemPatch, PositionInput, PositionPatch, Settings } from '@watchlist/shared';
+import type { InstrumentInput, InstrumentPatch, ItemInput, ItemPatch, OperationInput, Settings } from '@watchlist/shared';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type Trade } from './client.ts';
+import { api } from './client.ts';
 
 export const keys = {
   settings: ['settings'] as const,
@@ -82,15 +82,34 @@ export function usePortfolio(refreshSeconds: number, enabled = true) {
   });
 }
 
-export function usePositionMutations() {
+export function useOperationMutations() {
   const invalidate = useInvalidateAll();
   return {
     save: useMutation({
-      mutationFn: ({ id, data }: { id?: number; data: PositionInput | PositionPatch }) =>
-        id ? api.updatePosition(id, data) : api.createPosition(data as PositionInput),
+      mutationFn: ({ id, data, instrument }: { id?: number; data: OperationInput; instrument?: Partial<InstrumentInput> }) =>
+        id ? api.updateOperation(id, data) : api.createOperation(data, instrument),
       onSuccess: invalidate,
     }),
-    remove: useMutation({ mutationFn: api.deletePosition, onSuccess: invalidate }),
-    trade: useMutation({ mutationFn: ({ id, t }: { id: number; t: Trade }) => api.trade(id, t), onSuccess: invalidate }),
+    remove: useMutation({ mutationFn: api.deleteOperation, onSuccess: invalidate }),
+    setBroker: useMutation({
+      mutationFn: ({ ids, broker, needsReview }: { ids: number[]; broker: string | null; needsReview?: boolean }) =>
+        api.setBroker(ids, broker, needsReview),
+      onSuccess: invalidate,
+    }),
+    updateInstrument: useMutation({
+      mutationFn: ({ ticker, patch }: { ticker: string; patch: InstrumentPatch }) => api.updateInstrument(ticker, patch),
+      onSuccess: invalidate,
+    }),
+    importCartera: useMutation({ mutationFn: api.importCartera, onSuccess: invalidate }),
   };
+}
+
+/** Minigráficos de 1 año de los valores en cartera. */
+export function useSparklines1y(symbols: string[]) {
+  return useQuery({
+    queryKey: ['sparklines-1y', symbols.join(',')],
+    queryFn: () => api.sparklines(symbols, '1y'),
+    enabled: symbols.length > 0,
+    staleTime: 30 * 60_000,
+  });
 }

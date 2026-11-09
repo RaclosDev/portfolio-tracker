@@ -8,8 +8,6 @@ const KIND_LABEL = {
   near: 'Muy cerca',
   orderTouched: 'Orden',
   orderExpiring: 'Caducidad',
-  sellReached: 'Venta',
-  sellNear: 'Cerca venta',
 } as const;
 
 const PILL = {
@@ -17,8 +15,6 @@ const PILL = {
   near: 'pill--veryNear',
   orderTouched: 'badge--order',
   orderExpiring: 'badge--danger',
-  sellReached: 'pill--reached',
-  sellNear: 'pill--near',
 } as const;
 
 function when(iso: string) {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { instrumentInputSchema, operationInputSchema } from './cartera/schemas.ts';
 
 z.config(z.locales.es());
 
@@ -60,41 +61,6 @@ export const importRowSchema = itemPatchSchema.omit({ listId: true }).extend({ s
 export type ImportRow = z.input<typeof importRowSchema>;
 export const importRequestSchema = z.object({ items: z.array(importRowSchema).min(1).max(1000) });
 
-/** Posición de la cartera real: un valor comprado (una fila por valor, con el precio medio). */
-const positionFields = {
-  symbol: z
-    .string()
-    .trim()
-    .min(1)
-    .max(32)
-    .transform((s) => s.toUpperCase()),
-  name: z.string().trim().max(120).nullable(),
-  /** Admite decimales (fondos y algunos ETF). */
-  shares: z.number().positive().finite(),
-  /** Precio medio de compra en la divisa del valor. */
-  avgPrice: price,
-  /** Lo que pagaste en total en la divisa base (con comisiones y al cambio de entonces). Opcional. */
-  costBase: price.nullable(),
-  buyDate: isoDate.nullable(),
-  /** Precio al que quieres vender (en la divisa del valor). */
-  sellTarget: price.nullable(),
-  notes: z.string().max(2000).nullable(),
-  mutedUntil: mutedSchema.nullable(),
-};
-export const positionInputSchema = z.object({
-  ...positionFields,
-  name: positionFields.name.default(null),
-  costBase: positionFields.costBase.default(null),
-  buyDate: positionFields.buyDate.default(null),
-  sellTarget: positionFields.sellTarget.default(null),
-  notes: positionFields.notes.default(null),
-  mutedUntil: positionFields.mutedUntil.default(null),
-});
-export type PositionInput = z.input<typeof positionInputSchema>;
-export type PositionData = z.output<typeof positionInputSchema>;
-export const positionPatchSchema = z.object(positionFields).partial();
-export type PositionPatch = z.input<typeof positionPatchSchema>;
-
 export const listInputSchema = z.object({ name: z.string().trim().min(1).max(60) });
 
 /** Colores configurables de la interfaz. El orden y los grupos son los del formulario de Ajustes. */
@@ -135,7 +101,6 @@ export const notificationSettingsSchema = z.object({
   reached: z.boolean().default(true),
   near: z.boolean().default(true),
   orders: z.boolean().default(true),
-  sell: z.boolean().default(true),
   /** No comprobar sábados y domingos (las bolsas están cerradas). */
   skipWeekends: z.boolean().default(true),
   /** Sin avisos entre quietFrom y quietTo (hora de España). */
@@ -224,8 +189,6 @@ export const settingsSchema = z.object({
   fontSize: z.enum(['small', 'normal', 'large']).default('normal'),
   /** Columnas ocultas de la tabla (ids). */
   hiddenColumns: z.array(z.string().max(30)).max(30).default([]),
-  /** Hasta este % por debajo del objetivo de venta: "cerca de vender". */
-  sellNearPct: z.number().min(0).max(100).default(3),
   /** Columnas opcionales activadas (datos fundamentales y fechas clave). */
   extraColumns: z.array(z.string().max(30)).max(30).default([]),
   notifications: notificationSettingsSchema.default(notificationSettingsSchema.parse({})),
@@ -243,7 +206,11 @@ export const backupSchema = z.object({
       items: z.array(itemInputSchema.omit({ listId: true })),
     }),
   ),
-  /** Cartera real (desde la versión con cartera; las copias antiguas no la traen). */
-  positions: z.array(positionInputSchema).optional(),
+  /** Cartera: valores y registro de operaciones (las copias antiguas no la traen y no la borran). */
+  portfolio: z
+    .object({ instruments: z.array(instrumentInputSchema), operations: z.array(operationInputSchema) })
+    .optional(),
+  /** Formato antiguo de la cartera (posiciones con precio medio): se ignora. */
+  positions: z.array(z.unknown()).optional(),
 });
 export type Backup = z.input<typeof backupSchema>;

@@ -1,24 +1,25 @@
 import type {
   AlertRecord,
   Backup,
+  CarteraImport,
+  CarteraView,
+  Instrument,
+  InstrumentInput,
+  InstrumentPatch,
+  Operation,
+  OperationInput,
   HistoryRange,
   ImportRow,
   PricePoint,
   Item,
   ItemInput,
   ItemPatch,
-  PortfolioView,
-  Position,
-  PositionInput,
-  PositionPatch,
   Quote,
   Settings,
   SymbolSearchResult,
   WatchList,
   WatchlistView,
 } from '@watchlist/shared';
-
-export type Trade = { type: 'buy'; shares: number; price: number; costBase: number | null } | { type: 'sell'; shares: number };
 
 export const SESSION_LOST = 'watchlist:sin-sesion';
 
@@ -35,7 +36,7 @@ export interface SnapshotInfo {
   createdAt: string;
   reason: string;
   items: number;
-  positions: number;
+  operations: number;
 }
 
 export class ApiError extends Error {
@@ -79,7 +80,7 @@ export const api = {
 
   snapshots: () => request<SnapshotInfo[]>('GET', '/api/snapshots'),
   restoreSnapshot: (id: number) =>
-    request<{ lists: number; items: number; positions: number; savedTo: string | null }>('POST', `/api/snapshots/${id}/restore`, {}),
+    request<{ lists: number; items: number; operations: number; savedTo: string | null }>('POST', `/api/snapshots/${id}/restore`, {}),
 
   settings: () => request<Settings>('GET', '/api/settings'),
   updateSettings: (patch: Partial<Settings>) => request<Settings>('PUT', '/api/settings', patch),
@@ -95,11 +96,17 @@ export const api = {
   updateItem: (id: number, patch: ItemPatch) => request<Item>('PATCH', `/api/items/${id}`, patch),
   deleteItem: (id: number) => request<void>('DELETE', `/api/items/${id}`),
 
-  portfolio: (force = false) => request<PortfolioView>('GET', `/api/portfolio${force ? '?force=1' : ''}`),
-  createPosition: (data: PositionInput) => request<Position>('POST', '/api/positions', data),
-  updatePosition: (id: number, patch: PositionPatch) => request<Position>('PATCH', `/api/positions/${id}`, patch),
-  deletePosition: (id: number) => request<void>('DELETE', `/api/positions/${id}`),
-  trade: (id: number, t: Trade) => request<Position | { deleted: true }>('POST', `/api/positions/${id}/trade`, t),
+  portfolio: (force = false) => request<CarteraView>('GET', `/api/portfolio${force ? '?force=1' : ''}`),
+  createOperation: (operation: OperationInput, instrument?: Partial<InstrumentInput>) =>
+    request<Operation>('POST', '/api/operations', { operation, instrument }),
+  updateOperation: (id: number, data: OperationInput) => request<Operation>('PUT', `/api/operations/${id}`, data),
+  deleteOperation: (id: number) => request<void>('DELETE', `/api/operations/${id}`),
+  setBroker: (ids: number[], broker: string | null, needsReview = false) =>
+    request<{ updated: number }>('POST', '/api/operations/broker', { ids, broker, needsReview }),
+  updateInstrument: (ticker: string, patch: InstrumentPatch) =>
+    request<Instrument>('PUT', `/api/instruments/${encodeURIComponent(ticker)}`, patch),
+  importCartera: (data: CarteraImport) =>
+    request<{ imported: number; replaced: number; savedTo: number | null }>('POST', '/api/portfolio/import', data),
 
   search: (q: string) => request<SymbolSearchResult[]>('GET', `/api/market/search?q=${encodeURIComponent(q)}`),
   fx: (currencies: string[]) =>
@@ -110,9 +117,13 @@ export const api = {
   quote: (symbol: string) => request<Quote>('GET', `/api/market/quote/${encodeURIComponent(symbol)}`),
   history: (symbol: string, range: HistoryRange) =>
     request<{ points: PricePoint[]; stale: boolean }>('GET', `/api/market/history/${encodeURIComponent(symbol)}?range=${range}`),
-  sparklines: (symbols: string[]) =>
-    request<Record<string, number[]>>('GET', `/api/market/sparklines?symbols=${encodeURIComponent(symbols.join(','))}`),
+  sparklines: (symbols: string[], range: '3m' | '1y' = '3m') =>
+    request<Record<string, number[]>>(
+      'GET',
+      `/api/market/sparklines?symbols=${encodeURIComponent(symbols.join(','))}&range=${range}`,
+    ),
 
   alerts: () => request<AlertRecord[]>('GET', '/api/alerts'),
-  importBackup: (data: Backup) => request<{ lists: number; items: number; positions: number; savedTo: string | null }>('POST', '/api/backup', data),
+  importBackup: (data: Backup) =>
+    request<{ lists: number; items: number; operations: number; savedTo: string | null }>('POST', '/api/backup', data),
 };

@@ -5,7 +5,7 @@ import { ApiError, api } from '../../api/client.ts';
 import { useDeleteItem, useSaveItem } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
 import { MINOR_CURRENCY, money, num, parseDecimal, pct, price, shortDate } from '../../lib/format.ts';
-import type { PositionDraft } from '../portfolio/PositionDialog.tsx';
+import { tickerFromSymbol, type OperationDraft } from '../cartera/OperationDialog.tsx';
 import { SymbolPicker } from './SymbolPicker.tsx';
 
 interface Props {
@@ -15,7 +15,7 @@ interface Props {
   fx: Record<string, number>;
   onClose: () => void;
   /** «Lo he comprado»: abre el alta en la cartera con los datos de la compra prevista. */
-  onBought?: (draft: PositionDraft) => void;
+  onBought?: (draft: OperationDraft) => void;
 }
 
 const str = (v: number | null | undefined) => (v == null ? '' : String(v).replace('.', ','));
@@ -140,11 +140,13 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
               title="Pasar este valor a la cartera con la compra prevista"
               onClick={() =>
                 onBought({
+                  type: 'buy',
+                  ticker: tickerFromSymbol(item.symbol),
                   symbol: item.symbol,
                   name: item.name,
                   shares: row?.metrics.shares ?? undefined,
-                  avgPrice: row?.metrics.entryPrice ?? undefined,
-                  buyDate: localToday(),
+                  price: row?.metrics.entryPrice ?? undefined,
+                  date: localToday(),
                 })
               }
             >

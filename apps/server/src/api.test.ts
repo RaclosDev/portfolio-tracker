@@ -2,7 +2,7 @@
  * Tests de la API de punta a punta (Fastify inject) con un Postgres en memoria (PGlite) y un
  * proveedor de cotizaciones simulado: no dependen de internet, de Neon ni de Yahoo.
  */
-import { DEFAULT_COLORS, DEFAULT_SETTINGS, type PortfolioView, type Settings, type WatchlistView } from '@watchlist/shared';
+import { DEFAULT_COLORS, DEFAULT_SETTINGS, type CarteraView, type Settings, type WatchlistView } from '@watchlist/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from './app.ts';
 import { migrate, openPGlite, type Db } from './db/database.ts';
@@ -33,6 +33,9 @@ class FakeProvider implements MarketDataProvider {
   }
   async getHistory() {
     return [10, 11, 9.5, 10.2].map((c, i) => ({ t: new Date(Date.UTC(2026, 9, i + 1)).toISOString(), c }));
+  }
+  async getProfile(symbol: string) {
+    return { sector: symbol === 'BBB' ? 'Tecnología' : 'Industria', name: `${symbol} S.A.` };
   }
 }
 
@@ -212,49 +215,88 @@ describe('históricos', () => {
 });
 
 describe('cartera', () => {
-  it('calcula valor, plusvalía, peso y estado del objetivo de venta', async () => {
-    expect((await send('POST', '/api/positions', { symbol: 'aaa.mc', shares: 100, avgPrice: 8, sellTarget: 10.2 })).statusCode).toBe(201);
-    // 10 acciones de BBB a 44 USD (pagaste 400 € en total); hoy cotiza a 50 USD con el cambio a 1,1.
-    expect((await send('POST', '/api/positions', { symbol: 'BBB', shares: 10, avgPrice: 44, costBase: 400 })).statusCode).toBe(201);
-    expect((await send('POST', '/api/positions', { symbol: 'BBB', shares: 1, avgPrice: 1 })).statusCode).toBe(409);
+  const buy = (ticker: string, shares: number, amountEur: number, date = '2025-01-10') => ({
+    operation: { date, ticker, type: 'buy', shares, amountEur },
+  });
+  const portfolio = async () => (await get('/api/portfolio')).json() as CarteraView;
 
-    const view = (await get('/api/portfolio')).json() as PortfolioView;
-    const aaa = view.rows.find((r) => r.position.symbol === 'AAA.MC')!;
-    expect(aaa.metrics.valueBase).toBeCloseTo(1000);
-    expect(aaa.metrics.pnlBase).toBeCloseTo(200);
-    expect(aaa.metrics.pnlPct).toBeCloseTo(0.25);
-    expect(aaa.metrics.sellStatus).toBe('near'); // le falta un 2 % (umbral por defecto 3 %)
-    const bbb = view.rows.find((r) => r.position.symbol === 'BBB')!;
-    expect(bbb.metrics.valueBase).toBeCloseTo(500 / 1.1);
-    expect(bbb.metrics.pnlBase).toBeCloseTo(500 / 1.1 - 400);
-    expect(view.totals.valueBase).toBeCloseTo(1000 + 500 / 1.1);
-    expect(aaa.metrics.weight! + bbb.metrics.weight!).toBeCloseTo(1);
+  it('registra operaciones, crea el valor y devuelve precios solo de lo que sigue en cartera', async () => {
+    expect((await send('POST', '/api/operations', { ...buy('aaa', 100, 800), instrument: { symbol: 'AAA.MC' } })).statusCode).toBe(201);
+    await send('POST', '/api/operations', { ...buy('BBB', 10, 400), instrument: { symbol: 'BBB', currency: 'USD' } });
+    await send('POST', '/api/operations', { operation: { date: '2025-03-01', ticker: 'BBB', type: 'sell', shares: 10, amountEur: 480 } });
+    const view = await portfolio();
+    expect(view.operations.map((o) => o.ticker)).toEqual(['AAA', 'BBB', 'BBB']);
+    expect(view.instruments.map((i) => [i.ticker, i.symbol])).toEqual([
+      ['AAA', 'AAA.MC'],
+      ['BBB', 'BBB'],
+    ]);
+    expect(Object.keys(view.quotes)).toEqual(['AAA.MC']);
+    expect(view.fx.EUR).toBe(1);
   });
 
-  it('una compra nueva recalcula el precio medio y vender todo borra la posición', async () => {
-    const pos = (await send('POST', '/api/positions', { symbol: 'AAA.MC', shares: 100, avgPrice: 8 })).json() as { id: number };
-    const after = (await send('POST', `/api/positions/${pos.id}/trade`, { type: 'buy', shares: 100, price: 10 })).json() as {
-      shares: number;
-      avgPrice: number;
+  it('no deja guardar ventas de más ni borrar una compra que ya se vendió', async () => {
+    const b = (await send('POST', '/api/operations', buy('AAA', 10, 100))).json() as { id: number };
+    const res = await send('POST', '/api/operations', { operation: { date: '2025-02-01', ticker: 'AAA', type: 'sell', shares: 20, amountEur: 300 } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/solo hay 10/);
+    await send('POST', '/api/operations', { operation: { date: '2025-02-01', ticker: 'AAA', type: 'sell', shares: 10, amountEur: 150 } });
+    expect((await send('DELETE', `/api/operations/${b.id}`)).statusCode).toBe(400);
+    expect((await portfolio()).operations).toHaveLength(2);
+  });
+
+  it('edita, cambia el bróker de varias y borra', async () => {
+    const a = (await send('POST', '/api/operations', buy('AAA', 10, 100))).json() as { id: number };
+    const c = (await send('POST', '/api/operations', buy('AAA', 5, 60, '2025-02-01'))).json() as { id: number };
+    const edited = await send('PUT', `/api/operations/${a.id}`, { date: '2025-01-10', ticker: 'AAA', type: 'buy', shares: 12, amountEur: 120 });
+    expect(edited.json()).toMatchObject({ shares: 12, amountEur: 120 });
+    expect((await send('POST', '/api/operations/broker', { ids: [a.id, c.id], broker: 'ING' })).json()).toEqual({ updated: 2 });
+    expect((await portfolio()).operations.every((o) => o.broker === 'ING')).toBe(true);
+    expect((await send('DELETE', `/api/operations/${c.id}`)).statusCode).toBe(204);
+    expect((await send('PUT', '/api/instruments/AAA', { sector: 'Industria', name: 'Triple A' })).json()).toMatchObject({ sector: 'Industria', name: 'Triple A' });
+  });
+
+  it('importar sustituye lo importado antes, conserva lo manual y guarda una copia', async () => {
+    await send('POST', '/api/operations', buy('MAN', 1, 10));
+    const excel = {
+      instruments: [{ ticker: 'AAA', symbol: 'AAA.MC' }],
+      operations: [
+        { date: '2020-01-01', ticker: 'AAA', type: 'buy', shares: 10, amountEur: 100, sourceRef: 1 },
+        { date: '2021-01-01', ticker: 'AAA', type: 'dividend', amountEur: 5, sourceRef: 2 },
+      ],
     };
-    expect(after.shares).toBe(200);
-    expect(after.avgPrice).toBeCloseTo(9);
-    expect((await send('POST', `/api/positions/${pos.id}/trade`, { type: 'sell', shares: 500 })).statusCode).toBe(400);
-    const sold = (await send('POST', `/api/positions/${pos.id}/trade`, { type: 'sell', shares: 50 })).json() as { shares: number; avgPrice: number };
-    expect(sold.shares).toBe(150);
-    expect(sold.avgPrice).toBeCloseTo(9);
-    expect((await send('POST', `/api/positions/${pos.id}/trade`, { type: 'sell', shares: 150 })).json()).toEqual({ deleted: true });
-    expect(((await get('/api/portfolio')).json() as PortfolioView).rows).toHaveLength(0);
+    expect((await send('POST', '/api/portfolio/import', excel)).json()).toMatchObject({ imported: 2, replaced: 0 });
+    const again = (await send('POST', '/api/portfolio/import', excel)).json() as { replaced: number; savedTo: number };
+    expect(again.replaced).toBe(2);
+    expect(again.savedTo).toBeGreaterThan(0);
+    const view = await portfolio();
+    expect(view.operations.map((o) => [o.ticker, o.source])).toEqual([
+      ['AAA', 'excel'],
+      ['AAA', 'excel'],
+      ['MAN', 'manual'],
+    ]);
+    const bad = await send('POST', '/api/portfolio/import', {
+      instruments: [],
+      operations: [{ date: '2020-01-01', ticker: 'X', type: 'sell', shares: 1, amountEur: 1 }],
+    });
+    expect(bad.statusCode).toBe(400);
+    expect((await portfolio()).operations).toHaveLength(3);
   });
 
   it('la copia de seguridad incluye la cartera y una copia antigua no la borra', async () => {
-    await send('POST', '/api/positions', { symbol: 'AAA.MC', shares: 5, avgPrice: 9 });
-    const backup = (await get('/api/backup')).json() as { positions: unknown[] };
-    expect(backup.positions).toHaveLength(1);
-    await send('POST', '/api/backup', { version: 1, lists: [{ name: 'Vieja', items: [] }] });
-    expect(((await get('/api/portfolio')).json() as PortfolioView).rows).toHaveLength(1);
-    await send('POST', '/api/backup', { ...backup, positions: [] });
-    expect(((await get('/api/portfolio')).json() as PortfolioView).rows).toHaveLength(0);
+    await send('POST', '/api/operations', buy('AAA', 5, 45));
+    const backup = (await get('/api/backup')).json() as { portfolio: { operations: unknown[] } };
+    expect(backup.portfolio.operations).toHaveLength(1);
+    await send('POST', '/api/backup', { version: 1, lists: [{ name: 'Vieja', items: [] }], positions: [{ symbol: 'OLD' }] });
+    expect((await portfolio()).operations).toHaveLength(1);
+    await send('POST', '/api/backup', { ...backup, portfolio: { instruments: [], operations: [] } });
+    expect((await portfolio()).operations).toHaveLength(0);
+  });
+
+  it('rellena el sector desde la ficha de la empresa', async () => {
+    await send('POST', '/api/operations', { ...buy('BBB', 1, 40), instrument: { symbol: 'BBB' } });
+    await portfolio();
+    await new Promise((r) => setTimeout(r, 50));
+    expect((await portfolio()).instruments[0]).toMatchObject({ sector: 'Tecnología', name: 'BBB S.A.' });
   });
 });
 

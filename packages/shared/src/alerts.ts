@@ -1,8 +1,8 @@
 import { STATUS_RANK } from './calc.ts';
-import type { LevelStatus, PortfolioRow, WatchlistRow } from './types.ts';
+import type { LevelStatus, WatchlistRow } from './types.ts';
 import { DEFAULT_STATUS_NAMES, type StatusNames } from './schemas.ts';
 
-export type AlertKind = 'reached' | 'near' | 'orderTouched' | 'orderExpiring' | 'sellReached' | 'sellNear';
+export type AlertKind = 'reached' | 'near' | 'orderTouched' | 'orderExpiring';
 
 export interface Alert {
   kind: AlertKind;
@@ -29,10 +29,9 @@ export function isMuted(mutedUntil: string | null | undefined, today: string): b
 export function buildDailySummary(
   rows: WatchlistRow[],
   today = new Date(),
-  portfolio: PortfolioRow[] = [],
   names: StatusNames = DEFAULT_STATUS_NAMES,
 ): { title: string; body: string } | null {
-  if (!rows.length && !portfolio.length) return null;
+  if (!rows.length) return null;
   const name = (r: WatchlistRow) => r.item.name ?? r.quote?.name ?? r.item.symbol;
   const reached = rows.filter((r) => r.metrics.status === 'reached');
   const near = rows.filter((r) => r.metrics.status === 'veryNear');
@@ -59,8 +58,6 @@ export function buildDailySummary(
         : 'Nada en zona ni cerca.',
     );
   }
-  const toSell = portfolio.filter((r) => r.metrics.sellStatus === 'reached');
-  if (toSell.length) parts.push(`Objetivo de venta alcanzado: ${toSell.map((r) => r.position.name ?? r.position.symbol).join(', ')}.`);
   if (earnings.length)
     parts.push(`Resultados: ${earnings.map((x) => `${name(x.r)} (${x.days === 0 ? 'hoy' : 'mañana'})`).join(', ')}.`);
   return { title: 'Watchlist: resumen de hoy', body: parts.join(' ') };
@@ -70,11 +67,9 @@ export interface AlertPrefs {
   reached: boolean;
   near: boolean;
   orders: boolean;
-  /** Objetivo de venta alcanzado o cerca (cartera). */
-  sell: boolean;
 }
 
-export const DEFAULT_ALERT_PREFS: AlertPrefs = { reached: true, near: true, orders: true, sell: true };
+export const DEFAULT_ALERT_PREFS: AlertPrefs = { reached: true, near: true, orders: true };
 
 /**
  * Lo que cada PC recuerda entre comprobaciones: el último estado visto de cada nivel
@@ -197,68 +192,11 @@ export function evaluateAlerts(
     }
   }
 
-  // Olvidar lo de valores que ya no están en ninguna lista (lo de la cartera lo gestiona evaluateSellAlerts)
+  // Olvidar lo de valores que ya no están en ninguna lista
   const ids = new Set(rows.map((r) => String(r.item.id)));
   for (const k of Object.keys(next.levels)) {
-    if (k.startsWith('sell:')) continue;
     const id = k.startsWith('order:') ? k.split(':')[1] : k.split(':')[0];
     if (!ids.has(id!)) delete next.levels[k];
-  }
-  return { alerts, memory: next };
-}
-
-/**
- * Avisos de la cartera: el precio llega al objetivo de venta o se queda cerca.
- * Misma lógica que los de compra: solo al empeorar hacia la venta y una vez cada 12 h.
- */
-export function evaluateSellAlerts(
-  rows: PortfolioRow[],
-  memory: AlertMemory,
-  prefs: AlertPrefs,
-  now: Date,
-): { alerts: Alert[]; memory: AlertMemory } {
-  const next: AlertMemory = { levels: { ...memory.levels }, notified: { ...memory.notified } };
-  const alerts: Alert[] = [];
-  const rank = { none: 0, below: 1, near: 2, reached: 3 } as const;
-
-  for (const { position: p, quote, metrics } of rows) {
-    const price = quote?.price;
-    if (!p.sellTarget || price == null || quote?.stale || metrics.sellStatus === 'none') continue;
-    const key = `sell:${p.id}:${p.sellTarget}`;
-    const status = metrics.sellStatus;
-    const prev = next.levels[key] as keyof typeof rank | undefined;
-    next.levels[key] = status as LevelStatus;
-    const worsened = prev == null ? status !== 'below' : rank[status] > (rank[prev] ?? 0);
-    if (!worsened || !prefs.sell) continue;
-    const noteKey = `${key}:${status}`;
-    const at = next.notified[noteKey];
-    if (at != null && now.getTime() - Date.parse(at) < ALERT_COOLDOWN_MS) continue;
-    next.notified[noteKey] = now.toISOString();
-    const name = p.name ?? quote?.name ?? p.symbol;
-    const cur = quote?.currency ?? null;
-    const pnl = metrics.pnlPct != null ? ` Plusvalía: ${metrics.pnlPct >= 0 ? '+' : '−'}${pctText(metrics.pnlPct)}.` : '';
-    alerts.push(
-      status === 'reached'
-        ? {
-            kind: 'sellReached',
-            itemId: p.id,
-            symbol: p.symbol,
-            title: `${name}: objetivo de venta alcanzado`,
-            body: `Cotiza a ${money(price, cur)}, por encima de tu objetivo (${money(p.sellTarget, cur)}).${pnl}`,
-          }
-        : {
-            kind: 'sellNear',
-            itemId: p.id,
-            symbol: p.symbol,
-            title: `${name}: cerca de tu objetivo de venta`,
-            body: `Cotiza a ${money(price, cur)}; le falta subir un ${pctText(metrics.sellDistancePct ?? 0)} hasta ${money(p.sellTarget, cur)}.${pnl}`,
-          },
-    );
-  }
-
-  const ids = new Set(rows.map((r) => String(r.position.id)));
-  for (const k of Object.keys(next.levels)) {
-    if (k.startsWith('sell:') && !ids.has(k.split(':')[1]!)) delete next.levels[k];
   }
   return { alerts, memory: next };
 }

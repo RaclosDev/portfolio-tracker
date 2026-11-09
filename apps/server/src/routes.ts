@@ -1,30 +1,25 @@
 import {
+  bulkBrokerSchema,
+  carteraImportSchema,
   importRequestSchema,
+  instrumentInputSchema,
+  instrumentPatchSchema,
   itemInputSchema,
   itemPatchSchema,
   listInputSchema,
-  positionInputSchema,
-  positionPatchSchema,
+  operationInputSchema,
   settingsSchema,
 } from '@watchlist/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { config } from './config.ts';
 import { ItemsRepository } from './modules/items/items.repository.ts';
-import { PositionsRepository } from './modules/portfolio/positions.repository.ts';
+import { InstrumentsRepository, OperationsRepository } from './modules/portfolio/cartera.repository.ts';
+import { PortfolioService } from './modules/portfolio/portfolio.service.ts';
 import type { Services } from './services.ts';
 
 const idParam = z.object({ id: z.coerce.number().int().positive() });
 const forceQuery = z.object({ force: z.enum(['1', 'true']).optional() });
-const tradeSchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('buy'),
-    shares: z.number().positive(),
-    price: z.number().positive(),
-    costBase: z.number().positive().nullable().default(null),
-  }),
-  z.object({ type: z.literal('sell'), shares: z.number().positive() }),
-]);
 const pushSubscriptionSchema = z.object({
   subscription: z.object({
     endpoint: z.url().max(1000),
@@ -124,61 +119,86 @@ export async function registerRoutes(app: FastifyInstance, s: Services) {
     reply.code(204);
   });
 
-  // Cartera real
+  // Cartera real: registro de operaciones
   app.get('/api/portfolio', async (req) => {
     const { force } = forceQuery.parse(req.query);
     return s.portfolio.view({ force: !!force });
   });
-  app.post('/api/positions', async (req, reply) => {
-    const data = positionInputSchema.parse(req.body);
-    if (await s.positions.bySymbol(data.symbol)) {
-      throw new HttpError(409, `${data.symbol} ya está en la cartera: usa «Comprar» en su fila.`);
-    }
+  /** Alta de una operación. Crea el valor si es nuevo; falla si el registro deja de cuadrar. */
+  app.post('/api/operations', async (req, reply) => {
+    const body = z
+      .object({ operation: z.unknown(), instrument: instrumentInputSchema.partial().optional() })
+      .parse(req.body);
+    const data = operationInputSchema.parse(body.operation);
+    const created = await s.db.tx(async (t) => {
+      const ops = new OperationsRepository(t);
+      const op = await ops.create(data);
+      PortfolioService.assertValid(await ops.all());
+      await new InstrumentsRepository(t).ensure({ ...body.instrument, ticker: data.ticker });
+      return op;
+    });
     reply.code(201);
-    return s.positions.create(data);
+    return created;
   });
-  app.patch('/api/positions/:id', async (req) => {
+  app.put('/api/operations/:id', async (req) => {
     const { id } = idParam.parse(req.params);
-    const current = await s.positions.byId(id);
-    if (!current) throw notFound('Posición');
-    const patch = positionPatchSchema.parse(req.body);
-    const { id: _id, createdAt, updatedAt, ...rest } = current;
-    const next = positionInputSchema.parse({ ...rest, ...patch });
-    const clash = await s.positions.bySymbol(next.symbol);
-    if (clash && clash.id !== id) throw new HttpError(409, `${next.symbol} ya está en la cartera.`);
-    return s.positions.update(id, next);
-  });
-  /** Compra o venta sobre una posición: recalcula acciones y precio medio. Si se vende todo, se borra. */
-  app.post('/api/positions/:id/trade', async (req) => {
-    const { id } = idParam.parse(req.params);
-    const t = tradeSchema.parse(req.body);
-    return s.db.tx(async (db) => {
-      const repo = new PositionsRepository(db);
-      const current = await repo.byId(id);
-      if (!current) throw notFound('Posición');
-      const { id: _id, createdAt, updatedAt, ...rest } = current;
-      if (t.type === 'sell') {
-        if (t.shares > current.shares + 1e-9) throw new HttpError(400, `Solo tienes ${current.shares} acciones.`);
-        const left = current.shares - t.shares;
-        if (left < 1e-9) {
-          await repo.delete(id);
-          return { deleted: true };
-        }
-        // El precio medio no cambia al vender; el coste en divisa base, en proporción.
-        const costBase = current.costBase != null ? (current.costBase * left) / current.shares : null;
-        return repo.update(id, positionInputSchema.parse({ ...rest, shares: left, costBase }));
-      }
-      const shares = current.shares + t.shares;
-      const avgPrice = (current.shares * current.avgPrice + t.shares * t.price) / shares;
-      // El coste en divisa base solo se mantiene si se conoce el de las dos compras.
-      const costBase = current.costBase != null && t.costBase != null ? current.costBase + t.costBase : null;
-      return repo.update(id, positionInputSchema.parse({ ...rest, shares, avgPrice, costBase }));
+    const data = operationInputSchema.parse(req.body);
+    return s.db.tx(async (t) => {
+      const ops = new OperationsRepository(t);
+      const op = await ops.update(id, data);
+      if (!op) throw notFound('Operación');
+      PortfolioService.assertValid(await ops.all());
+      await new InstrumentsRepository(t).ensure({ ticker: data.ticker });
+      return op;
     });
   });
-  app.delete('/api/positions/:id', async (req, reply) => {
+  app.delete('/api/operations/:id', async (req, reply) => {
     const { id } = idParam.parse(req.params);
-    if (!(await s.positions.delete(id))) throw notFound('Posición');
+    await s.db.tx(async (t) => {
+      const ops = new OperationsRepository(t);
+      if (!(await ops.delete(id))) throw notFound('Operación');
+      PortfolioService.assertValid(await ops.all());
+    });
     reply.code(204);
+  });
+  /** Cambia el bróker de varias operaciones a la vez. */
+  app.post('/api/operations/broker', async (req) => {
+    const { ids, broker, needsReview } = bulkBrokerSchema.parse(req.body);
+    return { updated: await s.operations.setBroker(ids, broker, needsReview) };
+  });
+  app.put('/api/instruments/:ticker', async (req) => {
+    const { ticker } = z.object({ ticker: z.string().min(1).max(32) }).parse(req.params);
+    const current = await s.instruments.byTicker(ticker.toUpperCase());
+    if (!current) throw notFound('Valor');
+    return s.instruments.upsert({ ...current, ...instrumentPatchSchema.parse(req.body) });
+  });
+  /**
+   * Importación del Excel: sustituye todo lo importado antes (las operaciones manuales se quedan) y
+   * antes guarda una copia. Los valores que ya existen conservan lo editado a mano.
+   */
+  app.post('/api/portfolio/import', async (req) => {
+    const data = carteraImportSchema.parse(req.body);
+    return s.db.tx(async (t) => {
+      const saved = await s.backup.snapshot('antes de importar la cartera', t, { skipIfEmpty: true });
+      const ops = new OperationsRepository(t);
+      const instruments = new InstrumentsRepository(t);
+      const replaced = await ops.deleteAll('excel');
+      for (const op of data.operations) await ops.create({ ...op, source: 'excel' });
+      PortfolioService.assertValid(await ops.all());
+      for (const i of data.instruments) {
+        const cur = await instruments.byTicker(i.ticker.toUpperCase());
+        // Símbolo y divisa, los del diálogo de importación; nombre, sector y notas, los ya guardados.
+        await instruments.upsert({
+          ...i,
+          name: cur?.name ?? i.name,
+          sector: cur?.sector ?? i.sector,
+          isin: cur?.isin ?? i.isin,
+          notes: cur?.notes ?? i.notes,
+        });
+      }
+      for (const op of data.operations) await instruments.ensure({ ticker: op.ticker });
+      return { imported: data.operations.length, replaced, savedTo: saved ? saved.id : null };
+    });
   });
 
   // Mercado
@@ -210,8 +230,13 @@ export async function registerRoutes(app: FastifyInstance, s: Services) {
     return s.market.getHistory(symbol.toUpperCase(), range);
   });
   app.get('/api/market/sparklines', async (req) => {
-    const { symbols } = z.object({ symbols: z.string().min(1).max(2000) }).parse(req.query);
-    return s.market.getSparklines(symbols.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean).slice(0, 100));
+    const { symbols, range } = z
+      .object({ symbols: z.string().min(1).max(2000), range: z.enum(['3m', '1y']).default('3m') })
+      .parse(req.query);
+    return s.market.getSparklines(
+      symbols.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean).slice(0, 100),
+      range,
+    );
   });
 
   // Avisos: historial y comprobación manual
