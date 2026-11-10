@@ -103,8 +103,16 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
       mutedUntil: (muted || null) as ItemInput['mutedUntil'],
     };
     if (!data.symbol) return setError('Indica el símbolo.');
+    // Al editar se envían solo los campos cambiados: si otra persona tocó el valor mientras esta ventana
+    // estaba abierta (p. ej. quitó la orden), sus cambios no se pisan con los datos viejos de aquí.
+    const payload = item
+      ? Object.fromEntries(
+          Object.entries(data).filter(([k, v]) => JSON.stringify(v ?? null) !== JSON.stringify(item[k as keyof typeof item] ?? null)),
+        )
+      : data;
+    if (item && !Object.keys(payload).length) return onClose();
     try {
-      await save.mutateAsync({ id: item?.id, data });
+      await save.mutateAsync({ id: item?.id, data: payload });
       onClose();
     } catch (err) {
       setError(

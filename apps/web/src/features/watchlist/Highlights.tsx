@@ -124,12 +124,15 @@ export function Highlights({ rows, base }: { rows: WatchlistRow[]; base: string 
             <strong className="num">{orders.length}</strong> <span className="muted">·</span>{' '}
             <span className="num">{money(committed, base)}</span>
           </p>
-          {expiring.map((r) => (
-            <p key={r.item.id} className="hl-warn">
-              <RowLink row={r}>{shortName(r)}</RowLink>{' '}
-              {r.metrics.orderExpired ? 'caducada' : r.metrics.orderDaysLeft === 0 ? 'caduca hoy' : `caduca en ${r.metrics.orderDaysLeft} d`}
+          {/* Se nombran todas: así se ve cuál es aunque la tabla esté filtrada y no la muestre. */}
+          {[...expiring, ...orders.filter((r) => !expiring.includes(r))].slice(0, 4).map((r) => (
+            <p key={r.item.id} className={expiring.includes(r) ? 'hl-warn' : 'small'}>
+              <RowLink row={r}>{shortName(r)}</RowLink>
+              {expiring.includes(r) &&
+                ` ${r.metrics.orderExpired ? 'caducada' : r.metrics.orderDaysLeft === 0 ? 'caduca hoy' : `caduca en ${r.metrics.orderDaysLeft} d`}`}
             </p>
           ))}
+          {orders.length > 4 && <p className="muted small">y {orders.length - 4} más</p>}
         </Cell>
       )}
       {earnings.length > 0 && (
