@@ -240,33 +240,41 @@ export function App() {
           </button>
         </nav>
 
-        {/* Móvil: un selector con las listas y la cartera, y un botón para crear lista. */}
         <div className="list-picker">
-          <select
-            className="list-picker__select"
-            aria-label="Lista"
-            value={onPortfolio ? 'cartera' : String(listId ?? '')}
-            onChange={(e) => {
-              if (e.target.value === 'cartera') setPage('cartera');
-              else {
-                setListId(Number(e.target.value));
-                setPage('lista');
-              }
-            }}
-          >
-            <optgroup label="Listas">
-              {lists.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </optgroup>
-            <option value="cartera">Cartera</option>
-          </select>
-          <button type="button" className="icon-btn" aria-label="Nueva lista" title="Nueva lista" onClick={newList}>
-            <Icon name="plus" size={20} />
-          </button>
+          {onPortfolio ? <strong className="list-picker__title">Cartera</strong> : (
+            <>
+              <select
+                className="list-picker__select"
+                aria-label="Seleccionar lista"
+                value={String(listId ?? '')}
+                onChange={(e) => {
+                  setListId(Number(e.target.value));
+                  setPage('lista');
+                }}
+              >
+                <optgroup label="Listas">
+                  {lists.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+              <button type="button" className="icon-btn" aria-label="Nueva lista" title="Nueva lista" onClick={newList}>
+                <Icon name="plus" size={20} />
+              </button>
+            </>
+          )}
         </div>
+
+        <nav className="mobile-primary-nav" aria-label="Secciones">
+          <button type="button" aria-current={!onPortfolio ? 'page' : undefined} onClick={() => setPage('lista')}>
+            Lista
+          </button>
+          <button type="button" aria-current={onPortfolio ? 'page' : undefined} onClick={() => setPage('cartera')}>
+            Cartera
+          </button>
+        </nav>
 
         <div className="topbar__right">
           {fxChips.map(([c, r]) => (

@@ -1,5 +1,5 @@
 import type { WatchlistRow } from '@watchlist/shared';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { money, pct, price } from '../../lib/format.ts';
 import { upcoming } from '../../lib/keyDates.ts';
 
@@ -47,6 +47,7 @@ function Cell({ label, children, wide }: { label: ReactNode; children: ReactNode
  * la semana (días en que el precio suele moverse mucho).
  */
 export function Highlights({ rows, base }: { rows: WatchlistRow[]; base: string }) {
+  const [expanded, setExpanded] = useState(false);
   if (!rows.length) return null;
   const reached = rows.filter((r) => r.metrics.status === 'reached');
   const nearest = rows
@@ -115,38 +116,56 @@ export function Highlights({ rows, base }: { rows: WatchlistRow[]; base: string 
     );
   }
 
+  const summary = reached.length
+    ? `${reached.length} en zona de compra`
+    : nearest
+      ? `${pct(Math.abs(nearest.metrics.nearestDistancePct!)).replace('+', '−')} hasta comprar`
+      : 'Sin precios de compra';
+
   return (
-    <section className="highlights" aria-label="Resumen">
-      {main}
-      {orders.length > 0 && (
-        <Cell label="Órdenes activas">
-          <p className="hl-value">
-            <strong className="num">{orders.length}</strong> <span className="muted">·</span>{' '}
-            <span className="num">{money(committed, base)}</span>
-          </p>
-          {/* Se nombran todas: así se ve cuál es aunque la tabla esté filtrada y no la muestre. */}
-          {[...expiring, ...orders.filter((r) => !expiring.includes(r))].slice(0, 4).map((r) => (
-            <p key={r.item.id} className={expiring.includes(r) ? 'hl-warn' : 'small'}>
-              <RowLink row={r}>{shortName(r)}</RowLink>
-              {expiring.includes(r) &&
-                ` ${r.metrics.orderExpired ? 'caducada' : r.metrics.orderDaysLeft === 0 ? 'caduca hoy' : `caduca en ${r.metrics.orderDaysLeft} d`}`}
+    <>
+      <button
+        type="button"
+        className="highlights-toggle"
+        aria-expanded={expanded}
+        aria-controls="watchlist-highlights"
+        onClick={() => setExpanded((open) => !open)}
+      >
+        <span><strong>Resumen</strong> · {summary}</span>
+        <span aria-hidden="true">{expanded ? '▲' : '▼'}</span>
+      </button>
+      <section id="watchlist-highlights" className={`highlights${expanded ? ' highlights--open' : ''}`} aria-label="Resumen">
+        {main}
+        {orders.length > 0 && (
+          <Cell label="Órdenes activas">
+            <p className="hl-value">
+              <strong className="num">{orders.length}</strong> <span className="muted">·</span>{' '}
+              <span className="num">{money(committed, base)}</span>
             </p>
-          ))}
-          {orders.length > 4 && <p className="muted small">y {orders.length - 4} más</p>}
-        </Cell>
-      )}
-      {earnings.length > 0 && (
-        <Cell label="Resultados en 7 días">
-          <ul className="hl-inline">
-            {earnings.slice(0, 5).map(({ r, d }) => (
-              <li key={r.item.id}>
-                <RowLink row={r}>{shortName(r)}</RowLink> <span className="muted">{when(d!.days)}</span>
-              </li>
+            {/* Se nombran todas: así se ve cuál es aunque la tabla esté filtrada y no la muestre. */}
+            {[...expiring, ...orders.filter((r) => !expiring.includes(r))].slice(0, 4).map((r) => (
+              <p key={r.item.id} className={expiring.includes(r) ? 'hl-warn' : 'small'}>
+                <RowLink row={r}>{shortName(r)}</RowLink>
+                {expiring.includes(r) &&
+                  ` ${r.metrics.orderExpired ? 'caducada' : r.metrics.orderDaysLeft === 0 ? 'caduca hoy' : `caduca en ${r.metrics.orderDaysLeft} d`}`}
+              </p>
             ))}
-            {earnings.length > 5 && <li className="muted">y {earnings.length - 5} más</li>}
-          </ul>
-        </Cell>
-      )}
-    </section>
+            {orders.length > 4 && <p className="muted small">y {orders.length - 4} más</p>}
+          </Cell>
+        )}
+        {earnings.length > 0 && (
+          <Cell label="Resultados en 7 días">
+            <ul className="hl-inline">
+              {earnings.slice(0, 5).map(({ r, d }) => (
+                <li key={r.item.id}>
+                  <RowLink row={r}>{shortName(r)}</RowLink> <span className="muted">{when(d!.days)}</span>
+                </li>
+              ))}
+              {earnings.length > 5 && <li className="muted">y {earnings.length - 5} más</li>}
+            </ul>
+          </Cell>
+        )}
+      </section>
+    </>
   );
 }
