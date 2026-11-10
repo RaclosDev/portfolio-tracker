@@ -29,6 +29,12 @@ services:
       # Contraseña para entrar en la web.
       - key: APP_PASSWORD
         sync: false
+      - key: APP_OWNER_EMAIL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
       - key: SESSION_SECRET
         generateValue: true
       # Claves de las notificaciones: npm run claves-push

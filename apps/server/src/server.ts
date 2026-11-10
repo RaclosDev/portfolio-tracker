@@ -20,7 +20,17 @@ export async function startServer() {
   const app = await buildApp(services, {
     logLevel: config.production ? 'info' : 'warn',
     webRoot: fs.existsSync(config.webDist) ? config.webDist : null,
-    auth: { password: config.appPassword, secret: config.sessionSecret, secure: config.production },
+    auth: {
+      password: config.appPassword,
+      ownerEmail: config.ownerEmail,
+      secret: config.sessionSecret,
+      secure: config.production,
+      google: config.googleClientId && config.googleClientSecret && config.publicUrl ? {
+        clientId: config.googleClientId,
+        clientSecret: config.googleClientSecret,
+        publicUrl: config.publicUrl,
+      } : undefined,
+    },
   });
   await app.listen({ host: config.host, port: config.port });
   services.alerts.start();

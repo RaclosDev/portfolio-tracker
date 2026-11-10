@@ -65,8 +65,8 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 
 export const api = {
   health: () => request<{ ok: boolean; version: string }>('GET', '/api/health'),
-  session: () => request<{ authRequired: boolean; authenticated: boolean }>('GET', '/api/session'),
-  login: (password: string) => request<{ ok: true }>('POST', '/api/login', { password }),
+  session: () => request<{ authRequired: boolean; authenticated: boolean; googleEnabled: boolean }>('GET', '/api/session'),
+  login: (email: string, password: string) => request<{ ok: true }>('POST', '/api/login', { email, password }),
   logout: () => request<{ ok: true }>('POST', '/api/logout', {}),
 
   pushKey: () => request<{ publicKey: string | null; enabled: boolean }>('GET', '/api/push/key'),
