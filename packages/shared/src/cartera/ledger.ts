@@ -170,9 +170,15 @@ const RANK: Record<OperationType, number> = {
   sell: 3,
 };
 
-/** Orden de proceso: fecha; el mismo día, compras antes que ventas; después, orden de alta. */
-export function sortOperations<T extends Pick<Operation, 'date' | 'type' | 'id'>>(ops: T[]): T[] {
-  return [...ops].sort((a, b) => a.date.localeCompare(b.date) || RANK[a.type] - RANK[b.type] || a.id - b.id);
+/**
+ * Orden de proceso: fecha; el mismo día, primero las que tienen «orden del día» (1, 2, 3…) y en ese orden;
+ * después las que no lo tienen: compras antes que ventas y, a igualdad, por orden de alta.
+ */
+export function sortOperations<T extends Pick<Operation, 'date' | 'type' | 'id'> & { dayOrder?: number | null }>(ops: T[]): T[] {
+  const ord = (o: T) => o.dayOrder ?? Number.POSITIVE_INFINITY;
+  return [...ops].sort(
+    (a, b) => a.date.localeCompare(b.date) || (ord(a) === ord(b) ? 0 : ord(a) < ord(b) ? -1 : 1) || RANK[a.type] - RANK[b.type] || a.id - b.id,
+  );
 }
 
 interface Pending {

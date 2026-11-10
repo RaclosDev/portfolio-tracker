@@ -36,6 +36,8 @@ export function QuoteSheet({ row, base }: { row: WatchlistRow; base: string }) {
   const { item, quote, targets, metrics } = row;
   const names = useSettings().data?.statusNames ?? DEFAULT_STATUS_NAMES;
   const cur = quote?.currency ?? base;
+  /** Precios en la moneda del valor, con su símbolo. */
+  const pr = (v: number | null | undefined) => price(v, quote?.currency);
   const keyDates = upcoming(row);
   const muted = isMuted(item.mutedUntil, localToday());
 
@@ -45,7 +47,7 @@ export function QuoteSheet({ row, base }: { row: WatchlistRow; base: string }) {
         {metrics.levels.length === 0 && <Row label="Niveles">Ninguno todavía</Row>}
         {metrics.levels.map((l, i) => (
           <Row key={i} label={`Compra ${i + 1}`} sub={l.status !== 'unknown' ? names[l.status] : undefined}>
-            <span className="num">{price(l.price)}</span> <span className={`pill pill--${l.status}`}>{pct(l.distancePct)}</span>
+            <span className="num">{pr(l.price)}</span> <span className={`pill pill--${l.status}`}>{pct(l.distancePct)}</span>
           </Row>
         ))}
         {item.orderActive && (
@@ -57,7 +59,7 @@ export function QuoteSheet({ row, base }: { row: WatchlistRow; base: string }) {
                 : undefined
             }
           >
-            <span className="num">{item.orderPrice != null ? price(item.orderPrice) : 'Sin precio'}</span>
+            <span className="num">{item.orderPrice != null ? pr(item.orderPrice) : 'Sin precio'}</span>
           </Row>
         )}
       </Section>
@@ -66,7 +68,7 @@ export function QuoteSheet({ row, base }: { row: WatchlistRow; base: string }) {
         <Row label={item.brokerName ? `Bróker · ${item.brokerName}` : 'Bróker'}>
           {item.brokerTarget ? (
             <>
-              <span className="num">{price(item.brokerTarget)}</span> <Upside v={metrics.upsideBrokerPct} />
+              <span className="num">{pr(item.brokerTarget)}</span> <Upside v={metrics.upsideBrokerPct} />
             </>
           ) : (
             <span className="muted">Sin objetivo</span>
@@ -79,7 +81,7 @@ export function QuoteSheet({ row, base }: { row: WatchlistRow; base: string }) {
               ? [
                   targets.analysts != null && `${targets.analysts} analistas`,
                   targets.recommendation && targets.recommendation !== 'none' && (RECOMMENDATION_ES[targets.recommendation] ?? targets.recommendation),
-                  targets.low != null && targets.high != null && `${price(targets.low)} – ${price(targets.high)}`,
+                  targets.low != null && targets.high != null && `${pr(targets.low)} – ${pr(targets.high)}`,
                 ]
                   .filter(Boolean)
                   .join(' · ')
@@ -88,7 +90,7 @@ export function QuoteSheet({ row, base }: { row: WatchlistRow; base: string }) {
         >
           {targets?.mean ? (
             <>
-              <span className="num">{price(targets.mean)}</span> <Upside v={metrics.upsideConsensusPct} />
+              <span className="num">{pr(targets.mean)}</span> <Upside v={metrics.upsideConsensusPct} />
             </>
           ) : (
             <span className="muted">Sin datos</span>
@@ -112,7 +114,7 @@ export function QuoteSheet({ row, base }: { row: WatchlistRow; base: string }) {
         {quote?.low52 != null && quote.high52 != null && (
           <Row label="Rango del año">
             <span className="num">
-              {price(quote.low52)} – {price(quote.high52)}
+              {pr(quote.low52)} – {pr(quote.high52)}
             </span>
           </Row>
         )}

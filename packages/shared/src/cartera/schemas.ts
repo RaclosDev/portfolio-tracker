@@ -83,6 +83,11 @@ export const operationInputSchema = z
     sourceRef: z.number().int().nullable().default(null),
     /** Scrip: Nº (`sourceRef`) de la compra cuyo lote recibe estas acciones. null = se reparten entre los lotes abiertos. */
     lotRef: z.number().int().nullable().default(null),
+    /**
+     * Orden dentro del día (1, 2, 3…), opcional. Decide qué va antes cuando hay varias operaciones del
+     * mismo valor en la misma fecha (p. ej. compra y venta). Sin él, se respeta el orden en que se metieron.
+     */
+    dayOrder: z.number().int().min(1).max(99).nullable().default(null),
   })
   .superRefine((o, ctx) => {
     const need = (cond: boolean, path: string, message: string) => {

@@ -36,13 +36,13 @@ export function ValueExpanded({ row, base, width, onEdit, onClose }: Props) {
   let headline = 'Sin precios de compra';
   if (metrics.status === 'reached') headline = 'El precio ya está en tu zona de compra';
   else if (lvl && metrics.nearestDistancePct != null)
-    headline = `Le falta caer un ${pct(Math.abs(metrics.nearestDistancePct)).replace('+', '')} hasta tu compra ${idx + 1} (${price(lvl.price)})`;
+    headline = `Le falta caer un ${pct(Math.abs(metrics.nearestDistancePct)).replace('+', '')} hasta tu compra ${idx + 1} (${price(lvl.price, quote?.currency)})`;
 
   return (
     <div className="xp" style={width ? { width } : undefined} role="region" aria-label={`Detalle de ${item.name ?? item.symbol}`}>
       <header className="xp__head">
         <div className="xp__quote">
-          <span className="xp__price num">{price(quote?.price)}</span>
+          <span className="xp__price num">{price(quote?.price, quote?.currency)}</span>
           {quote?.changePct != null && (
             <span className={`delta ${quote.changePct >= 0 ? 'up' : 'down'}`}>{pct(quote.changePct, 2)} hoy</span>
           )}

@@ -26,10 +26,25 @@ const SECTORS: Record<string, string> = {
   'Consumer Defensive': 'Consumo básico',
   Industrials: 'Industria',
   Energy: 'Energía',
-  Utilities: 'Eléctricas y agua',
+  Utilities: 'Servicios públicos',
   'Basic Materials': 'Materiales',
   'Real Estate': 'Inmobiliario',
   'Communication Services': 'Telecomunicaciones',
+};
+
+/**
+ * Valores en los que Yahoo se aparta de la clasificación habitual (GICS) o no da sector.
+ * Ej.: Cellnex figura como «Real Estate» por sus torres, pero su negocio es de telecomunicaciones.
+ * Lo escrito a mano en la ficha del valor manda siempre sobre esto.
+ */
+export const SECTOR_OVERRIDES: Record<string, string> = {
+  'CLNX.MC': 'Telecomunicaciones',
+  'FDR.MC': 'Industria',
+  'VID.MC': 'Materiales',
+  'VIS.MC': 'Consumo básico',
+  'GRF.MC': 'Salud',
+  'GRF-P.MC': 'Salud',
+  UBER: 'Industria',
 };
 
 export class YahooProvider implements MarketDataProvider {
@@ -53,9 +68,10 @@ export class YahooProvider implements MarketDataProvider {
       assetProfile?: { sector?: unknown };
       price?: { longName?: unknown; shortName?: unknown };
     };
-    const sector = s(res.assetProfile?.sector);
+    const raw = s(res.assetProfile?.sector);
+    const sector = SECTOR_OVERRIDES[symbol.toUpperCase()] ?? (raw ? (SECTORS[raw] ?? raw) : null);
     const name = s(res.price?.longName) ?? s(res.price?.shortName);
-    return sector || name ? { sector: sector ? (SECTORS[sector] ?? sector) : null, name } : null;
+    return sector || name ? { sector, name } : null;
   }
 
   async getQuotes(symbols: string[]) {

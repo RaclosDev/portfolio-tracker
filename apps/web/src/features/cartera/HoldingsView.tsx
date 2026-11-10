@@ -66,7 +66,7 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
       cell: (r) => (
         <div className="stack stack--right">
           <span className="num">
-            {price(r.price)}
+            {price(r.price, r.currency)}
             {r.quote?.stale && (
               <span className="stale" title="Sin conexión: último precio guardado">
                 <Icon name="alert" />
@@ -80,7 +80,7 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
     {
       id: 'spark',
       label: '1 año',
-      cell: (r) => (r.instrument?.symbol ? <Sparkline closes={sparks.data?.[r.instrument.symbol]} period="12 meses" /> : <span className="muted">–</span>),
+      cell: (r) => (r.instrument?.symbol ? <Sparkline closes={sparks.data?.[r.instrument.symbol]} period="12 meses" currency={r.currency} /> : <span className="muted">–</span>),
     },
     {
       id: 'value',
