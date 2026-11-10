@@ -511,6 +511,9 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 /* ---------- Ajustes por categorías ---------- */
 .dialog--settings { width: min(900px, calc(100vw - 32px)); height: min(680px, calc(100vh - 48px)); }
 .dialog--settings .dialog__body { padding: 0; display: flex; min-height: 0; flex: 1; }
+.dialog--settings .dialog__footer { flex-wrap: wrap; }
+.settings__footer-error { flex-basis: 100%; }
+.settings__footer-actions { display: flex; gap: 8px; margin-left: auto; }
 .settings { display: grid; grid-template-columns: 200px 1fr; flex: 1; min-height: 0; }
 .settings__nav { border-right: 1px solid var(--border); padding: 10px; display: flex; flex-direction: column; gap: 2px; background: var(--surface-2); overflow-y: auto; }
 .settings__nav button {
@@ -588,6 +591,7 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .bands__row .bands__range { grid-column: 2; }
 }
 @media (max-width: 700px) {
+  .dialog--settings .dialog__footer { padding-inline: 10px; }
   .settings { grid-template-columns: 1fr; }
   .settings__nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border); }
 }
