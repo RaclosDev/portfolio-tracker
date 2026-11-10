@@ -20,6 +20,7 @@ interface OperationRow {
   source: Operation['source'];
   source_ref: number | null;
   lot_ref: number | null;
+  day_order: number | null;
   created_at: Date | string;
   updated_at: Date | string;
 }
@@ -43,6 +44,7 @@ const toOperation = (r: OperationRow): Operation => ({
   source: r.source,
   sourceRef: r.source_ref,
   lotRef: r.lot_ref,
+  dayOrder: r.day_order ?? null,
   createdAt: iso(r.created_at),
   updatedAt: iso(r.updated_at),
 });
@@ -65,6 +67,7 @@ const OP_COLUMNS = [
   'source',
   'source_ref',
   'lot_ref',
+  'day_order',
 ] as const;
 const opValues = (d: OperationData) => [
   d.date,
@@ -84,6 +87,7 @@ const opValues = (d: OperationData) => [
   d.source,
   d.sourceRef,
   d.lotRef,
+  d.dayOrder,
 ];
 
 /** Registro de operaciones de la cartera (una fila por movimiento). */
@@ -91,7 +95,7 @@ export class OperationsRepository {
   constructor(private db: Db) {}
 
   async all(): Promise<Operation[]> {
-    return (await this.db.query<OperationRow>('SELECT * FROM operations ORDER BY date, id')).map(toOperation);
+    return (await this.db.query<OperationRow>('SELECT * FROM operations ORDER BY date, day_order NULLS LAST, id')).map(toOperation);
   }
 
   async byId(id: number): Promise<Operation | undefined> {

@@ -1,6 +1,6 @@
 import { DEFAULT_STATUS_NAMES, type LevelStatus, type WatchlistRow } from '@watchlist/shared';
 import { useSettings } from '../../api/hooks.ts';
-import { pct, price as fp } from '../../lib/format.ts';
+import { pct, price } from '../../lib/format.ts';
 import { useWidth } from '../../lib/useWidth.ts';
 
 const PAD = 14;
@@ -41,6 +41,8 @@ export function PriceMapLarge({ row }: { row: WatchlistRow }) {
   const names = useSettings().data?.statusNames ?? DEFAULT_STATUS_NAMES;
   const { quote, targets, item, metrics } = row;
   const p = quote?.price;
+  /** Precios con el símbolo de la moneda del valor. */
+  const fp = (v: number) => price(v, quote?.currency);
 
   if (p == null) return <p className="muted">Sin cotización ahora mismo.</p>;
 

@@ -131,7 +131,7 @@ function LevelCell({ row, index, onSave }: { row: WatchlistRow; index: number; o
       onDoubleClick={(e) => e.stopPropagation()}
       title="Pulsa para cambiar el precio"
     >
-      <span className="num">{price(level.price)}</span>
+      <span className="num">{price(level.price, row.quote?.currency)}</span>
       <span className={`pill pill--${level.status}`} title={level.status === 'unknown' ? undefined : names[level.status]}>
         {level.status === 'reached' ? '✓ ' : ''}
         {pct(level.distancePct)}
@@ -207,7 +207,7 @@ const columns: Column[] = [
     cell: ({ quote }) => (
       <div className="stack stack--right">
         <span className="num strong">
-          {price(quote?.price)}
+          {price(quote?.price, quote?.currency)}
           {quote?.stale && (
             <span className="stale" title={`Sin conexión: dato guardado del ${new Date(quote.fetchedAt).toLocaleString('es-ES')}`}>
               <Icon name="alert" label="Dato sin actualizar" />
@@ -226,7 +226,7 @@ const columns: Column[] = [
     id: 'trend',
     label: 'Tendencia 3 m',
     title: 'Evolución de los últimos 3 meses',
-    cell: (r, { sparks }) => <Sparkline closes={sparks?.[r.item.symbol]} level={r.item.buyPrices[0]} />,
+    cell: (r, { sparks }) => <Sparkline closes={sparks?.[r.item.symbol]} level={r.item.buyPrices[0]} currency={r.quote?.currency} />,
   },
   {
     id: 'map',
@@ -250,13 +250,13 @@ const columns: Column[] = [
     group: 'Objetivos',
     align: 'right',
     sort: (r) => r.metrics.upsideBrokerPct,
-    cell: ({ item, metrics }) =>
+    cell: ({ item, metrics, quote }) =>
       item.brokerTarget == null ? (
         <span className="muted">–</span>
       ) : (
         <div className="stack stack--right">
           <span className="num">
-            {price(item.brokerTarget)} <Upside value={metrics.upsideBrokerPct} />
+            {price(item.brokerTarget, quote?.currency)} <Upside value={metrics.upsideBrokerPct} />
           </span>
           {item.brokerName && <span className="sub">{item.brokerName}</span>}
         </div>
@@ -268,16 +268,16 @@ const columns: Column[] = [
     group: 'Objetivos',
     align: 'right',
     sort: (r) => r.metrics.upsideConsensusPct,
-    cell: ({ targets, metrics }) =>
+    cell: ({ targets, metrics, quote }) =>
       targets?.mean == null ? (
         <span className="muted">–</span>
       ) : (
         <div
           className="stack stack--right"
-          title={`Media ${price(targets.mean)} · mediana ${price(targets.median)} · rango ${price(targets.low)}–${price(targets.high)}`}
+          title={`Media ${price(targets.mean, quote?.currency)} · mediana ${price(targets.median, quote?.currency)} · rango ${price(targets.low, quote?.currency)}–${price(targets.high, quote?.currency)}`}
         >
           <span className="num">
-            {price(targets.mean)} <Upside value={metrics.upsideConsensusPct} />
+            {price(targets.mean, quote?.currency)} <Upside value={metrics.upsideConsensusPct} />
           </span>
           <span className="sub">
             {targets.analysts ?? '?'} analistas
@@ -307,28 +307,6 @@ const columns: Column[] = [
         </div>
       );
     },
-  },
-  {
-    id: 'per',
-    label: 'PER',
-    group: 'Datos',
-    optional: true,
-    align: 'right',
-    title: 'Precio / beneficio de los últimos 12 meses',
-    sort: (r) => r.targets?.trailingPE ?? null,
-    cell: ({ targets }) => <span className="num">{num(targets?.trailingPE, 1)}</span>,
-  },
-  {
-    id: 'yield',
-    label: 'Rent. div.',
-    group: 'Datos',
-    optional: true,
-    align: 'right',
-    title: 'Rentabilidad por dividendo anual al precio actual',
-    sort: (r) => r.targets?.dividendYield ?? null,
-    cell: ({ targets }) => (
-      <span className="num">{targets?.dividendYield ? pct(targets.dividendYield).replace('+', '') : '–'}</span>
-    ),
   },
   {
     id: 'mcap',
@@ -388,11 +366,11 @@ const columns: Column[] = [
     id: 'order',
     label: 'Orden',
     sort: (r) => (r.item.orderActive ? (r.metrics.orderDaysLeft ?? 9999) : null),
-    cell: ({ item, metrics }) =>
+    cell: ({ item, metrics, quote }) =>
       item.orderActive ? (
         <div className="stack">
           <span className={`badge ${metrics.orderExpired ? 'badge--danger' : 'badge--order'}`}>
-            {metrics.orderExpired ? 'Caducada' : 'Activa'} {item.orderPrice != null && `@ ${price(item.orderPrice)}`}
+            {metrics.orderExpired ? 'Caducada' : 'Activa'} {item.orderPrice != null && `@ ${price(item.orderPrice, quote?.currency)}`}
           </span>
           {item.orderUntil && (
             <span className="sub">
@@ -412,6 +390,28 @@ const columns: Column[] = [
           {item.notes}
         </span>
       ) : null,
+  },
+  {
+    id: 'per',
+    label: 'PER',
+    group: 'Valoración',
+    optional: true,
+    align: 'right',
+    title: 'Precio / beneficio de los últimos 12 meses',
+    sort: (r) => r.targets?.trailingPE ?? null,
+    cell: ({ targets }) => <span className="num">{num(targets?.trailingPE, 1)}</span>,
+  },
+  {
+    id: 'yield',
+    label: 'Rent. div.',
+    group: 'Valoración',
+    optional: true,
+    align: 'right',
+    title: 'Rentabilidad por dividendo anual al precio actual',
+    sort: (r) => r.targets?.dividendYield ?? null,
+    cell: ({ targets }) => (
+      <span className="num">{targets?.dividendYield ? pct(targets.dividendYield).replace('+', '') : '–'}</span>
+    ),
   },
 ];
 

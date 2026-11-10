@@ -26,7 +26,7 @@ const str = (v: number | null | undefined) => (v == null ? '' : String(v).replac
  */
 function understood(raw: string, n: number | null) {
   if (n == null || !/[.,]/.test(raw)) return '';
-  return `= ${n.toLocaleString('es-ES', { maximumFractionDigits: 6 })}`;
+  return `= ${n.toLocaleString('es-ES', { maximumFractionDigits: 6, useGrouping: 'always' as unknown as boolean })}`;
 }
 
 const joinHelp = (...parts: string[]) => parts.filter(Boolean).join(' · ') || ' ';
@@ -244,7 +244,7 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
               <span className="label">Consenso analistas</span>
               <span className="field__value">
                 {row?.targets?.mean != null
-                  ? `${price(row.targets.mean)} (${row.targets.analysts ?? '?'} analistas)`
+                  ? `${price(row.targets.mean, row.quote?.currency)} (${row.targets.analysts ?? '?'} analistas)`
                   : 'Se obtiene automáticamente'}
               </span>
             </div>

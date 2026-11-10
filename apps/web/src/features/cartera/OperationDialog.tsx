@@ -59,6 +59,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
   const [ratio, setRatio] = useState(str(op?.splitRatio));
   const [broker, setBroker] = useState(op?.broker ?? draft?.broker ?? '');
   const [notes, setNotes] = useState(op?.notes ?? '');
+  const [dayOrder, setDayOrder] = useState(op?.dayOrder != null ? String(op.dayOrder) : '');
   const [review, setReview] = useState(op?.needsReview ?? false);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,6 +83,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
     e.preventDefault();
     setError(null);
     if (!t) return setError('Indica el ticker.');
+    if (dayOrder.trim() && !/^[1-9]\d?$/.test(dayOrder.trim())) return setError('El orden en el día debe ser un número del 1 al 99.');
     const data: OperationInput = {
       date,
       ticker: t,
@@ -100,6 +102,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
       source: op?.source ?? 'manual',
       sourceRef: op?.sourceRef ?? null,
       lotRef: type === 'scrip' ? (op?.lotRef ?? null) : null,
+      dayOrder: dayOrder.trim() ? Number(dayOrder.trim()) : null,
     };
     try {
       await save.mutateAsync({
@@ -306,10 +309,15 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
                 ))}
               </datalist>
             </div>
-            <div className="field" style={{ gridColumn: 'span 2' }}>
-              <label htmlFor="op-notes">Notas</label>
-              <input id="op-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <div className="field">
+              <label htmlFor="op-dayorder">Orden en el día</label>
+              <input id="op-dayorder" inputMode="numeric" value={dayOrder} onChange={(e) => setDayOrder(e.target.value)} placeholder="Opcional" />
+              <span className="field__help">1, 2, 3… si ese día hubo varias del mismo valor</span>
             </div>
+          </div>
+          <div className="field field--wide">
+            <label htmlFor="op-notes">Notas</label>
+            <input id="op-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
           <label className="check">
             <input type="checkbox" checked={review} onChange={(e) => setReview(e.target.checked)} /> Marcar para revisar
