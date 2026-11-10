@@ -5,6 +5,7 @@
 import { DEFAULT_COLORS, DEFAULT_SETTINGS, type CarteraView, type Settings, type WatchlistView } from '@watchlist/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from './app.ts';
+import type { AuthOptions } from './modules/auth/auth.ts';
 import { migrate, openPGlite, type Db } from './db/database.ts';
 import type { MarketDataProvider } from './modules/market/provider.ts';
 import { createServicesFromDb } from './services.ts';
@@ -43,7 +44,7 @@ let provider: FakeProvider;
 let db: Db;
 let app: Awaited<ReturnType<typeof buildApp>>;
 
-async function setup(auth?: { password: string; secret: string; secure: boolean }) {
+async function setup(auth?: AuthOptions) {
   db = openPGlite();
   await migrate(db);
   provider = new FakeProvider();
@@ -66,10 +67,12 @@ afterEach(async () => {
 });
 
 describe('acceso', () => {
+  const ownerEmail = 'cartera@example.com';
+
   beforeEach(async () => {
     await app.close();
     await db.close();
-    await setup({ password: 'pan-con-tomate', secret: 'x'.repeat(32), secure: true });
+    await setup({ ownerEmail, password: 'pan-con-tomate', secret: 'x'.repeat(32), secure: true });
   });
 
   it('sin entrar no se ven los datos; con la contraseña sí', async () => {
@@ -78,16 +81,18 @@ describe('acceso', () => {
     expect(health.statusCode).toBe(200);
     // El lector de Excel usa workers blob:; si la CSP los bloquea, importar se cuelga sin error.
     expect(String(health.headers['content-security-policy'])).toMatch(/worker-src 'self' blob:/);
-    expect((await get('/api/session')).json()).toEqual({ authRequired: true, authenticated: false });
-    expect((await send('POST', '/api/login', { password: 'otra' })).statusCode).toBe(401);
-    const ok = await send('POST', '/api/login', { password: 'pan-con-tomate' });
+    expect((await get('/api/session')).json()).toEqual({ authRequired: true, authenticated: false, googleEnabled: false });
+    expect((await send('POST', '/api/login', { email: ownerEmail, password: 'otra' })).statusCode).toBe(401);
+    expect((await send('POST', '/api/login', { email: 'otra@example.com', password: 'pan-con-tomate' })).statusCode).toBe(401);
+    expect((await send('POST', '/api/login', { password: 'pan-con-tomate' })).statusCode).toBe(401);
+    const ok = await send('POST', '/api/login', { email: ' CARTERA@example.com ', password: 'pan-con-tomate' });
     expect(ok.statusCode).toBe(200);
     const setCookie = String(ok.headers['set-cookie']);
     expect(setCookie).toMatch(/HttpOnly/);
     expect(setCookie).toMatch(/Secure/);
     cookie = setCookie.split(';')[0]!;
     expect((await get('/api/lists')).statusCode).toBe(200);
-    expect((await get('/api/session')).json()).toEqual({ authRequired: true, authenticated: true });
+    expect((await get('/api/session')).json()).toEqual({ authRequired: true, authenticated: true, googleEnabled: false });
   });
 
   it('una cookie manipulada no vale', async () => {
@@ -96,8 +101,8 @@ describe('acceso', () => {
   });
 
   it('bloquea tras 5 intentos fallidos', async () => {
-    for (let i = 0; i < 5; i++) await send('POST', '/api/login', { password: 'mal' });
-    expect((await send('POST', '/api/login', { password: 'pan-con-tomate' })).statusCode).toBe(429);
+    for (let i = 0; i < 5; i++) await send('POST', '/api/login', { email: ownerEmail, password: 'mal' });
+    expect((await send('POST', '/api/login', { email: ownerEmail, password: 'pan-con-tomate' })).statusCode).toBe(429);
   });
 
   it('rechaza cambios enviados desde otra web', async () => {
