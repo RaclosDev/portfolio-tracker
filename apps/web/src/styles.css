@@ -260,6 +260,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
 }
 .wl-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.wl-table--watchlist .col-mobile-price, .wl-table--watchlist .col-mobile-signal { display: none; }
 .wl-table th {
   position: sticky; top: 0;
   padding: 9px 10px; text-align: left; font-size: 12px; font-weight: 600; color: var(--text-2);
@@ -809,7 +810,8 @@ th.col-name { z-index: 2; background: var(--surface-2); }
     margin: 0 -12px; padding: 0 12px; scrollbar-width: none;
   }
   .toolbar .segmented::-webkit-scrollbar { display: none; }
-  .toolbar .tag-filters { flex: 1 1 100%; flex-wrap: nowrap; gap: 6px; }
+  .toolbar .tag-filters { flex: 1 1 100%; min-width: 0; max-width: 100%; flex-wrap: nowrap; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  .toolbar .tag-filters::-webkit-scrollbar { display: none; }
   .toolbar .tag-filters .segmented { flex: 0 0 auto; margin: 0; padding: 0; }
   .toolbar .segmented button {
     flex: none; min-height: 36px; padding: 0 12px; font-size: 13px;
@@ -934,6 +936,60 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .xp__price { font-size: 24px; }
   .xp__visual, .xp__data { padding-left: 14px; padding-right: 14px; }
   .wl-table tr.row--open { outline: 2px solid var(--accent); outline-offset: -2px; }
+}
+
+/* Watchlist en móvil y tablet: filas compactas con el detalle bajo la fila. */
+@media (max-width: 1023px) {
+  .table-wrap--watchlist {
+    overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface); box-shadow: none;
+  }
+  .wl-table--watchlist { display: table; width: 100%; table-layout: fixed; border-collapse: collapse; }
+  .wl-table--watchlist thead { display: table-header-group; }
+  .wl-table--watchlist thead .group-row { display: none; }
+  .wl-table--watchlist tbody { display: table-row-group; }
+  .wl-table--watchlist tr.row {
+    display: table-row; position: static; padding: 0; border: 0; border-radius: 0;
+    background: var(--surface); box-shadow: none; overflow: visible;
+  }
+  .wl-table--watchlist tr.row--order { background: var(--order-bg); }
+  .wl-table--watchlist thead tr:not(.group-row) > th:not(.col-name):not(.col-mobile-price):not(.col-mobile-signal),
+  .wl-table--watchlist tr.row > td:not(.col-name):not(.col-mobile-price):not(.col-mobile-signal) { display: none; }
+  .wl-table--watchlist :is(th, td).col-mobile-price,
+  .wl-table--watchlist :is(th, td).col-mobile-signal { display: table-cell; }
+  .wl-table--watchlist :is(th, td).col-name { width: 43%; }
+  .wl-table--watchlist :is(th, td).col-mobile-price { width: 29%; }
+  .wl-table--watchlist :is(th, td).col-mobile-signal { width: 28%; }
+  .wl-table--watchlist tr.row td {
+    display: table-cell; padding: 9px 8px; border: 0; border-bottom: 1px solid var(--border);
+    white-space: nowrap; vertical-align: middle; background: transparent; box-shadow: none !important;
+  }
+  .wl-table--watchlist tr.row td:not(.col-name):not(.col-mobile-price):not(.col-mobile-signal) { display: none; }
+  .wl-table--watchlist tr.row td::before { content: none; }
+  .wl-table--watchlist :is(th, td).col-name { position: static; min-width: 0; max-width: none; }
+  .wl-table--watchlist .name-btn { display: block; min-height: 32px; max-width: 100%; font-size: 14px; white-space: nowrap; text-align: left; }
+  .wl-table--watchlist .col-name .stack, .wl-table--watchlist .col-name .sub { min-width: 0; max-width: 100%; }
+  .wl-table--watchlist .col-name .sub { overflow: hidden; white-space: nowrap; }
+  .wl-table--watchlist .col-name .sub > .badge, .wl-table--watchlist .col-name .sub > .badge--btn { display: none; }
+  .wl-table--watchlist .col-mobile-price .stack--right { align-items: flex-end; }
+  .wl-table--watchlist .col-mobile-price .num.strong { font-size: 14px; }
+  .wl-table--watchlist .col-mobile-signal .stack--right { align-items: flex-end; }
+  .wl-table--watchlist .col-mobile-signal .pill { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+  .wl-table--watchlist tr.row--open td { background: var(--surface-2); }
+  .wl-table--watchlist tr.row-expand { display: table-row; border: 0; border-radius: 0; }
+  .wl-table--watchlist tr.row-expand > td {
+    display: table-cell; width: auto; padding: 0 !important; border-bottom: 1px solid var(--border);
+  }
+  .wl-table--watchlist tr.row--open { outline: none; }
+  .wl-table--watchlist .xp { width: auto !important; }
+}
+@media (max-width: 440px) {
+  .wl-table--watchlist th { padding: 8px 6px; font-size: 11px; }
+  .wl-table--watchlist tr.row td { padding: 8px 6px; }
+  .wl-table--watchlist :is(th, td).col-name { width: 40%; }
+  .wl-table--watchlist :is(th, td).col-mobile-price { width: 31%; }
+  .wl-table--watchlist :is(th, td).col-mobile-signal { width: 29%; }
+  .wl-table--watchlist .col-mobile-signal .pill { font-size: 11px; padding: 1px 4px; }
 }
 
 /* ---------- Cartera (registro de operaciones) ---------- */
