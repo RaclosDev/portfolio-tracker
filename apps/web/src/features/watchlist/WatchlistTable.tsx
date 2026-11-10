@@ -309,28 +309,6 @@ const columns: Column[] = [
     },
   },
   {
-    id: 'per',
-    label: 'PER',
-    group: 'Datos',
-    optional: true,
-    align: 'right',
-    title: 'Precio / beneficio de los últimos 12 meses',
-    sort: (r) => r.targets?.trailingPE ?? null,
-    cell: ({ targets }) => <span className="num">{num(targets?.trailingPE, 1)}</span>,
-  },
-  {
-    id: 'yield',
-    label: 'Rent. div.',
-    group: 'Datos',
-    optional: true,
-    align: 'right',
-    title: 'Rentabilidad por dividendo anual al precio actual',
-    sort: (r) => r.targets?.dividendYield ?? null,
-    cell: ({ targets }) => (
-      <span className="num">{targets?.dividendYield ? pct(targets.dividendYield).replace('+', '') : '–'}</span>
-    ),
-  },
-  {
     id: 'mcap',
     label: 'Capitaliz.',
     group: 'Datos',
@@ -412,6 +390,28 @@ const columns: Column[] = [
           {item.notes}
         </span>
       ) : null,
+  },
+  {
+    id: 'per',
+    label: 'PER',
+    group: 'Valoración',
+    optional: true,
+    align: 'right',
+    title: 'Precio / beneficio de los últimos 12 meses',
+    sort: (r) => r.targets?.trailingPE ?? null,
+    cell: ({ targets }) => <span className="num">{num(targets?.trailingPE, 1)}</span>,
+  },
+  {
+    id: 'yield',
+    label: 'Rent. div.',
+    group: 'Valoración',
+    optional: true,
+    align: 'right',
+    title: 'Rentabilidad por dividendo anual al precio actual',
+    sort: (r) => r.targets?.dividendYield ?? null,
+    cell: ({ targets }) => (
+      <span className="num">{targets?.dividendYield ? pct(targets.dividendYield).replace('+', '') : '–'}</span>
+    ),
   },
 ];
 

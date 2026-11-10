@@ -1,4 +1,4 @@
-import { OPERATION_LABELS, type HistoryRange, type Operation } from '@watchlist/shared';
+import { OPERATION_LABELS, sortOperations, type HistoryRange, type Operation } from '@watchlist/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { api } from '../../api/client.ts';
@@ -42,7 +42,7 @@ export function TickerDialog({
   });
 
   if (!t) return null;
-  const ops = model.view.operations.filter((o) => o.ticker === ticker).sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+  const ops = sortOperations(model.view.operations.filter((o) => o.ticker === ticker)).reverse();
   const fx = row?.fxRate ?? 1;
   const avgNative = t.shares > 0 ? (t.costEur / t.shares) * fx : null;
   const refs: RefLine[] = avgNative ? [{ label: 'Coste medio', value: avgNative, kind: 'price' }] : [];
@@ -164,7 +164,10 @@ export function TickerDialog({
               const sale = t.sales.find((s) => s.id === o.id);
               return (
                 <tr key={o.id} className="row row--click" onClick={() => onEditOperation(o)}>
-                  <td className="num">{shortDate(o.date)}</td>
+                  <td className="num">
+                    {shortDate(o.date)}
+                    {o.dayOrder != null && <span className="sub" title="Orden en el día"> ·{o.dayOrder}</span>}
+                  </td>
                   <td>{OPERATION_LABELS[o.type]}</td>
                   <td className="al-right num">{o.shares ? num(o.shares, Number.isInteger(o.shares) ? 0 : 3) : ''}</td>
                   <td className="al-right num">{o.price ? price(o.price, row?.currency ?? inst?.currency ?? 'EUR') : ''}</td>

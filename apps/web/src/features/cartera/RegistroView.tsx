@@ -1,4 +1,4 @@
-import { KNOWN_BROKERS, OPERATION_LABELS, OPERATION_TYPES, type Operation, type OperationType } from '@watchlist/shared';
+import { KNOWN_BROKERS, OPERATION_LABELS, OPERATION_TYPES, sortOperations, type Operation, type OperationType } from '@watchlist/shared';
 import { useMemo, useState } from 'react';
 import { useOperationMutations } from '../../api/hooks.ts';
 import { money, num, price, shortDate } from '../../lib/format.ts';
@@ -35,7 +35,9 @@ export function RegistroView({
   const issues = useMemo(() => new Map(model.ledger.issues.map((i) => [i.opId, i.message])), [model.ledger.issues]);
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return [...ops]
+    // Más recientes arriba, en el orden inverso exacto en que se procesan (fecha y «orden en el día»).
+    return sortOperations(ops)
+      .reverse()
       .filter(
         (o) =>
           (!needle ||
@@ -46,8 +48,7 @@ export function RegistroView({
           (!broker || (broker === '-' ? !o.broker : o.broker === broker)) &&
           (!year || o.date.startsWith(year)) &&
           (!review || o.needsReview),
-      )
-      .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+      );
   }, [ops, q, type, broker, year, review, model.names]);
   const reviewCount = ops.filter((o) => o.needsReview).length;
   const allSelected = filtered.length > 0 && filtered.every((o) => selected.has(o.id));
@@ -161,7 +162,10 @@ export function RegistroView({
                 <td className="col-check" onClick={(e) => e.stopPropagation()}>
                   <input type="checkbox" aria-label={`Seleccionar ${o.ticker} ${o.date}`} checked={selected.has(o.id)} onChange={() => toggle(o.id)} />
                 </td>
-                <td className="num">{shortDate(o.date)}</td>
+                <td className="num">
+                  {shortDate(o.date)}
+                  {o.dayOrder != null && <span className="sub" title="Orden en el día"> ·{o.dayOrder}</span>}
+                </td>
                 <td>
                   <div className="stack">
                     <span className="ticker">{o.ticker}</span>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addMonths, computeLedger } from './ledger.ts';
+import { addMonths, computeLedger, sortOperations } from './ledger.ts';
 import { operationInputSchema, type Operation, type OperationInput } from './schemas.ts';
 import { computeTaxYears, savingsTax } from './tax.ts';
 import { valueCartera, xirr } from './view.ts';
@@ -50,6 +50,21 @@ describe('FIFO', () => {
     const s = sell('2024-03-01', 'AAA', 10, 120);
     const b = buy('2024-03-01', 'AAA', 10, 100);
     expect(computeLedger([s, b]).issues).toEqual([]);
+  });
+
+  it('el «orden en el día» decide qué va antes entre operaciones de la misma fecha', () => {
+    // Tenía 10 a 10 €; ese día vende 10 a 15 € (1.º) y recompra 10 a 12 € (2.º).
+    const ops = [
+      buy('2024-01-01', 'AAA', 10, 100),
+      buy('2024-03-01', 'AAA', 10, 120, { dayOrder: 2 }),
+      sell('2024-03-01', 'AAA', 10, 150, { dayOrder: 1 }),
+    ];
+    const t = computeLedger(ops).byTicker.get('AAA')!;
+    expect(r2(t.sales[0]!.gainEur)).toBe(50); // vende el lote de 100 €, no el recién comprado
+    expect(r2(t.costEur)).toBe(120);
+    // Sin número, se aplica la regla por defecto: compra antes que venta (FIFO igual, el lote antiguo).
+    expect(sortOperations(ops.map((o) => ({ ...o, dayOrder: null }))).map((o) => o.type)).toEqual(['buy', 'buy', 'sell']);
+    expect(sortOperations(ops).map((o) => o.type)).toEqual(['buy', 'sell', 'buy']);
   });
 
   it('el FIFO es global aunque haya varios brókers', () => {

@@ -3,7 +3,8 @@ const LOCALE = 'es-ES';
 const cache = new Map<string, Intl.NumberFormat>();
 function nf(key: string, opts: Intl.NumberFormatOptions) {
   let f = cache.get(key);
-  if (!f) cache.set(key, (f = new Intl.NumberFormat(LOCALE, opts)));
+  // En es-ES Intl no agrupa los números de 4 cifras (1000 en vez de 1.000): forzamos el punto de miles siempre.
+  if (!f) cache.set(key, (f = new Intl.NumberFormat(LOCALE, { useGrouping: 'always' as unknown as boolean, ...opts })));
   return f;
 }
 

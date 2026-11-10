@@ -141,4 +141,17 @@ export const migrations: string[] = [
   `,
   // 3: el scrip del Excel va al lote de su compra (columna «Lote»).
   `ALTER TABLE operations ADD COLUMN lot_ref INTEGER;`,
+  // 4: orden opcional entre operaciones del mismo día.
+  `ALTER TABLE operations ADD COLUMN day_order INTEGER;`,
+  // 5: sectores corregidos (ver SECTOR_OVERRIDES). Solo cambia el valor puesto automáticamente desde
+  // Yahoo; si lo editaste a mano, se respeta.
+  `
+  UPDATE instruments SET sector = 'Servicios públicos' WHERE sector = 'Eléctricas y agua';
+  UPDATE instruments SET sector = 'Telecomunicaciones' WHERE symbol = 'CLNX.MC' AND sector = 'Inmobiliario';
+  UPDATE instruments SET sector = 'Industria' WHERE symbol = 'FDR.MC' AND sector = 'Consumo cíclico';
+  UPDATE instruments SET sector = 'Materiales' WHERE symbol = 'VID.MC' AND sector = 'Consumo cíclico';
+  UPDATE instruments SET sector = 'Consumo básico' WHERE symbol = 'VIS.MC' AND sector = 'Consumo cíclico';
+  UPDATE instruments SET sector = 'Industria' WHERE symbol = 'UBER' AND sector = 'Tecnología';
+  UPDATE instruments SET sector = 'Salud' WHERE symbol IN ('GRF.MC', 'GRF-P.MC') AND sector IS NULL;
+  `,
 ];
