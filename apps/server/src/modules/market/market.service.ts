@@ -8,6 +8,10 @@ type Kind = string; // 'quote' | TARGETS_KIND | 'history-<periodo>'
 const TARGETS_KIND = 'targets-v2';
 const HISTORY_TTL_MS = 60 * 60_000;
 const PROFILE_TTL_MS = 30 * 24 * 60 * 60_000;
+/** Los minigráficos son cierres diarios: con renovarlos cada 3 h basta. */
+const SPARK_TTL_MS = 3 * 60 * 60_000;
+/** Pausa entre históricos renovados en segundo plano, para no ir a ráfagas. */
+const REFRESH_GAP_MS = 1_500;
 interface Entry<T> {
   value: T;
   fetchedAt: number;
@@ -213,13 +217,57 @@ export class MarketService {
     return { points: stored?.value ?? [], stale: true };
   }
 
-  /** Cierres del periodo (3 meses por defecto) de varios valores, para los minigráficos de las tablas. */
+  /**
+   * Cierres del periodo (3 meses por defecto) de varios valores, para los minigráficos de las tablas.
+   * Lo guardado se sirve al momento aunque tenga horas; lo viejo se renueva en segundo plano de uno en
+   * uno. Pedir a Yahoo el histórico de toda la lista de golpe (p. ej. tras cada publicación) es lo que
+   * hace que nos limite.
+   */
   async getSparklines(symbols: string[], range: HistoryRange = '3m'): Promise<Record<string, number[]>> {
     const out: Record<string, number[]> = {};
-    await mapLimit([...new Set(symbols)], 4, async (sym) => {
+    const kind = `history-${range}`;
+    await mapLimit([...new Set(symbols)], 2, async (sym) => {
+      const key = `${kind}:${sym}`;
+      let hit = this.mem.get(key) as Entry<PricePoint[]> | undefined;
+      if (!hit) {
+        hit = await this.load<PricePoint[]>(kind, sym);
+        if (hit) this.mem.set(key, hit);
+      }
+      if (hit) {
+        out[sym] = hit.value.map((p) => p.c);
+        if (Date.now() - hit.fetchedAt >= SPARK_TTL_MS) this.queueRefresh(sym, range);
+        return;
+      }
       out[sym] = (await this.getHistory(sym, range)).points.map((p) => p.c);
     });
     return out;
+  }
+
+  private refreshQueue = new Map<string, HistoryRange>();
+  private refreshing = false;
+
+  /** Renueva históricos viejos poco a poco, sin bloquear la respuesta. Se para si Yahoo nos limita. */
+  private queueRefresh(symbol: string, range: HistoryRange) {
+    this.refreshQueue.set(`${range}:${symbol}`, range);
+    if (this.refreshing) return;
+    this.refreshing = true;
+    void (async () => {
+      try {
+        for (const [k, r] of this.refreshQueue) {
+          if (this.throttled) break;
+          this.refreshQueue.delete(k);
+          const sym = k.slice(r.length + 1);
+          const hit = this.mem.get(`history-${r}:${sym}`);
+          if (hit && Date.now() - hit.fetchedAt < SPARK_TTL_MS) continue;
+          this.mem.delete(`history-${r}:${sym}`);
+          await this.getHistory(sym, r).catch(() => {});
+          await new Promise((res) => setTimeout(res, REFRESH_GAP_MS));
+        }
+      } finally {
+        this.refreshQueue.clear();
+        this.refreshing = false;
+      }
+    })();
   }
 
   /** Ficha de la empresa (sector y nombre). Cambia poco: se guarda 30 días. null si no hay. */
