@@ -137,7 +137,15 @@ export const instrumentInputSchema = z.object({
 export type InstrumentInput = z.input<typeof instrumentInputSchema>;
 export type Instrument = z.output<typeof instrumentInputSchema>;
 
-export const instrumentPatchSchema = instrumentInputSchema.omit({ ticker: true }).partial();
+// Un parche solo modifica las claves enviadas; los valores por defecto son para altas completas.
+export const instrumentPatchSchema = z.object({
+  symbol: instrumentInputSchema.shape.symbol.removeDefault(),
+  name: instrumentInputSchema.shape.name.removeDefault(),
+  sector: instrumentInputSchema.shape.sector.removeDefault(),
+  currency: instrumentInputSchema.shape.currency.removeDefault(),
+  isin: instrumentInputSchema.shape.isin.removeDefault(),
+  notes: instrumentInputSchema.shape.notes.removeDefault(),
+}).partial();
 export type InstrumentPatch = z.input<typeof instrumentPatchSchema>;
 
 /** Añade operaciones; los duplicados solo se incluyen si se confirma expresamente. */

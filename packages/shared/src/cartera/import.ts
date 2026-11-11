@@ -141,7 +141,8 @@ export function discoverImportInstruments(rows: Cell[][], options: ImportOptions
     }
     const identityConflict = known && ticker && isin && known.isin && known.isin.toUpperCase() !== isin;
     found.set(key, {
-      key, ticker: known?.ticker ?? (ticker || isin), symbol: known?.symbol ?? null,
+      key, ticker: known?.ticker ?? (ticker || isin),
+      symbol: known ? known.symbol : (/^0P[A-Z0-9]{8}(?:\.[A-Z]{1,3})?$/.test(ticker) ? ticker : null),
       name: known?.name ?? (text(getCell(row, options.columns, 'name')) || null),
       sector: known?.sector ?? null, isin: known?.isin ?? (isin || null), notes: known?.notes ?? null, currency,
       ...(identityConflict ? { problem: 'El ticker y el ISIN no corresponden al mismo valor de tu cartera.' } : {}),

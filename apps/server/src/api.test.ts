@@ -9,6 +9,8 @@ import type { AuthOptions } from './modules/auth/auth.ts';
 import { migrate, openPGlite, type Db } from './db/database.ts';
 import type { MarketDataProvider } from './modules/market/provider.ts';
 import { createServicesFromDb } from './services.ts';
+import { FallbackProvider } from './modules/market/fallback.provider.ts';
+import { MarketService } from './modules/market/market.service.ts';
 
 const now = () => new Date().toISOString();
 const quote = (symbol: string, price: number, currency: string) => ({
@@ -276,6 +278,21 @@ describe('copias', () => {
 });
 
 describe('límite de Yahoo', () => {
+  it('conserva en la base de datos el NAV y su fecha si fallan todas las fuentes', async () => {
+    const nav = { ...quote('IE00B3VXGD32', 65.5, 'EUR'), source: 'Borsa Italiana / FIDA', asOf: '2025-11-10' };
+    const alternative: MarketDataProvider = { id: 'borsa',
+      getQuotes: vi.fn().mockResolvedValue([nav]), getTargets: async () => null,
+      search: async () => [], getHistory: async () => [] };
+    const chain = new FallbackProvider([provider, alternative]);
+    const options = { quoteTtlMs: 45_000, targetsTtlMs: 60_000 };
+    const market = new MarketService(chain, db, options);
+    expect((await market.getQuotes([nav.symbol])).get(nav.symbol)).toMatchObject({ ...nav, stale: false });
+    provider.failWith = 'HTTP 429';
+    vi.mocked(alternative.getQuotes).mockRejectedValue(new Error('HTTP 503'));
+    const restarted = new MarketService(chain, db, options);
+    expect((await restarted.getQuotes([nav.symbol])).get(nav.symbol)).toMatchObject({ ...nav, stale: true });
+  });
+
   it('ante un 429 pausa las consultas y sirve los últimos precios guardados', async () => {
     await send('POST', '/api/items', { listId: 1, symbol: 'AAA.MC' });
     await get('/api/lists/1/watchlist'); // primera consulta: queda guardada
@@ -290,6 +307,27 @@ describe('límite de Yahoo', () => {
 });
 
 describe('históricos', () => {
+  it('recupera un minigráfico antes vacío sin invalidar los históricos válidos guardados', async () => {
+    const history = vi.spyOn(provider, 'getHistory');
+    const storedAt = new Date(Date.now() - 6 * 60_000).toISOString();
+    await db.query('INSERT INTO market_cache (kind, symbol, data, fetched_at) VALUES ($1, $2, $3::jsonb, $4)',
+      ['history-1y', 'AAA.MC', '[]', storedAt]);
+    await db.query('INSERT INTO market_cache (kind, symbol, data, fetched_at) VALUES ($1, $2, $3::jsonb, $4)',
+      ['history-1y', 'BBB', JSON.stringify([{ t: '2026-10-01', c: 50 }, { t: '2026-10-02', c: 51 }]), storedAt]);
+    const result = (await get('/api/market/sparklines?symbols=AAA.MC,BBB&range=1y')).json();
+    expect(result).toEqual({ 'AAA.MC': [10, 11, 9.5, 10.2], BBB: [50, 51] });
+    expect(history).toHaveBeenCalledTimes(1);
+    expect((await get('/api/market/history/AAA.MC?range=1y')).json().points).toHaveLength(4);
+    expect(history).toHaveBeenCalledTimes(1);
+  });
+
+  it('conserva brevemente un histórico vacío para no repetir consultas sin cobertura', async () => {
+    const history = vi.spyOn(provider, 'getHistory').mockResolvedValue([]);
+    await get('/api/market/history/AAA.MC?range=1y');
+    expect((await get('/api/market/sparklines?symbols=AAA.MC&range=1y')).json()).toEqual({ 'AAA.MC': [] });
+    expect(history).toHaveBeenCalledTimes(1);
+  });
+
   it('devuelve el histórico de un periodo y los minigráficos', async () => {
     const h = (await get('/api/market/history/aaa.mc?range=6m')).json() as { points: { c: number }[]; stale: boolean };
     expect(h.points.map((p) => p.c)).toEqual([10, 11, 9.5, 10.2]);
@@ -328,6 +366,39 @@ describe('cartera', () => {
     await send('POST', '/api/operations', { operation: { date: '2025-02-01', ticker: 'AAA', type: 'sell', shares: 10, amountEur: 150 } });
     expect((await send('DELETE', `/api/operations/${b.id}`)).statusCode).toBe(400);
     expect((await portfolio()).operations).toHaveLength(2);
+  });
+
+  it('vincula un valor existente al añadir una compra sin perder sus datos personales', async () => {
+    await send('POST', '/api/operations', { ...buy('BBB', 1, 2), instrument: { name: 'Mi valor', sector: 'Salud', notes: 'Conservar' } });
+    const res = await send('POST', '/api/operations', {
+      ...buy('BBB', 2, 90), instrument: { symbol: 'BBB', currency: 'USD' },
+    });
+    expect(res.statusCode).toBe(201);
+    const view = await portfolio();
+    expect(view.instruments[0]).toMatchObject({ symbol: 'BBB', currency: 'USD', name: 'Mi valor', sector: 'Salud', notes: 'Conservar' });
+    expect(view.quotes.BBB?.price).toBe(50);
+  });
+
+  it('guarda la cotización y la divisa al editar una operación y revierte todo si el registro no cuadra', async () => {
+    const first = (await send('POST', '/api/operations', {
+      ...buy('BBB', 1, 2), instrument: { notes: 'Conservar' },
+    })).json() as { id: number };
+    const res = await send('PUT', `/api/operations/${first.id}`, {
+      operation: { ...buy('BBB', 1, 45).operation, price: 50, fxRate: 1.1 },
+      instrument: { symbol: 'BBB', name: 'Valor vinculado', currency: 'USD' },
+    });
+    expect(res.statusCode).toBe(200);
+    const view = await portfolio();
+    expect(view.operations[0]).toMatchObject({ amountEur: 45, price: 50, fxRate: 1.1 });
+    expect(view.instruments[0]).toMatchObject({ symbol: 'BBB', name: 'Valor vinculado', currency: 'USD', notes: 'Conservar' });
+    const invalid = await send('PUT', `/api/operations/${first.id}`, {
+      operation: { date: '2025-01-10', ticker: 'BBB', type: 'sell', shares: 2, amountEur: 90 },
+      instrument: { symbol: 'WRONG', currency: 'EUR' },
+    });
+    expect(invalid.statusCode).toBe(400);
+    const unchanged = await portfolio();
+    expect(unchanged.operations[0]).toMatchObject({ type: 'buy', amountEur: 45 });
+    expect(unchanged.instruments[0]).toMatchObject({ symbol: 'BBB', currency: 'USD' });
   });
 
   it('edita, cambia el bróker de varias y borra', async () => {

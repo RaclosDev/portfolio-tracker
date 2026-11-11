@@ -103,10 +103,14 @@ export interface RegistroParse {
 }
 
 /** Símbolo de Yahoo propuesto para un ticker del Excel. */
-export function suggestYahooSymbol(ticker: string, foreign: boolean): string {
+export function suggestYahooSymbol(ticker: string, foreign: boolean): string | null {
+  ticker = ticker.trim().toUpperCase();
+  if (/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(ticker)) return null;
   if (foreign) return ticker;
   // Yahoo usa «-P» para las acciones sin voto (Grifols clase B: GRF.P → GRF-P.MC).
-  return `${ticker.replace(/\.P$/, '-P')}.MC`;
+  if (/\.P$/.test(ticker)) return `${ticker.replace(/\.P$/, '-P')}.MC`;
+  if (/[.\^=\-]/.test(ticker) || /^0P[A-Z0-9]{8}$/.test(ticker)) return ticker;
+  return `${ticker}.MC`;
 }
 
 export interface BrokerRule {

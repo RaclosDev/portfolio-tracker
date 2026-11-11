@@ -111,7 +111,8 @@ export const api = {
   portfolioHistory: (from: string, to: string) => request<PortfolioHistory>('GET', `/api/portfolio/history?${new URLSearchParams({ from, to })}`),
   createOperation: (operation: OperationInput, instrument?: Partial<InstrumentInput>) =>
     request<Operation>('POST', '/api/operations', { operation, instrument }),
-  updateOperation: (id: number, data: OperationInput) => request<Operation>('PUT', `/api/operations/${id}`, data),
+  updateOperation: (id: number, operation: OperationInput, instrument?: Partial<InstrumentInput>) =>
+    request<Operation>('PUT', `/api/operations/${id}`, { operation, instrument }),
   deleteOperation: (id: number) => request<void>('DELETE', `/api/operations/${id}`),
   setBroker: (ids: number[], broker: string | null, needsReview = false) =>
     request<{ updated: number }>('POST', '/api/operations/broker', { ids, broker, needsReview }),

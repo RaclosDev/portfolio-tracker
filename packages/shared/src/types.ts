@@ -26,6 +26,11 @@ export interface Quote {
   exchange: string | null;
   marketState: string | null;
   fetchedAt: string;
+  /** Fuente y fecha real del precio, independientes de la hora de consulta. */
+  source?: string;
+  sourceUrl?: string;
+  asOf?: string;
+  isin?: string;
   /** true si la fuente falló y se muestra el último dato guardado. */
   stale: boolean;
 }
@@ -112,7 +117,7 @@ export const HISTORY_RANGES: { id: HistoryRange; label: string }[] = [
   { id: '5y', label: '5 años' },
 ];
 
-/** Cierre de un día (o semana, en 5 años). */
+/** Observación de precio fechada; la frecuencia depende de la fuente y el periodo. */
 export interface PricePoint {
   t: string;
   c: number;
@@ -122,7 +127,7 @@ export interface PricePoint {
 export interface CarteraView {
   instruments: Instrument[];
   operations: Operation[];
-  /** Cotizaciones por símbolo de Yahoo. */
+  /** Cotizaciones por símbolo o identificador de la fuente. */
   quotes: Record<string, Quote>;
   /** Unidades de cada divisa por 1 €. */
   fx: Record<string, number>;

@@ -29,6 +29,21 @@ describe('reconocimiento de columnas y valores', () => {
     expect(discoverImportInstruments([['A', 'IE0000000001', 'EUR', 'buy'], ['A', 'IE0000000002', 'EUR', 'buy']], opts, [])[0]?.problem).toContain('varios ISIN');
     expect(discoverImportInstruments([['A', '', 'EUR', 'buy'], ['A', '', 'USD', 'buy']], opts, [])[0]?.problem).toContain('varias divisas');
   });
+
+  it('vincula los códigos completos de fondos a Yahoo sin inventar símbolos para ISIN o tickers ambiguos', () => {
+    const opts = options({ columns: { ticker: 0, type: 1 } });
+    const tickers = ['0P0001OJNQ.F', '0P0001F2GG.F', '0P0001F2GG', 'IE00B3VXGD32', 'AAA', '0P0001F2GG.F.MC'];
+    expect(discoverImportInstruments(tickers.map((ticker) => [ticker, 'Compra']), opts, [])
+      .map((i) => i.symbol)).toEqual(['0P0001OJNQ.F', '0P0001F2GG.F', '0P0001F2GG', null, null, null]);
+  });
+
+  it('conserva la vinculación existente de un fondo, incluso si se dejó vacía', () => {
+    const opts = options({ columns: { ticker: 0, type: 1 } });
+    for (const symbol of [null, 'OTRA.CLASE']) {
+      const existing = instrumentInputSchema.parse({ ticker: '0P0001F2GG.F', symbol });
+      expect(discoverImportInstruments([['0P0001F2GG.F', 'Compra']], opts, [existing])[0]?.symbol).toBe(symbol);
+    }
+  });
 });
 
 describe('fechas y números de exportaciones', () => {
