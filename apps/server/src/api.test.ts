@@ -307,6 +307,27 @@ describe('límite de Yahoo', () => {
 });
 
 describe('históricos', () => {
+  it('recupera un minigráfico antes vacío sin invalidar los históricos válidos guardados', async () => {
+    const history = vi.spyOn(provider, 'getHistory');
+    const storedAt = new Date(Date.now() - 6 * 60_000).toISOString();
+    await db.query('INSERT INTO market_cache (kind, symbol, data, fetched_at) VALUES ($1, $2, $3::jsonb, $4)',
+      ['history-1y', 'AAA.MC', '[]', storedAt]);
+    await db.query('INSERT INTO market_cache (kind, symbol, data, fetched_at) VALUES ($1, $2, $3::jsonb, $4)',
+      ['history-1y', 'BBB', JSON.stringify([{ t: '2026-10-01', c: 50 }, { t: '2026-10-02', c: 51 }]), storedAt]);
+    const result = (await get('/api/market/sparklines?symbols=AAA.MC,BBB&range=1y')).json();
+    expect(result).toEqual({ 'AAA.MC': [10, 11, 9.5, 10.2], BBB: [50, 51] });
+    expect(history).toHaveBeenCalledTimes(1);
+    expect((await get('/api/market/history/AAA.MC?range=1y')).json().points).toHaveLength(4);
+    expect(history).toHaveBeenCalledTimes(1);
+  });
+
+  it('conserva brevemente un histórico vacío para no repetir consultas sin cobertura', async () => {
+    const history = vi.spyOn(provider, 'getHistory').mockResolvedValue([]);
+    await get('/api/market/history/AAA.MC?range=1y');
+    expect((await get('/api/market/sparklines?symbols=AAA.MC&range=1y')).json()).toEqual({ 'AAA.MC': [] });
+    expect(history).toHaveBeenCalledTimes(1);
+  });
+
   it('devuelve el histórico de un periodo y los minigráficos', async () => {
     const h = (await get('/api/market/history/aaa.mc?range=6m')).json() as { points: { c: number }[]; stale: boolean };
     expect(h.points.map((p) => p.c)).toEqual([10, 11, 9.5, 10.2]);

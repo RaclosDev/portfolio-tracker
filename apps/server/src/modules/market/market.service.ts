@@ -7,8 +7,9 @@ type Kind = string; // 'quote' | TARGETS_KIND | 'history-<periodo>'
 /** Sube la versión cuando AnalystTargets gane campos: así no se sirve la caché antigua sin ellos. */
 const TARGETS_KIND = 'targets-v2';
 const HISTORY_TTL_MS = 60 * 60_000;
+const EMPTY_HISTORY_TTL_MS = 5 * 60_000;
 const PROFILE_TTL_MS = 30 * 24 * 60 * 60_000;
-/** Los minigráficos son cierres diarios: con renovarlos cada 3 h basta. */
+/** Los minigráficos usan observaciones diarias o mensuales: se renuevan cada 3 h. */
 const SPARK_TTL_MS = 3 * 60 * 60_000;
 /** Pausa entre históricos renovados en segundo plano, para no ir a ráfagas. */
 const REFRESH_GAP_MS = 1_500;
@@ -237,7 +238,7 @@ export class MarketService {
       hit = await this.load<PricePoint[]>(kind, symbol);
       if (hit) this.mem.set(key, hit);
     }
-    if (hit && Date.now() - hit.fetchedAt < HISTORY_TTL_MS) return { points: hit.value, stale: false };
+    if (hit && Date.now() - hit.fetchedAt < (hit.value.length ? HISTORY_TTL_MS : EMPTY_HISTORY_TTL_MS)) return { points: hit.value, stale: false };
     if (!this.throttled) {
       try {
         const points = await this.provider.getHistory(symbol, range);
@@ -269,7 +270,8 @@ export class MarketService {
         hit = await this.load<PricePoint[]>(kind, sym);
         if (hit) this.mem.set(key, hit);
       }
-      if (hit) {
+      // Reintentar pronto los vacíos permite aprovechar nuevas fuentes o cobertura recuperada.
+      if (hit && (hit.value.length || Date.now() - hit.fetchedAt < EMPTY_HISTORY_TTL_MS)) {
         out[sym] = hit.value.map((p) => p.c);
         if (Date.now() - hit.fetchedAt >= SPARK_TTL_MS) this.queueRefresh(sym, range);
         return;
