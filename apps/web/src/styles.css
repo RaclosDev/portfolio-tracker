@@ -783,6 +783,27 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .import-preview .wl-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
 .import-symbol { width: 9.5em; font-family: var(--font-mono, ui-monospace, monospace); text-transform: uppercase; }
 .row--missing td { background: var(--expired-bg); }
+.import-mapping { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px 18px; }
+.portfolio-import .field { min-width: 0; }
+.portfolio-import .field__help { overflow-wrap: anywhere; }
+.portfolio-import select, .portfolio-import input:not([type="checkbox"]) { width: 100%; min-width: 0; }
+.import-checks { display: grid; gap: 12px; margin: 16px 0; }
+.import-checks label, .import-check { display: flex; align-items: flex-start; gap: 8px; }
+.import-checks input, .import-check input { flex-shrink: 0; margin-top: 3px; }
+.import-instruments { margin: 12px 0 24px; }
+.import-instruments summary, .import-row-result summary { cursor: pointer; padding: 8px 0; }
+.import-instrument { border: 1px solid var(--border); border-radius: var(--radius); margin: 12px 0; padding: 12px; min-width: 0; }
+.import-instrument legend { padding: 0 6px; overflow-wrap: anywhere; }
+.portfolio-import .import-preview { max-height: 50vh; }
+.portfolio-import .wl-table td { vertical-align: top; }
+.portfolio-import .import-row-result { min-width: 220px; max-width: 400px; white-space: normal; overflow-wrap: anywhere; }
+.import-pagination { justify-content: space-between; flex-wrap: wrap; margin: 12px 0; }
+@media (max-width: 700px) {
+  .portfolio-import .grid-3 { grid-template-columns: 1fr; }
+  .portfolio-import .dialog__footer { flex-wrap: wrap; }
+  .portfolio-import .dialog__footer .spacer { display: none; }
+  .portfolio-import .dialog__footer .btn { flex: 1 1 140px; }
+}
 
 /* Entrada con contraseña */
 .login { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
@@ -1206,6 +1227,11 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .renta .notice { margin-top: 12px; }
 
 .dialog--xl { width: min(1040px, calc(100vw - 32px)); }
+.import-preview .wl-table thead { display: table-header-group; }
+.import-preview td:first-child { padding: 0; }
+.import-preview td input[type='checkbox'] { width: 18px; height: 18px; margin: 13px; }
+.import-scroll-hint { display: none; }
+@media (max-width: 700px) { .import-scroll-hint { display: block; } }
 .ticker-hl { margin-top: 10px; }
 .ticker-ops { max-height: 300px; overflow-y: auto; }
 .import-compare { max-width: 640px; margin: 8px 0; }

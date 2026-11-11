@@ -140,10 +140,11 @@ export type Instrument = z.output<typeof instrumentInputSchema>;
 export const instrumentPatchSchema = instrumentInputSchema.omit({ ticker: true }).partial();
 export type InstrumentPatch = z.input<typeof instrumentPatchSchema>;
 
-/** Importación del registro completo (sustituye lo importado antes). */
+/** Añade operaciones; los duplicados solo se incluyen si se confirma expresamente. */
 export const carteraImportSchema = z.object({
   instruments: z.array(instrumentInputSchema).max(500),
   operations: z.array(operationInputSchema).min(1).max(20_000),
+  allowDuplicates: z.boolean().default(false),
 });
 export type CarteraImport = z.input<typeof carteraImportSchema>;
 

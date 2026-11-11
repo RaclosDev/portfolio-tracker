@@ -13,6 +13,7 @@ function useDebounced<T>(value: T, ms: number) {
 }
 
 interface Props {
+  inputId?: string;
   value: string;
   onChange: (symbol: string) => void;
   onPick: (r: SymbolSearchResult) => void;
@@ -20,7 +21,7 @@ interface Props {
 }
 
 /** Campo de símbolo con búsqueda por nombre, ticker o ISIN (combobox accesible). */
-export function SymbolPicker({ value, onChange, onPick, autoFocus }: Props) {
+export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'symbol' }: Props) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const q = useDebounced(value.trim(), 300);
@@ -41,7 +42,7 @@ export function SymbolPicker({ value, onChange, onPick, autoFocus }: Props) {
   return (
     <div className="combo">
       <input
-        id="symbol"
+        id={inputId}
         role="combobox"
         aria-expanded={open && data.length > 0}
         aria-controls={listId}

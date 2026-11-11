@@ -10,7 +10,7 @@ La primera vez se abre una **guía** que explica cada parte (botón **Guía** pa
 
 - **Listas** en pestañas para vigilar lo que quieres comprar.
 - **Cartera**: se calcula del **registro de operaciones** (compras, ventas, dividendos, scrip, derechos, splits…), por lotes FIFO de cada valor y con el bróker de cada operación. Pestañas *Resumen* (reparto por valor, sector y bróker; resultado por año), *En cartera*, *Cerradas*, *Registro* (filtros y cambio de bróker de varias a la vez) y *Renta* (ganancias y pérdidas por año con la regla de los dos meses, compensación y pérdidas pendientes; se descarga en Excel o PDF). Pulsando un valor se abre su ficha con gráfico, lotes y operaciones.
-- **Importar Excel** (en la Cartera): lee la hoja *Registro* del Excel de cartera. Volver a importar sustituye lo importado antes (lo añadido a mano se queda) y antes guarda una copia.
+- **Importar operaciones** (en la Cartera): adjunta un Excel `.xlsx`, CSV o TSV de tu bróker. El asistente reconoce los títulos, permite elegir hoja y fila de cabecera, y pide aclarar columnas y tipos desconocidos. La vista previa muestra las operaciones, posibles duplicados y errores antes de añadirlas. Conserva toda la cartera anterior y guarda una copia; puedes recordar la correspondencia de columnas en este navegador.
 - **Mapa de precios**: rango de 52 semanas, precio actual, tus niveles de compra, el objetivo del bróker y el consenso.
 - **Compra 1/2/3**: precio y distancia (%); se editan pulsando en la celda.
 - **Acciones / Importe / Ahorro**: en euros aunque el valor cotice en otra divisa. Las acciones se redondean siempre hacia arriba.
@@ -19,6 +19,18 @@ La primera vez se abre una **guía** que explica cada parte (botón **Guía** pa
 **En el móvil o la tablet:** abre la web y añádela a la pantalla de inicio (Chrome: menú ⋮ → Añadir a pantalla de inicio; iPhone/iPad: Compartir → Añadir a pantalla de inicio). Después, **Ajustes → Notificaciones → Activar en este dispositivo**. Hay que activarlas en cada dispositivo donde se quieran recibir.
 
 Símbolos: los de Yahoo Finance (el buscador acepta nombre, ticker o ISIN). Sufijos: `.MC` Madrid, `.PA` París, `.AS` Ámsterdam, `.DE` Xetra, `.MI` Milán, `.L` Londres, sin sufijo para EE. UU.
+
+### Importar operaciones de un bróker
+
+Exporta el **historial de operaciones ejecutadas**, con una fila por movimiento. Un resumen de posiciones actuales no contiene el historial necesario para reconstruir los lotes. Se admiten hasta 10 MB por archivo, 20.000 operaciones y 500 valores por importación. Los Excel antiguos `.xls` deben guardarse como `.xlsx`.
+
+Revisa las columnas reconocidas y sus ejemplos. Si el archivo tiene varias fechas o importes, elige los que correspondan a la operación. Puedes indicar un tipo común si todas las filas son compras, o asignar los tipos desconocidos una sola vez para todo el archivo. También puedes excluir tipos o filas. Las fechas y números ambiguos requieren elegir su formato.
+
+Indica si el importe está en euros o en la divisa del valor y si incluye comisiones. Precio y comisiones se interpretan en la divisa del valor; las retenciones, en euros. Para otras divisas hace falta el cambio histórico expresado en unidades de esa divisa por euro. Los cobros netos se convierten a bruto sumando las retenciones y comisiones que hayas indicado. Revisa estos ajustes según el contenido de tu exportación.
+
+En la vista previa puedes vincular un valor con uno existente, revisar su divisa o buscar su cotización. El ISIN también puede servir de identificador; sin símbolo de cotización se conservan las operaciones, pero no habrá precio actual. Se señalan coincidencias de fecha, valor, tipo, cantidades, importes y bróker tanto en el archivo como en la cartera: se omiten por defecto y puedes incluirlas si son operaciones distintas. No se detectarán necesariamente duplicados expresados de otra forma.
+
+Confirma la revisión para añadirlas. Si una venta supera las acciones disponibles u otra operación deja el registro inconsistente, se cancela toda la importación. Las operaciones previamente importadas, incluidas las del antiguo Excel, se conservan.
 
 ### Evolución de la cartera
 

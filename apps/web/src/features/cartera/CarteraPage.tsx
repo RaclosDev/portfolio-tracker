@@ -254,10 +254,10 @@ export function CarteraPage({ model, isPending, error, draft, onDraftUsed }: Pro
 
       {empty ? (
         <div className="empty">
-          <p>Todavía no hay operaciones. Importa tu Excel de cartera (hoja Registro) o añade la primera compra.</p>
+          <p>Todavía no hay operaciones. Importa un Excel o CSV de tu bróker o añade la primera compra.</p>
           <div className="row-actions" style={{ justifyContent: 'center' }}>
             <button type="button" className="btn btn--primary" onClick={() => setImporting(true)}>
-              Importar Excel
+              Importar operaciones
             </button>
             <button type="button" className="btn" onClick={() => setEditing({ op: null })}>
               Añadir operación
@@ -293,7 +293,7 @@ export function CarteraPage({ model, isPending, error, draft, onDraftUsed }: Pro
         />
       )}
       {importing && (
-        <CarteraImportDialog hasExcelData={model.view.operations.some((o) => o.source === 'excel')} onClose={() => setImporting(false)} />
+        <CarteraImportDialog view={model.view} onClose={() => setImporting(false)} />
       )}
     </div>
   );
