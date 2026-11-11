@@ -37,6 +37,12 @@ export interface PortfolioHistory {
   points: PortfolioHistoryPoint[];
   stale: boolean;
   missing: string[];
+  /** Serie separada con un conjunto fijo de valores; excluye también todas sus operaciones. */
+  available?: {
+    points: PortfolioHistoryPoint[];
+    included: number;
+    excluded: { ticker: string; name: string }[];
+  };
 }
 
 export function shiftDate(date: string, days: number): string {

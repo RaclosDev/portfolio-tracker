@@ -108,7 +108,7 @@ export class MarketService {
     if (!this.throttled && this.provider.getDailyHistory) {
       try {
         const value = await this.provider.getDailyHistory(symbol, start);
-        if (!value.points.length) throw new Error('Sin cierres diarios');
+        if (!value.points.length && cached?.value.points.length) throw new Error('Sin cierres diarios actualizados');
         this.mem.set(key, { value, fetchedAt: Date.now() });
         await this.persist(kind, symbol, value);
         return { ...value, stale: false };
