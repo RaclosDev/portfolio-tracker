@@ -13,10 +13,13 @@ const Delta = ({ v, sub }: { v: number | null | undefined; sub?: number | null }
   </div>
 );
 
-function NameCell({ r }: { r: HoldingRow | ClosedRow }) {
+function NameCell({ r, onOpen }: { r: HoldingRow | ClosedRow; onOpen: (ticker: string) => void }) {
   return (
     <div className="stack">
-      <span className="name">{r.name}</span>
+      <button type="button" className="name name-btn" onClick={(event) => {
+        event.stopPropagation();
+        onOpen(r.ticker);
+      }}>{r.name}</button>
       <span className="sub">
         <span className="ticker">{r.ticker}</span>
         {r.currency !== 'EUR' && (
@@ -39,7 +42,7 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
   const maxHist = Math.max(0, ...open.map((r) => Math.abs(r.historicEur ?? 0)));
 
   const columns: Column<HoldingRow>[] = [
-    { id: 'name', label: 'Valor', sort: (r) => r.name.toLowerCase(), cell: (r) => <NameCell r={r} />, total: `Total · ${open.length} valores` },
+    { id: 'name', label: 'Valor', sort: (r) => r.name.toLowerCase(), cell: (r) => <NameCell r={r} onOpen={onOpen} />, total: `Total · ${open.length} valores` },
     {
       id: 'shares',
       label: 'Acciones',
@@ -84,7 +87,7 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
     },
     {
       id: 'value',
-      label: 'Valor',
+      label: 'Valoración',
       align: 'right',
       title: 'Valor de mercado en euros',
       sort: (r) => r.valueEur,
@@ -106,7 +109,7 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
     },
     {
       id: 'unrealized',
-      label: 'Latente',
+      label: 'Resultado',
       align: 'right',
       title: 'Plusvalía si vendieras hoy: valor − coste',
       sort: (r) => r.unrealizedPct,
@@ -163,6 +166,7 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
       rowKey={(r) => r.ticker}
       storageKey="watchlist.cartera.orden.abiertas"
       defaultSort={{ id: 'value', dir: 'desc' }}
+      className="cartera-compact cartera-open"
       onRowClick={(r) => onOpen(r.ticker)}
     />
   );
@@ -174,7 +178,7 @@ export function ClosedView({ model, onOpen }: { model: CarteraModel; onOpen: (ti
   const max = Math.max(0, ...closed.map((r) => Math.abs(r.totalEur)));
   const sum = (f: (r: ClosedRow) => number) => closed.reduce((s, r) => s + f(r), 0);
   const columns: Column<ClosedRow>[] = [
-    { id: 'name', label: 'Valor', sort: (r) => r.name.toLowerCase(), cell: (r) => <NameCell r={r} />, total: `Total · ${closed.length} valores` },
+    { id: 'name', label: 'Valor', sort: (r) => r.name.toLowerCase(), cell: (r) => <NameCell r={r} onOpen={onOpen} />, total: `Total · ${closed.length} valores` },
     {
       id: 'dates',
       label: 'Periodo',
@@ -230,6 +234,7 @@ export function ClosedView({ model, onOpen }: { model: CarteraModel; onOpen: (ti
       rowKey={(r) => r.ticker}
       storageKey="watchlist.cartera.orden.cerradas"
       defaultSort={{ id: 'total', dir: 'desc' }}
+      className="cartera-compact cartera-closed"
       onRowClick={(r) => onOpen(r.ticker)}
     />
   );
