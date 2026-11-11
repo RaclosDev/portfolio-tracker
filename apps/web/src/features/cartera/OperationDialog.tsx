@@ -48,7 +48,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
   const [type, setType] = useState<OperationType>(op?.type ?? draft?.type ?? 'buy');
   const [date, setDate] = useState(op?.date ?? draft?.date ?? localToday());
   const [ticker, setTicker] = useState(op?.ticker ?? draft?.ticker ?? '');
-  const [symbol, setSymbol] = useState(draft?.symbol ?? '');
+  const [symbol, setSymbol] = useState<string | null>(draft?.symbol ?? null);
   const [name, setName] = useState(draft?.name ?? null);
   const [shares, setShares] = useState(str(op?.shares ?? draft?.shares));
   const [priceRaw, setPrice] = useState(str(op?.price ?? draft?.price));
@@ -66,6 +66,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
   const [error, setError] = useState<string | null>(null);
 
   const t = ticker.trim().toUpperCase();
+  const quoteSymbol = symbol ?? (/^0P[A-Z0-9]{8}(?:\.[A-Z]{1,3})?$/.test(t) ? t : '');
   const known = instruments.find((i) => i.ticker === t);
   const currency = known?.currency ?? 'EUR';
   const foreign = currency !== 'EUR' || !!fx;
@@ -110,7 +111,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
       await save.mutateAsync({
         id: op?.id,
         data,
-        instrument: known ? undefined : { symbol: symbol.trim() || null, name, currency: fx ? 'USD' : 'EUR' },
+        instrument: known ? undefined : { symbol: quoteSymbol.trim() || null, name, currency: fx ? 'USD' : 'EUR' },
       });
       onClose();
     } catch (err) {
@@ -170,7 +171,11 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
             </div>
             <div className="field">
               <label htmlFor="op-ticker">Ticker</label>
-              <input id="op-ticker" list="op-tickers" value={ticker} onChange={(e) => setTicker(e.target.value)} autoComplete="off" />
+              <input id="op-ticker" list="op-tickers" value={ticker} onChange={(e) => {
+                setTicker(e.target.value);
+                setSymbol(null);
+                setName(null);
+              }} autoComplete="off" />
               <datalist id="op-tickers">
                 {instruments.map((i) => (
                   <option key={i.ticker} value={i.ticker}>
@@ -183,7 +188,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
           </div>
           {!known && t && (
             <div className="field field--wide">
-              <QuoteSymbolField inputId="op-symbol" value={symbol} onChange={(value) => { setSymbol(value); setName(null); }} onPick={(r) => setName(r.name)} />
+              <QuoteSymbolField inputId="op-symbol" value={quoteSymbol} onChange={(value) => { setSymbol(value); setName(null); }} onPick={(r) => setName(r.name)} />
             </div>
           )}
         </fieldset>
