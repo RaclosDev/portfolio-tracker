@@ -842,7 +842,6 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   /* Los botones van en la línea del logo; las pestañas debajo, y la hora de actualización al final. */
   .topbar__right { display: contents; }
   .topbar [data-tour='refresh'] { margin-left: auto; }
-  .topbar [data-tour='tour'] { display: none; }
   .topbar .btn { padding: 0 10px; }
   .topbar .tabs { order: 3; }
   .topbar .chip, .topbar .updated { order: 4; font-size: 12px; }
@@ -854,10 +853,10 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .hl-cell { flex-basis: 100%; padding: 10px 12px; }
   .hl-big { font-size: 22px; }
 
-  /* Cabecera: selector de lista a la izquierda y tres botones de icono a la derecha (sin logo ni pestañas). */
+  /* Cabecera: selector de lista a la izquierda y acciones a la derecha (sin logo ni pestañas). */
   .topbar { padding: 6px 8px 8px 12px; padding-top: max(6px, env(safe-area-inset-top)); gap: 4px 2px; }
   .topbar .brand, .topbar .tabs { display: none; }
-  .topbar .list-picker { display: flex; align-items: center; gap: 2px; flex: 1 1 calc(100% - 140px); min-width: 0; }
+  .topbar .list-picker { display: flex; align-items: center; gap: 2px; flex: 1 1 calc(100% - 184px); min-width: 0; }
   .topbar__right .btn { flex: none; }
   .topbar .btn {
     width: 44px; height: 44px; min-height: 44px; padding: 0; justify-content: center;
