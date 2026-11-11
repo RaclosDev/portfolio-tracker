@@ -33,32 +33,33 @@ function Figure({ label, value, sub, delta, title }: { label: string; value: str
 
 function Totals({ model }: { model: CarteraModel }) {
   const s = model.valuation.summary;
+  const complete = s.missing.length === 0;
   return (
     <div className="portfolio-summary">
     <section className="highlights cartera-totals" aria-label="Resumen de la cartera">
-      <Figure label="Valor actual" value={money(s.valueEur, 'EUR', 2)} />
-      <Figure label="Hoy" value={money(s.dayChangeEur, 'EUR', 2)} sub={pct(s.dayChangePct, 2)} delta={s.dayChangeEur} />
       <Figure
-        label="Resultado total"
-        value={money(s.totalEur, 'EUR', 2)}
-        sub={s.xirr != null ? `TIR ${pct(s.xirr).replace('+', '')}` : undefined}
+        label="Ganancia total · desde el inicio"
+        value={money(complete ? s.totalEur : null, 'EUR', 2)}
         delta={s.totalEur}
-        title="Latente + realizado + cobros. TIR: rentabilidad anual del dinero invertido"
+        title="Resultado económico acumulado: latente + ganancias en ventas + cobros"
       />
+      <Figure label="Valor actual en acciones" value={money(complete ? s.valueEur : null, 'EUR', 2)} title="Posiciones abiertas a precio de mercado. No incluye saldo en efectivo" />
+      <Figure label="TIR anual · desde el inicio" value={pct(s.xirr, 2)} delta={s.xirr} title="Rentabilidad anualizada del dinero invertido según las fechas de compras, ventas y cobros, y el valor actual de las acciones" />
+      <Figure label="Cotización de hoy" value={money(complete ? s.dayChangeEur : null, 'EUR', 2)} sub={pct(complete ? s.dayChangePct : null, 2)} delta={s.dayChangeEur}
+        title="Variación de precio de las acciones que tienes ahora, al cambio actual. No es el resultado diario de la cuenta ni incluye ventas o cobros de hoy" />
       {s.missing.length > 0 && (
         <div className="hl-cell hl-cell--full">
           <p className="hl-value muted small">
-            Sin precio ahora mismo: {s.missing.join(', ')}. No suman en el valor ni en el latente (revisa su símbolo de Yahoo en
-            la ficha del valor).
+            Falta valorar: {s.missing.join(', ')}. El total y el latente se mostrarán cuando la valoración esté completa.
           </p>
         </div>
       )}
     </section>
     <section className="cartera-breakdown" aria-label="Desglose del resultado">
-      <h3>Desglose del resultado</h3>
+      <h3>De dónde sale la ganancia total</h3>
       <div className="highlights">
-        <Figure label="Latente" value={money(s.unrealizedEur, 'EUR', 2)} sub={pct(s.costEur ? s.unrealizedEur / s.costEur : null)} delta={s.unrealizedEur} />
-        <Figure label="Realizado" value={money(s.realizedEur, 'EUR', 2)} delta={s.realizedEur} title="Resultado de todas las ventas" />
+        <Figure label="Latente" value={money(complete ? s.unrealizedEur : null, 'EUR', 2)} sub={pct(complete && s.costEur ? s.unrealizedEur / s.costEur : null)} delta={s.unrealizedEur} title="Ganancia o pérdida de las acciones que sigues teniendo" />
+        <Figure label="Ganancia en ventas" value={money(s.realizedEur, 'EUR', 2)} delta={s.realizedEur} title="Importe de las ventas menos el coste FIFO de las acciones vendidas" />
         <Figure label="Cobros" value={money(s.incomeEur, 'EUR', 2)} title="Dividendos y primas (bruto − comisiones − retención en origen)" />
       </div>
     </section>
@@ -66,7 +67,6 @@ function Totals({ model }: { model: CarteraModel }) {
   );
 }
 
-/** Pestaña Resumen: reparto de la cartera y resultados por año. */
 function ResumenView({ model }: { model: CarteraModel }) {
   const { open } = model.valuation;
   const byBroker = useMemo(() => {
@@ -92,26 +92,25 @@ function ResumenView({ model }: { model: CarteraModel }) {
   const s = model.valuation.summary;
 
   return (
-    <>
-      <div className="portfolio-overview">
+    <div className="portfolio-overview">
+      <div className="portfolio-ledger">
         <Totals model={model} />
-        <PortfolioCharts model={model} byBroker={byBroker} />
-      </div>
-      <div className="resumen-grid">
-        <div>
-          <h3 className="renta__h">Resultado por año</h3>
-          <div className="table-wrap">
+        <section className="portfolio-annual" aria-labelledby="annual-results-title">
+          <h3 id="annual-results-title" className="renta__h">Ventas y cobros por año</h3>
+          <p className="small muted">Ganancias realizadas y cobros. No incluye la variación del latente.</p>
+          <div className="table-wrap" role="region" aria-label="Detalle anual de ventas y cobros" tabIndex={0}>
             <table className="wl-table cartera-table">
               <thead>
                 <tr>
-                  <th>Año</th>
-                  <th className="al-right">Ventas</th>
-                  <th className="al-right">Dividendos</th>
-                  <th className="al-right">Otros cobros</th>
-                  <th className="al-right">Total</th>
+                  <th scope="col">Año</th>
+                  <th scope="col" className="al-right">Ganancia en ventas</th>
+                  <th scope="col" className="al-right">Dividendos</th>
+                  <th scope="col" className="al-right">Otros cobros</th>
+                  <th scope="col" className="al-right">Total</th>
                 </tr>
               </thead>
               <tbody>
+                {years.length === 0 && <tr><td colSpan={5} className="muted">Todavía no hay ventas ni cobros registrados.</td></tr>}
                 {years.map(([y, v]) => {
                   const total = v.realized + v.dividends + v.other;
                   return (
@@ -119,7 +118,7 @@ function ResumenView({ model }: { model: CarteraModel }) {
                       <td className="num">{y}</td>
                       <td className={`al-right num delta ${signed(v.realized)}`}>{money(v.realized, 'EUR', 2)}</td>
                       <td className="al-right num">{money(v.dividends, 'EUR', 2)}</td>
-                      <td className="al-right num">{v.other ? money(v.other, 'EUR', 2) : ''}</td>
+                      <td className="al-right num">{money(v.other, 'EUR', 2)}</td>
                       <td className="al-right">
                         <span className="databar">
                           <span
@@ -134,20 +133,30 @@ function ResumenView({ model }: { model: CarteraModel }) {
                   );
                 })}
               </tbody>
+              {years.length > 0 && <tfoot><tr>
+                <th scope="row">Total</th>
+                <td className={`al-right num delta ${signed(s.realizedEur)}`}>{money(s.realizedEur, 'EUR', 2)}</td>
+                <td className="al-right num">{money(s.dividendsEur, 'EUR', 2)}</td>
+                <td className="al-right num">{money(s.otherIncomeEur, 'EUR', 2)}</td>
+                <td className={`al-right num delta ${signed(s.realizedEur + s.incomeEur)}`}>{money(s.realizedEur + s.incomeEur, 'EUR', 2)}</td>
+              </tr></tfoot>}
             </table>
           </div>
-        </div>
-        <div>
+        </section>
+      </div>
+      <div className="portfolio-analytics">
+        <PortfolioCharts model={model} byBroker={byBroker} />
+        <section className="portfolio-lifetime" aria-label="Desde el principio">
           <h3 className="renta__h">Desde el principio</h3>
           <table className="renta-summary">
             <tbody>
               <tr>
-                <th scope="row">Invertido en compras</th>
+                <th scope="row">Compras acumuladas</th>
                 <td className="al-right num">{money(s.boughtEur, 'EUR', 2)}</td>
               </tr>
               <tr>
                 <th scope="row">Coste de lo que tienes</th>
-                <td className="al-right num">{money(s.costEur, 'EUR', 2)}</td>
+                <td className="al-right num">{money(model.ledger.tickers.reduce((sum, t) => sum + t.costEur, 0), 'EUR', 2)}</td>
               </tr>
               <tr>
                 <th scope="row">Dividendos</th>
@@ -169,9 +178,9 @@ function ResumenView({ model }: { model: CarteraModel }) {
               </tr>
             </tbody>
           </table>
-        </div>
+        </section>
       </div>
-    </>
+    </div>
   );
 }
 

@@ -26,7 +26,7 @@ class FakeProvider implements MarketDataProvider {
     if (this.failWith) throw new Error(this.failWith);
     const currency = symbol === 'BBB' ? 'USD' : symbol === 'PENCE' ? 'GBp' : 'EUR';
     const values = symbol === 'EURUSD=X' ? [1.25, 2] : symbol === 'EURGBP=X' ? [0.8, 1] : [10, 12];
-    return { currency, points: values.map((c, i) => ({ t: `2026-10-0${i + 1}`, c })) };
+    return { currency, points: [{ t: '2026-09-30', c: values[0]! }, ...values.map((c, i) => ({ t: `2026-10-0${i + 1}`, c }))] };
   }
   async getQuotes(symbols: string[]) {
     this.calls++;
@@ -137,8 +137,8 @@ describe('histórico de cartera', () => {
     expect(a.statusCode, a.body).toBe(200);
     expect(b.json()).toEqual(a.json());
     expect(a.json()).toMatchObject({ stale: false, missing: [], points: [
-      { valueEur: 180, constantFxEur: 180, fxEffectEur: 0 },
-      { valueEur: 60, constantFxEur: 96, fxEffectEur: -36 },
+      { valueEur: 180, constantFxEur: 180, fxEffectEur: 0, startingValueEur: 180, resultEur: 0, purchasesEur: 0, salesEur: 0, incomeEur: 0 },
+      { valueEur: 60, constantFxEur: 96, fxEffectEur: -36, startingValueEur: 180, resultEur: 0, purchasesEur: 0, salesEur: 120, incomeEur: 0 },
     ] });
     expect(provider.dailyCalls.sort()).toEqual(['AAA.MC', 'BBB', 'EURUSD=X']);
     const future = Date.now() + 2 * 60 * 60_000;
