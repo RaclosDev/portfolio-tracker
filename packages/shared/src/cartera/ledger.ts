@@ -30,7 +30,7 @@ export interface LotMatch {
 }
 
 export interface Lot {
-  /** Id de la compra que abrió el lote. */
+  /** Id de la compra; negativo para fragmentos procedentes de un traspaso. */
   id: number;
   ticker: string;
   /** Fecha de compra (antigüedad fiscal). */
@@ -141,6 +141,9 @@ export interface TickerLedger {
 }
 
 export interface Ledger {
+  cashFlows: { date: string; amount: number }[];
+  inTransitEur: number;
+  inTransitCostEur: number;
   tickers: TickerLedger[];
   byTicker: Map<string, TickerLedger>;
   sales: Sale[];
@@ -168,6 +171,8 @@ const RANK: Record<OperationType, number> = {
   issue_premium: 2,
   rights_sale: 2,
   sell: 3,
+  transfer_out: 4,
+  transfer_in: 5,
 };
 
 /**
@@ -234,6 +239,8 @@ export function computeLedger(operations: Operation[]): Ledger {
   const sales: Sale[] = [];
   const income: IncomeItem[] = [];
   const issues: LedgerIssue[] = [];
+  const transfers = new Map<string, { operation: Operation; lots: Lot[]; received: boolean }>();
+  let transferredLotId = 0;
 
   // Nº del Excel de cada compra → id de su lote (para el scrip que indica a qué lote va).
   const lotBySourceRef = new Map<string, number>();
@@ -250,6 +257,64 @@ export function computeLedger(operations: Operation[]): Ledger {
     const shares = op.shares ?? 0;
 
     switch (op.type) {
+      case 'transfer_out': {
+        if (!op.transferRef || transfers.has(op.transferRef)) {
+          issue('La salida necesita una referencia de traspaso única.');
+          break;
+        }
+        if (shares > held(t) + EPS) {
+          issue('El traspaso supera las participaciones disponibles.');
+          break;
+        }
+        const moved: Lot[] = [];
+        let left = shares;
+        while (left > EPS && t.openLots.length) {
+          const lot = t.openLots[0]!;
+          const take = Math.min(left, lot.shares);
+          const fraction = take / lot.shares;
+          const part: Lot = { ...lot, id: --transferredLotId, shares: take, sharesBought: take,
+            costBought: lot.costEur * fraction, costEur: lot.costEur * fraction,
+            taxCostEur: lot.taxCostEur * fraction, deferredLossEur: lot.deferredLossEur * fraction, matches: [] };
+          moved.push(part);
+          lot.shares -= take;
+          lot.costEur -= part.costEur;
+          lot.taxCostEur -= part.taxCostEur;
+          lot.deferredLossEur -= part.deferredLossEur;
+          left -= take;
+          if (lot.shares <= EPS) {
+            lot.shares = 0;
+            t.closedLots.push(t.openLots.shift()!);
+          }
+        }
+        transfers.set(op.transferRef, { operation: op, lots: moved, received: false });
+        t.sharesByBroker[bk] = (t.sharesByBroker[bk] ?? 0) - shares;
+        break;
+      }
+      case 'transfer_in': {
+        const transfer = op.transferRef ? transfers.get(op.transferRef) : undefined;
+        if (!transfer || transfer.received) {
+          issue('Falta una salida anterior disponible con la misma referencia de traspaso.');
+          break;
+        }
+        if (transfer.operation.ticker === op.ticker || Math.abs(transfer.operation.amountEur - op.amountEur) > 0.005) {
+          issue('El traspaso debe enlazar fondos distintos con el mismo importe.');
+          break;
+        }
+        if (held(t) <= EPS) {
+          t.cycleStart = op.date;
+          t.incomeSinceOpenEur = 0;
+        }
+        const total = transfer.lots.reduce((sum, lot) => sum + lot.shares, 0);
+        for (const lot of transfer.lots) {
+          const quantity = shares * lot.shares / total;
+          t.openLots.push({ ...lot, ticker: op.ticker, broker: op.broker, shares: quantity, sharesBought: quantity });
+        }
+        // La antigüedad de los lotes traspasados decide el FIFO de futuras ventas.
+        t.openLots.sort((a, b) => a.date.localeCompare(b.date));
+        t.sharesByBroker[bk] = (t.sharesByBroker[bk] ?? 0) + shares;
+        transfer.received = true;
+        break;
+      }
       case 'buy': {
         if (held(t) <= EPS) {
           t.cycleStart = op.date;
@@ -462,7 +527,13 @@ export function computeLedger(operations: Operation[]): Ledger {
     for (const k of Object.keys(t.sharesByBroker)) if (Math.abs(t.sharesByBroker[k]!) < EPS) delete t.sharesByBroker[k];
     return t;
   });
-  return { tickers, byTicker: new Map(tickers.map((t) => [t.ticker, t])), sales, income, issues };
+  const pending = [...transfers.values()].filter((transfer) => !transfer.received);
+  const cashFlows = operations.filter((o) => o.type === 'buy' || o.type === 'sell')
+    .map((o) => ({ date: o.date, amount: o.type === 'buy' ? -o.amountEur : o.amountEur }));
+  cashFlows.push(...income.map((i) => ({ date: i.date, amount: i.econEur })));
+  return { tickers, byTicker: new Map(tickers.map((t) => [t.ticker, t])), sales, income, issues, cashFlows,
+    inTransitEur: pending.reduce((sum, transfer) => sum + transfer.operation.amountEur, 0),
+    inTransitCostEur: pending.reduce((sum, transfer) => sum + transfer.lots.reduce((n, lot) => n + lot.costEur, 0), 0) };
 }
 
 const fmt = (n: number) => n.toLocaleString('es-ES', { maximumFractionDigits: 4 });
