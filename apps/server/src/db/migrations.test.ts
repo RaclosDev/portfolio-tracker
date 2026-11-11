@@ -48,7 +48,8 @@ describe('reparación de cotizaciones de fondos importados', () => {
       }
       expect(await root.one("SELECT symbol FROM instruments WHERE ticker = '0P0001F2GG.F'"))
         .toEqual({ symbol: 'OTRA.CLASE' });
-      expect(await other.query('SELECT * FROM operations ORDER BY id')).toEqual(originalOperations);
+      expect(await other.query('SELECT * FROM operations ORDER BY id'))
+        .toEqual(originalOperations.map(operation => ({ ...operation, transfer_ref: null })));
       expect(await other.query('SELECT ticker, name, currency, notes FROM instruments ORDER BY ticker')).toEqual(originalInstruments);
       const repaired = await other.query('SELECT * FROM instruments ORDER BY ticker');
       await migrate(other);
