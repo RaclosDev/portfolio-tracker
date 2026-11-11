@@ -62,3 +62,11 @@ npm run build
 ```
 
 La [CI](.github/workflows/desplegar.yml) comprueba tipos, pruebas y compilación antes del despliegue. Las cotizaciones externas pueden tener retraso; la aplicación organiza información y no ofrece asesoramiento de inversión.
+
+## Fuentes de cotización
+
+Se consulta Yahoo Finance y, para los valores sin precio y con cobertura alternativa, Borsa Italiana / FIDA. Si ninguna responde, se muestra el último precio guardado como tal. Cada proveedor tiene su propia pausa ante límites de consultas.
+
+Borsa aporta el último valor liquidativo de fondos, con su fecha e ISIN; no proporciona una serie histórica desde esa ficha. Se puede buscar el nombre de la clase en «Cotización automática» y elegir el resultado de Borsa. Los identificadores `BORSA:2FADB…` se guardan sin necesitar claves de API. Como su buscador no indexa todos los ISIN, los vínculos verificados por ISIN están en `borsa.provider.ts` y se comprueban contra la ficha en cada actualización. No hay cobertura universal ni conversión automática entre clases de un fondo.
+
+Para añadir una fuente, se implementa `MarketDataProvider` y se incorpora en orden a `FallbackProvider` en `services.ts`. Una fuente solo cubre los símbolos que puede identificar con seguridad; una respuesta vacía permite probar la siguiente.

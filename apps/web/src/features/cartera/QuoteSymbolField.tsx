@@ -2,7 +2,7 @@ import type { SymbolSearchResult } from '@watchlist/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../../api/client.ts';
-import { price } from '../../lib/format.ts';
+import { price, shortDate } from '../../lib/format.ts';
 import { SymbolPicker } from '../items/SymbolPicker.tsx';
 
 export function QuoteSymbolField({ inputId, value, onChange, onPick }: {
@@ -22,7 +22,7 @@ export function QuoteSymbolField({ inputId, value, onChange, onPick }: {
   });
   const quote = checked === symbol ? result.data?.find((q) => q.symbol === symbol) : undefined;
   return <>
-    <label htmlFor={inputId}>Cotización en Yahoo (opcional)</label>
+    <label htmlFor={inputId}>Cotización automática (opcional)</label>
     <SymbolPicker inputId={inputId} value={value} onChange={onChange} onPick={(r) => {
       onChange(r.symbol);
       setChecked(r.symbol);
@@ -31,11 +31,11 @@ export function QuoteSymbolField({ inputId, value, onChange, onPick }: {
     <div className="field__help" role="status">
       {symbol && checked !== symbol && <button type="button" className="link" onClick={() => setChecked(symbol)}>Comprobar símbolo</button>}
       {symbol && checked === symbol && <>
-        {result.isFetching ? 'Comprobando…' : result.isError ? 'No se ha podido consultar Yahoo. Prueba de nuevo más tarde.' : quote?.price != null
-          ? `${quote.name ?? symbol} · ${price(quote.price, quote.currency)}${quote.stale ? ' (último precio guardado)' : ''}`
-          : result.isSuccess ? 'Yahoo no devuelve precio para este símbolo. Revisa el código o busca por nombre.' : ''}
+        {result.isFetching ? 'Comprobando…' : result.isError ? 'No se han podido consultar los precios. Prueba de nuevo más tarde.' : quote?.price != null
+          ? `${quote.name ?? symbol} · ${price(quote.price, quote.currency)}${quote.asOf ? ` · VL ${shortDate(quote.asOf)}` : ''}${quote.source ? ` · ${quote.source}` : ''}${quote.isin ? ` · ${quote.isin}` : ''}${quote.stale ? ' (último precio guardado)' : ''}`
+          : result.isSuccess ? 'Las fuentes disponibles no devuelven precio. Revisa el código o busca por nombre.' : ''}
       </>}
     </div>
-    <span className="field__help">En fondos, elige la misma clase y divisa. Si no está en Yahoo, deja este campo vacío; las operaciones se guardan sin precio actualizado.</span>
+    <span className="field__help">Primero se consulta Yahoo y después las fuentes alternativas con cobertura. En fondos, comprueba el ISIN, la clase y la divisa. Puedes dejarlo vacío para guardar sin cotización.</span>
   </>;
 }

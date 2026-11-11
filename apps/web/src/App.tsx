@@ -515,7 +515,7 @@ export function App() {
           </>
         )}
         <p className="footnote">
-          Cotizaciones y consenso de analistas: Yahoo Finance (pueden tener retraso).
+          Cotizaciones: Yahoo Finance y Borsa Italiana / FIDA. Consenso: Yahoo Finance. Los datos pueden tener retraso.
           {!onPortfolio && <span className="watchlist-desktop-hint"> Doble clic en una fila para editarla.</span>}
         </p>
       </main>
