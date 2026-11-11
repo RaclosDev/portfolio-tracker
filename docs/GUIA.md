@@ -20,6 +20,16 @@ La primera vez se abre una **guía** que explica cada parte (botón **Guía** pa
 
 Símbolos: los de Yahoo Finance (el buscador acepta nombre, ticker o ISIN). Sufijos: `.MC` Madrid, `.PA` París, `.AS` Ámsterdam, `.DE` Xetra, `.MI` Milán, `.L` Londres, sin sufijo para EE. UU.
 
+### Evolución de la cartera
+
+En **Cartera → Resumen**, el desglose del resultado permanece visible junto a un gráfico que puedes cambiar con las flechas o sus botones: **Evolución**, **Divisas**, **Por valor**, **Por sector** y **Por bróker**. Debajo siguen los resultados por año y las cifras desde el principio.
+
+El histórico permite elegir 1, 3 o 6 meses; 1, 2 o 5 años; todo el registro, o fechas concretas. Puedes consultar cada día con el puntero, el selector de fecha o la barra inferior, también con las flechas del teclado. Se reconstruyen las posiciones de cada fecha a partir de las operaciones, incluidas las que ya están cerradas, y se valoran con cierres diarios de Yahoo Finance. Las compras y ventas afectan al valor mostrado: su variación no representa por sí sola la rentabilidad. No incluye efectivo ni cobros.
+
+**Divisas** compara esa valoración en euros con la que tendría manteniendo fijo el cambio del inicio del periodo, también para compras posteriores. La diferencia es el efecto divisa del periodo seleccionado. Cambiar la fecha inicial cambia esa referencia. Se normalizan las cotizaciones en peniques y los precios históricos ajustados por splits para evitar contar el desdoblamiento dos veces.
+
+Se usa el último cierre conocido hasta cada fecha, con un máximo de siete días naturales para cubrir fines de semana y festivos; nunca un precio posterior. Si faltan precios o cambios, el gráfico deja un hueco y señala los símbolos afectados en lugar de sumar una cartera incompleta. El histórico se guarda en caché durante una hora; si Yahoo falla, se advierte al mostrar datos guardados. El último punto puede diferir del valor actual, que usa cotizaciones intradía.
+
 ## Puesta en marcha (una vez)
 
 Todo en planes gratuitos: **Neon** (base de datos), **Render** (servidor), **UptimeRobot** (lo mantiene despierto) y el DNS de `raclos.es`.

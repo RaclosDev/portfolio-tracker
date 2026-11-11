@@ -16,6 +16,7 @@ beforeEach(async () => {
   await migrate(db);
   services = createServicesFromDb(db, { provider: {
     id: 'fake', getQuotes: async () => [], getTargets: async () => null, search: async () => [], getHistory: async () => [],
+    getDailyHistory: async () => ({ currency: 'EUR', points: [{ t: '2026-01-01', c: 10 }] }),
   } });
   app = await buildApp(services, { auth });
 });
@@ -50,6 +51,9 @@ describe('registro público y datos por cuenta', () => {
     const b = await register('bob@example.com');
     expect((await backup(a)).lists).toMatchObject([{ name: 'Vigilar nuevas', items: [] }]);
     expect((await backup(a)).portfolio?.operations).toEqual([]);
+    const historyUrl = '/api/portfolio/history?from=2026-01-01&to=2026-01-01';
+    expect((await request(owner, 'GET', historyUrl)).json().points[0].valueEur).toBe(100);
+    expect((await request(a, 'GET', historyUrl)).json().points[0].valueEur).toBe(0);
     expect((await request(a, 'GET', '/api/snapshots/1')).statusCode).toBe(404);
     expect((await request(a, 'DELETE', '/api/operations/1')).statusCode).toBe(404);
     const results = await Promise.all([a, b].map((cookie, i) => request(cookie, 'POST', '/api/items', { listId: 1, symbol: `USER${i}`, buyPrices: [20] })));
