@@ -401,6 +401,7 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 }
 .field textarea { height: auto; padding: 8px 10px; resize: vertical; }
 .field input[type='date'] { padding-right: 6px; }
+.field select { width: 100%; min-width: 0; }
 .field__help { font-size: 12px; color: var(--text-2); min-height: 16px; }
 .field__value { height: 34px; display: flex; align-items: center; font-weight: 600; }
 .check { display: inline-flex; gap: 8px; align-items: center; margin-bottom: 8px; cursor: pointer; }
