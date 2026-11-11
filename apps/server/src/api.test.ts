@@ -129,6 +129,34 @@ describe('acceso', () => {
 });
 
 describe('histórico de cartera', () => {
+  it('ofrece una serie parcial explícita sin mezclar compras, ventas o cobros de fondos sin histórico', async () => {
+    vi.spyOn(provider, 'getDailyHistory').mockImplementation(async symbol => ({ currency: 'EUR',
+      points: symbol === 'AAA.MC' ? [{ t: '2026-09-30', c: 10 }, { t: '2026-10-02', c: 12 }] : [],
+    }));
+    for (const [ticker, symbol] of [['AAA', 'AAA.MC'], ['POLAR', 'IE00B3VXGD32']]) {
+      await send('POST', '/api/operations', { operation: { type: 'buy', date: '2026-09-30', ticker, shares: 10, amountEur: 100 }, instrument: { symbol, currency: 'EUR' } });
+    }
+    await send('POST', '/api/operations', { operation: { type: 'buy', date: '2026-10-01', ticker: 'POLAR', shares: 5, amountEur: 50 } });
+    await send('POST', '/api/operations', { operation: { type: 'sell', date: '2026-10-02', ticker: 'POLAR', shares: 2, amountEur: 30 } });
+    await send('POST', '/api/operations', { operation: { type: 'dividend', date: '2026-10-02', ticker: 'POLAR', amountEur: 20 } });
+    const res = (await get('/api/portfolio/history?from=2026-10-01&to=2026-10-02')).json();
+    expect(res.stale).toBe(false);
+    expect(res.points.every((p: { valueEur: number | null }) => p.valueEur === null)).toBe(true);
+    expect(res.available).toMatchObject({ included: 1, excluded: [{ ticker: 'POLAR' }], points: [
+      { startingValueEur: 100, valueEur: 100, resultEur: 0, purchasesEur: 0, salesEur: 0, incomeEur: 0 },
+      { startingValueEur: 100, valueEur: 120, resultEur: 20, purchasesEur: 0, salesEur: 0, incomeEur: 0 },
+    ] });
+  });
+
+  it('no fabrica una curva de cero si ningún fondo tiene histórico', async () => {
+    vi.spyOn(provider, 'getDailyHistory').mockResolvedValue({ currency: 'EUR', points: [] });
+    await send('POST', '/api/operations', { operation: { type: 'buy', date: '2026-09-30', ticker: 'POLAR', shares: 10, amountEur: 100 }, instrument: { symbol: 'IE00B3VXGD32', currency: 'EUR' } });
+    const res = (await get('/api/portfolio/history?from=2026-10-01&to=2026-10-02')).json();
+    expect(res.available).toBeUndefined();
+    expect(res.points[0].valueEur).toBeNull();
+    expect(res.stale).toBe(false);
+  });
+
   it('incluye posiciones ya cerradas, separa divisas y reutiliza la caché entre peticiones', async () => {
     for (const [ticker, symbol, currency] of [['AAA', 'AAA.MC', 'EUR'], ['BBB', 'BBB', 'USD']]) {
       expect((await send('POST', '/api/operations', { operation: { type: 'buy', date: '2026-09-30', ticker, shares: 10, amountEur: 100 }, instrument: { symbol, currency } })).statusCode).toBe(201);

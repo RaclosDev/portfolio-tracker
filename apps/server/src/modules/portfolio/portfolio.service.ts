@@ -65,7 +65,23 @@ export class PortfolioService {
       stale ||= history.stale;
     }
     const points = computePortfolioHistory({ operations, instruments, prices, fx, from, to });
-    return { from, to, points, stale, missing: [...new Set(points.flatMap((p) => p.missing))] };
+    const hasPrices = (series: PricePoint[] = []) => series.some(p =>
+      Number.isFinite(p.c) && p.c > 0 && p.t.slice(0, 10) >= shiftDate(from, -8) && p.t.slice(0, 10) <= to);
+    const excluded = selected.filter(instrument => {
+      const history = instrument.symbol ? prices[instrument.symbol] : undefined;
+      const currency = history?.currency ?? instrument.currency;
+      return !hasPrices(history?.points) || (currency !== 'EUR' && !hasPrices(fx[currency]));
+    });
+    const excludedTickers = new Set(excluded.map(i => i.ticker));
+    const available = excluded.length > 0 && excluded.length < selected.length ? {
+      points: computePortfolioHistory({
+        operations: operations.filter(o => !excludedTickers.has(o.ticker)),
+        instruments: instruments.filter(i => !excludedTickers.has(i.ticker)), prices, fx, from, to,
+      }),
+      included: selected.length - excluded.length,
+      excluded: excluded.map(i => ({ ticker: i.ticker, name: i.name || i.ticker })),
+    } : undefined;
+    return { from, to, points, stale, missing: [...new Set(points.flatMap((p) => p.missing))], available };
   }
 
   async view({ force = false } = {}): Promise<CarteraView> {

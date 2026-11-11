@@ -45,9 +45,14 @@ function History({ first, mode, selection, onSelection }: {
       : history.isPending ? <p className="chart-empty muted" role="status">Cargando precios y cambios históricos…</p>
       : history.isError ? <div className="error-box" role="alert">No se pudo cargar el histórico. <button className="btn" onClick={() => void history.refetch()}>Reintentar</button></div>
       : <>
-        <PortfolioHistoryChart key={`${from}:${to}`} points={history.data.points} mode={mode} />
+        {history.data.available && <p className="small" role="status">
+          Histórico parcial: {history.data.available.included} de {history.data.available.included + history.data.available.excluded.length} valores.
+          {' '}Sin histórico disponible de {history.data.available.excluded.map(i => i.name).join(', ')}.
+          {' '}El gráfico y su resultado excluyen esos valores y todas sus compras, ventas y cobros.
+        </p>}
+        <PortfolioHistoryChart key={`${from}:${to}`} points={history.data.available?.points ?? history.data.points} mode={mode} />
         {history.data.stale && <p className="small muted">No se han podido actualizar todos los históricos. Se muestran los datos disponibles en caché. <button className="link-btn" onClick={() => void history.refetch()}>Reintentar</button></p>}
-        {history.data.missing.length > 0 && <p className="small muted">Hay huecos por falta de datos de {history.data.missing.join(', ')}. No se suman valores parciales.</p>}
+        {!history.data.available && history.data.missing.length > 0 && <p className="small muted">Hay huecos por falta de datos de {history.data.missing.join(', ')}. No se suman valores parciales.</p>}
       </>}
     <p className="portfolio-chart-note">{mode === 'result'
       ? 'Resultado = valor final − valor inicial − compras + ventas + cobros. Base: cierre anterior al periodo. Cobros después de comisiones y retención en origen, antes del IRPF español.'
