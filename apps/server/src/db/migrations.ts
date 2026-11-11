@@ -154,4 +154,12 @@ export const migrations: string[] = [
   UPDATE instruments SET sector = 'Industria' WHERE symbol = 'UBER' AND sector = 'Tecnología';
   UPDATE instruments SET sector = 'Salud' WHERE symbol IN ('GRF.MC', 'GRF-P.MC') AND sector IS NULL;
   `,
+  // 6: los importadores antiguos omitían el vínculo de fondos o añadían Madrid al código completo.
+  // Un vínculo vacío editado después del alta se conserva como decisión del usuario.
+  `
+  UPDATE instruments AS i SET symbol = i.ticker, updated_at = now()
+  WHERE i.ticker ~ '^0P[A-Z0-9]{8}([.][A-Z]{1,3})?$'
+    AND (i.symbol = i.ticker || '.MC' OR (i.symbol IS NULL AND i.updated_at = i.created_at))
+    AND EXISTS (SELECT 1 FROM operations o WHERE o.ticker = i.ticker AND o.source = 'excel');
+  `,
 ];
