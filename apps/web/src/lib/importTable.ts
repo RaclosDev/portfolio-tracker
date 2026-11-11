@@ -193,9 +193,27 @@ export function parseTable(data: Cell[][]): ParsedTable | null {
 
 /** CSV con «;» (Excel en español), «,» o tabuladores, con comillas. */
 export function parseCsv(input: string): string[][] {
-  const textIn = input.replace(/^﻿/, '');
-  const firstLine = textIn.split(/\r?\n/, 1)[0] ?? '';
-  const delim = [';', '\t', ','].reduce((best, d) => (firstLine.split(d).length > firstLine.split(best).length ? d : best), ';');
+  let textIn = input.replace(/^﻿/, '');
+  const declared = textIn.match(/^sep=([;,\t])\r?\n/i);
+  if (declared) textIn = textIn.slice(declared[0].length);
+  const delimiters = [';', '\t', ','];
+  let delim = declared?.[1] ?? ';';
+  if (!declared) {
+    // Los separadores dentro de títulos entrecomillados no cuentan.
+    let quoted = false;
+    let counts = [0, 0, 0];
+    for (const c of textIn) {
+      if (c === '"') quoted = !quoted;
+      else if (!quoted && (c === '\n' || c === '\r')) {
+        if (counts.some((n) => n > 0)) break;
+        counts = [0, 0, 0];
+      } else if (!quoted) {
+        const index = delimiters.indexOf(c);
+        if (index >= 0) counts[index] = counts[index]! + 1;
+      }
+    }
+    delim = delimiters[counts.indexOf(Math.max(...counts))]!;
+  }
   const out: string[][] = [];
   let row: string[] = [];
   let field = '';
@@ -220,6 +238,7 @@ export function parseCsv(input: string): string[][] {
       field = '';
     } else field += c;
   }
+  if (quoted) throw new Error('El CSV contiene un campo entre comillas sin cerrar. Revisa el archivo o vuelve a exportarlo.');
   if (field || row.length) {
     row.push(field);
     out.push(row);

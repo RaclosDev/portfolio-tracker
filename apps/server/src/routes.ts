@@ -1,6 +1,7 @@
 import {
   bulkBrokerSchema,
   carteraImportSchema,
+  operationFingerprint,
   importRequestSchema,
   instrumentInputSchema,
   instrumentPatchSchema,
@@ -178,32 +179,42 @@ export async function registerRoutes(app: FastifyInstance) {
     if (!current) throw notFound('Valor');
     return req.services.instruments.upsert({ ...current, ...instrumentPatchSchema.parse(req.body) });
   });
-  /**
-   * Importación del Excel: sustituye todo lo importado antes (las operaciones manuales se quedan) y
-   * antes guarda una copia. Los valores que ya existen conservan lo editado a mano.
-   */
-  app.post('/api/portfolio/import', async (req) => {
+  /** Añade movimientos con copia previa y valida la cartera completa en una sola transacción. */
+  app.post('/api/portfolio/import', { bodyLimit: 32 * 1024 * 1024 }, async (req) => {
     const data = carteraImportSchema.parse(req.body);
     return req.services.db.tx(async (t) => {
-      const saved = await req.services.backup.snapshot('antes de importar la cartera', t, { skipIfEmpty: true });
+      // Serializa importaciones y altas manuales para comprobar duplicados sobre el estado definitivo.
+      await t.exec('LOCK TABLE operations, instruments IN SHARE ROW EXCLUSIVE MODE');
       const ops = new OperationsRepository(t);
       const instruments = new InstrumentsRepository(t);
-      const replaced = await ops.deleteAll('excel');
-      for (const op of data.operations) await ops.create({ ...op, source: 'excel' });
+      const seen = new Set((await ops.all()).map(operationFingerprint));
+      const additions = data.operations.filter((op) => {
+        const key = operationFingerprint(op);
+        if (!data.allowDuplicates && seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      if (!additions.length) return { imported: 0, skipped: data.operations.length, savedTo: null };
+      const saved = await req.services.backup.snapshot('antes de importar la cartera', t, { skipIfEmpty: true });
+      for (const op of additions) await ops.create({ ...op, source: 'excel' });
       PortfolioService.assertValid(await ops.all());
-      for (const i of data.instruments) {
+      const tickers = new Set(additions.map((op) => op.ticker));
+      for (const i of data.instruments.filter((i) => tickers.has(i.ticker))) {
         const cur = await instruments.byTicker(i.ticker.toUpperCase());
-        // Símbolo y divisa, los del diálogo de importación; nombre, sector y notas, los ya guardados.
+        if (cur && (cur.currency !== i.currency || (cur.isin && i.isin && cur.isin !== i.isin))) {
+          throw new HttpError(400, `La divisa o el ISIN de ${i.ticker} no coincide con el valor guardado.`);
+        }
         await instruments.upsert({
           ...i,
+          symbol: cur?.symbol ?? i.symbol,
           name: cur?.name ?? i.name,
           sector: cur?.sector ?? i.sector,
           isin: cur?.isin ?? i.isin,
           notes: cur?.notes ?? i.notes,
         });
       }
-      for (const op of data.operations) await instruments.ensure({ ticker: op.ticker });
-      return { imported: data.operations.length, replaced, savedTo: saved ? saved.id : null };
+      for (const op of additions) await instruments.ensure({ ticker: op.ticker });
+      return { imported: additions.length, skipped: data.operations.length - additions.length, savedTo: saved ? saved.id : null };
     });
   });
 

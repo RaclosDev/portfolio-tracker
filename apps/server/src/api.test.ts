@@ -26,7 +26,7 @@ class FakeProvider implements MarketDataProvider {
     if (this.failWith) throw new Error(this.failWith);
     const currency = symbol === 'BBB' ? 'USD' : symbol === 'PENCE' ? 'GBp' : 'EUR';
     const values = symbol === 'EURUSD=X' ? [1.25, 2] : symbol === 'EURGBP=X' ? [0.8, 1] : [10, 12];
-    return { currency, points: values.map((c, i) => ({ t: `2026-10-0${i + 1}`, c })) };
+    return { currency, points: [{ t: '2026-09-30', c: values[0]! }, ...values.map((c, i) => ({ t: `2026-10-0${i + 1}`, c }))] };
   }
   async getQuotes(symbols: string[]) {
     this.calls++;
@@ -137,8 +137,8 @@ describe('histórico de cartera', () => {
     expect(a.statusCode, a.body).toBe(200);
     expect(b.json()).toEqual(a.json());
     expect(a.json()).toMatchObject({ stale: false, missing: [], points: [
-      { valueEur: 180, constantFxEur: 180, fxEffectEur: 0 },
-      { valueEur: 60, constantFxEur: 96, fxEffectEur: -36 },
+      { valueEur: 180, constantFxEur: 180, fxEffectEur: 0, startingValueEur: 180, resultEur: 0, purchasesEur: 0, salesEur: 0, incomeEur: 0 },
+      { valueEur: 60, constantFxEur: 96, fxEffectEur: -36, startingValueEur: 180, resultEur: 0, purchasesEur: 0, salesEur: 120, incomeEur: 0 },
     ] });
     expect(provider.dailyCalls.sort()).toEqual(['AAA.MC', 'BBB', 'EURUSD=X']);
     const future = Date.now() + 2 * 60 * 60_000;
@@ -313,7 +313,7 @@ describe('cartera', () => {
     expect((await send('PUT', '/api/instruments/AAA', { sector: 'Industria', name: 'Triple A' })).json()).toMatchObject({ sector: 'Industria', name: 'Triple A' });
   });
 
-  it('importar sustituye lo importado antes, conserva lo manual y guarda una copia', async () => {
+  it('importar añade operaciones, conserva las anteriores y omite coincidencias', async () => {
     await send('POST', '/api/operations', buy('MAN', 1, 10));
     const excel = {
       instruments: [{ ticker: 'AAA', symbol: 'AAA.MC' }],
@@ -322,10 +322,10 @@ describe('cartera', () => {
         { date: '2021-01-01', ticker: 'AAA', type: 'dividend', amountEur: 5, sourceRef: 2 },
       ],
     };
-    expect((await send('POST', '/api/portfolio/import', excel)).json()).toMatchObject({ imported: 2, replaced: 0 });
-    const again = (await send('POST', '/api/portfolio/import', excel)).json() as { replaced: number; savedTo: number };
-    expect(again.replaced).toBe(2);
-    expect(again.savedTo).toBeGreaterThan(0);
+    const first = (await send('POST', '/api/portfolio/import', excel)).json() as { imported: number; skipped: number; savedTo: number };
+    expect(first).toMatchObject({ imported: 2, skipped: 0 });
+    expect(first.savedTo).toBeGreaterThan(0);
+    expect((await send('POST', '/api/portfolio/import', excel)).json()).toMatchObject({ imported: 0, skipped: 2, savedTo: null });
     const view = await portfolio();
     expect(view.operations.map((o) => [o.ticker, o.source])).toEqual([
       ['AAA', 'excel'],
@@ -338,6 +338,38 @@ describe('cartera', () => {
     });
     expect(bad.statusCode).toBe(400);
     expect((await portfolio()).operations).toHaveLength(3);
+    const overlap = { ...excel, operations: [...excel.operations, { date: '2026-01-01', ticker: 'AAA', type: 'buy', shares: 2, amountEur: 30 }] };
+    expect((await send('POST', '/api/portfolio/import', overlap)).json()).toMatchObject({ imported: 1, skipped: 2 });
+    expect((await portfolio()).operations).toHaveLength(4);
+  });
+
+  it('omite coincidencias dentro del archivo y permite confirmar compras idénticas reales', async () => {
+    const op = buy('AAA', 1, 10).operation;
+    const payload = { instruments: [], operations: [op, op] };
+    expect((await send('POST', '/api/portfolio/import', payload)).json()).toMatchObject({ imported: 1, skipped: 1 });
+    expect((await send('POST', '/api/portfolio/import', { ...payload, allowDuplicates: true })).json()).toMatchObject({ imported: 2, skipped: 0 });
+    expect((await portfolio()).operations).toHaveLength(3);
+  });
+
+  it('conserva la ficha existente y revierte todas las altas si hay un conflicto de divisa', async () => {
+    await send('POST', '/api/operations', { ...buy('AAA', 1, 10), instrument: { symbol: 'AAA.MC', name: 'Mi valor', notes: 'Nota personal' } });
+    const payload = { instruments: [{ ticker: 'AAA', symbol: null, name: 'Nombre del archivo' }], operations: [buy('AAA', 2, 25).operation] };
+    expect((await send('POST', '/api/portfolio/import', payload)).statusCode).toBe(200);
+    expect((await portfolio()).instruments[0]).toMatchObject({ symbol: 'AAA.MC', name: 'Mi valor', notes: 'Nota personal' });
+    const conflict = { instruments: [{ ticker: 'AAA', currency: 'USD' }], operations: [buy('NEW', 1, 1).operation, buy('AAA', 3, 40).operation] };
+    expect((await send('POST', '/api/portfolio/import', conflict)).statusCode).toBe(400);
+    const view = await portfolio();
+    expect(view.operations).toHaveLength(2);
+    expect(view.instruments).toHaveLength(1);
+  });
+
+  it('valida las ventas contra las posiciones existentes sin guardar un lote parcialmente válido', async () => {
+    await send('POST', '/api/operations', buy('AAA', 2, 20));
+    const sell = { date: '2026-01-01', ticker: 'AAA', type: 'sell', shares: 1, amountEur: 12 };
+    expect((await send('POST', '/api/portfolio/import', { instruments: [], operations: [sell] })).statusCode).toBe(200);
+    const invalid = { instruments: [], operations: [buy('NEW', 1, 3).operation, { ...sell, shares: 3 }] };
+    expect((await send('POST', '/api/portfolio/import', invalid)).statusCode).toBe(400);
+    expect((await portfolio()).operations).toHaveLength(2);
   });
 
   it('la copia de seguridad incluye la cartera y una copia antigua no la borra', async () => {
