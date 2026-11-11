@@ -63,4 +63,3 @@ Variables de entorno: `DATABASE_URL`, `APP_PASSWORD`, `APP_OWNER_EMAIL`, `SESSIO
 Estructura: `apps/server` (API, avisos y notificaciones), `apps/web` (interfaz, PWA), `packages/shared` (tipos y cálculos). Arquitectura y decisiones: [Arquitectura](ARQUITECTURA.md).
 
 > Los datos de Yahoo Finance pueden llevar retraso y no son asesoramiento de inversión.
-
