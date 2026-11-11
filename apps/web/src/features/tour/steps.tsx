@@ -68,7 +68,7 @@ export const TOUR_STEPS: TourStep[] = [
     ),
   },
   {
-    target: '.highlights',
+    target: ['#watchlist-highlights', '.highlights-toggle'],
     title: 'Lo importante, arriba',
     body: (
       <>
@@ -82,7 +82,7 @@ export const TOUR_STEPS: TourStep[] = [
     ),
   },
   {
-    target: '.status-filter',
+    target: ['.status-filter', '.watchlist-filter-trigger'],
     title: 'Filtrar por estado',
     body: (
       <>
@@ -102,7 +102,7 @@ export const TOUR_STEPS: TourStep[] = [
     body: <p>Filtra al momento por nombre, ticker o el texto de tus notas.</p>,
   },
   {
-    target: '.tag-filters',
+    target: ['.tag-filters', '.watchlist-filter-trigger'],
     title: 'Filtrar por tipo y divisa',
     body: (
       <p>

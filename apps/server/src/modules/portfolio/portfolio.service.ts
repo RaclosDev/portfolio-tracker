@@ -1,11 +1,16 @@
 import {
   computeLedger,
+  computePortfolioHistory,
+  shiftDate,
+  type DailyHistory,
+  type PortfolioHistory,
+  type PricePoint,
   type CarteraView,
   type Instrument,
   type Operation,
   type Quote,
 } from '@watchlist/shared';
-import type { MarketService } from '../market/market.service.ts';
+import { MINOR_UNITS, type MarketService } from '../market/market.service.ts';
 import type { SettingsRepository } from '../settings/settings.repository.ts';
 import type { InstrumentsRepository, OperationsRepository } from './cartera.repository.ts';
 
@@ -30,6 +35,65 @@ export class PortfolioService {
     private settings: SettingsRepository,
     private market: MarketService,
   ) {}
+
+  async history(from: string, to: string): Promise<PortfolioHistory> {
+    const [operations, instruments] = await Promise.all([this.operations.all(), this.instruments.all()]);
+    const held = computeLedger(operations.filter((o) => o.date < from)).tickers.filter((t) => t.shares > 1e-6);
+    const relevant = new Set(held.map((t) => t.ticker));
+    for (const op of operations) {
+      if (op.date >= from && op.date <= to && (op.type === 'buy' || op.type === 'scrip' || op.type === 'transfer_in')) relevant.add(op.ticker);
+    }
+    const selected = instruments.filter((i) => relevant.has(i.ticker));
+    const prices: Record<string, DailyHistory> = {};
+    const fx: Record<string, PricePoint[]> = {};
+    let stale = false;
+    const symbols = [...new Set(selected.flatMap((i) => i.symbol ? [i.symbol] : []))];
+    // Dos peticiones como máximo a la vez: una cartera importada puede tener cientos de valores.
+    for (let i = 0; i < symbols.length; i += 2) {
+      await Promise.all(symbols.slice(i, i + 2).map(async (symbol) => {
+        const history = await this.market.getDailyHistory(symbol, shiftDate(from, -1));
+        prices[symbol] = history;
+        stale ||= history.stale;
+      }));
+    }
+    const currencies = [...new Set(selected.map((i) => (i.symbol ? prices[i.symbol]?.currency : null) ?? i.currency))];
+    for (const currency of currencies) {
+      if (currency === 'EUR') continue;
+      const { major, factor } = MINOR_UNITS[currency] ?? { major: currency, factor: 1 };
+      const history = await this.market.getDailyHistory(`EUR${major}=X`, shiftDate(from, -1));
+      fx[currency] = history.points.map((p) => ({ ...p, c: p.c * factor }));
+      stale ||= history.stale;
+    }
+    const points = computePortfolioHistory({ operations, instruments, prices, fx, from, to });
+    const hasPrices = (series: PricePoint[] = []) => series.some(p =>
+      Number.isFinite(p.c) && p.c > 0 && p.t.slice(0, 10) >= shiftDate(from, -8) && p.t.slice(0, 10) <= to);
+    const excluded = selected.filter(instrument => {
+      const history = instrument.symbol ? prices[instrument.symbol] : undefined;
+      const currency = history?.currency ?? instrument.currency;
+      return !hasPrices(history?.points) || (currency !== 'EUR' && !hasPrices(fx[currency]));
+    });
+    const excludedTickers = new Set(excluded.map(i => i.ticker));
+    // Un histórico parcial debe excluir toda la cadena de fondos enlazados por traspasos.
+    let changed = true;
+    while (changed) {
+      changed = false;
+      const refs = new Set(operations.filter(o => excludedTickers.has(o.ticker) && o.transferRef).map(o => o.transferRef));
+      for (const o of operations) if (o.transferRef && refs.has(o.transferRef) && !excludedTickers.has(o.ticker)) {
+        excludedTickers.add(o.ticker);
+        changed = true;
+      }
+    }
+    const excludedLinked = selected.filter(i => excludedTickers.has(i.ticker));
+    const available = excludedLinked.length > 0 && excludedLinked.length < selected.length ? {
+      points: computePortfolioHistory({
+        operations: operations.filter(o => !excludedTickers.has(o.ticker)),
+        instruments: instruments.filter(i => !excludedTickers.has(i.ticker)), prices, fx, from, to,
+      }),
+      included: selected.length - excludedLinked.length,
+      excluded: excludedLinked.map(i => ({ ticker: i.ticker, name: i.name || i.ticker })),
+    } : undefined;
+    return { from, to, points, stale, missing: [...new Set(points.flatMap((p) => p.missing))], available };
+  }
 
   async view({ force = false } = {}): Promise<CarteraView> {
     const [operations, instruments, settings] = await Promise.all([

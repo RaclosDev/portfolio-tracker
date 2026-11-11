@@ -1,5 +1,5 @@
 import type { WatchlistRow } from '@watchlist/shared';
-import { pct, price as fp } from '../../lib/format.ts';
+import { pct, price } from '../../lib/format.ts';
 
 const W = 240;
 const H = 46;
@@ -18,6 +18,8 @@ const MID = 23; // eje horizontal de la barra
 export function PriceMap({ row }: { row: WatchlistRow }) {
   const { quote, targets, item, metrics } = row;
   const p = quote?.price;
+  /** Precios con el símbolo de la moneda del valor. */
+  const fp = (v: number) => price(v, quote?.currency);
   if (p == null) return <span className="muted small">Sin cotización</span>;
 
   const lo = quote?.low52 ?? null;

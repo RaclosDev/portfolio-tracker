@@ -131,7 +131,7 @@ function LevelCell({ row, index, onSave }: { row: WatchlistRow; index: number; o
       onDoubleClick={(e) => e.stopPropagation()}
       title="Pulsa para cambiar el precio"
     >
-      <span className="num">{price(level.price)}</span>
+      <span className="num">{price(level.price, row.quote?.currency)}</span>
       <span className={`pill pill--${level.status}`} title={level.status === 'unknown' ? undefined : names[level.status]}>
         {level.status === 'reached' ? '✓ ' : ''}
         {pct(level.distancePct)}
@@ -143,6 +143,27 @@ function LevelCell({ row, index, onSave }: { row: WatchlistRow; index: number; o
 function Upside({ value }: { value: number | null }) {
   if (value == null) return null;
   return <span className={`delta ${value >= 0 ? 'up' : 'down'}`}>{pct(value, 0)}</span>;
+}
+
+function PriceCell({ row }: { row: WatchlistRow }) {
+  const { quote } = row;
+  return (
+    <div className="stack stack--right">
+      <span className="num strong">
+        {price(quote?.price, quote?.currency)}
+        {quote?.stale && (
+          <span className="stale" title={`Sin conexión: dato guardado del ${new Date(quote.fetchedAt).toLocaleString('es-ES')}`}>
+            <Icon name="alert" label="Dato sin actualizar" />
+          </span>
+        )}
+      </span>
+      {quote?.changePct != null && (
+        <span className={`delta ${quote.changePct > 0 ? 'up' : quote.changePct < 0 ? 'down' : ''}`}>
+          {pct(quote.changePct, 2)}
+        </span>
+      )}
+    </div>
+  );
 }
 
 const columns: Column[] = [
@@ -203,30 +224,14 @@ const columns: Column[] = [
     label: 'Precio',
     align: 'right',
     sort: (r) => r.quote?.changePct ?? null,
-    title: 'Ordena por variación del día',
-    cell: ({ quote }) => (
-      <div className="stack stack--right">
-        <span className="num strong">
-          {price(quote?.price)}
-          {quote?.stale && (
-            <span className="stale" title={`Sin conexión: dato guardado del ${new Date(quote.fetchedAt).toLocaleString('es-ES')}`}>
-              <Icon name="alert" label="Dato sin actualizar" />
-            </span>
-          )}
-        </span>
-        {quote?.changePct != null && (
-          <span className={`delta ${quote.changePct > 0 ? 'up' : quote.changePct < 0 ? 'down' : ''}`}>
-            {pct(quote.changePct, 2)}
-          </span>
-        )}
-      </div>
-    ),
+    title: 'Ordena por variación de hoy (%)',
+    cell: (r) => <PriceCell row={r} />,
   },
   {
     id: 'trend',
     label: 'Tendencia 3 m',
     title: 'Evolución de los últimos 3 meses',
-    cell: (r, { sparks }) => <Sparkline closes={sparks?.[r.item.symbol]} level={r.item.buyPrices[0]} />,
+    cell: (r, { sparks }) => <Sparkline closes={sparks?.[r.item.symbol]} level={r.item.buyPrices[0]} currency={r.quote?.currency} />,
   },
   {
     id: 'map',
@@ -249,14 +254,15 @@ const columns: Column[] = [
     label: 'Bróker',
     group: 'Objetivos',
     align: 'right',
+    optional: true,
     sort: (r) => r.metrics.upsideBrokerPct,
-    cell: ({ item, metrics }) =>
+    cell: ({ item, metrics, quote }) =>
       item.brokerTarget == null ? (
         <span className="muted">–</span>
       ) : (
         <div className="stack stack--right">
           <span className="num">
-            {price(item.brokerTarget)} <Upside value={metrics.upsideBrokerPct} />
+            {price(item.brokerTarget, quote?.currency)} <Upside value={metrics.upsideBrokerPct} />
           </span>
           {item.brokerName && <span className="sub">{item.brokerName}</span>}
         </div>
@@ -267,17 +273,18 @@ const columns: Column[] = [
     label: 'Consenso',
     group: 'Objetivos',
     align: 'right',
+    optional: true,
     sort: (r) => r.metrics.upsideConsensusPct,
-    cell: ({ targets, metrics }) =>
+    cell: ({ targets, metrics, quote }) =>
       targets?.mean == null ? (
         <span className="muted">–</span>
       ) : (
         <div
           className="stack stack--right"
-          title={`Media ${price(targets.mean)} · mediana ${price(targets.median)} · rango ${price(targets.low)}–${price(targets.high)}`}
+          title={`Media ${price(targets.mean, quote?.currency)} · mediana ${price(targets.median, quote?.currency)} · rango ${price(targets.low, quote?.currency)}–${price(targets.high, quote?.currency)}`}
         >
           <span className="num">
-            {price(targets.mean)} <Upside value={metrics.upsideConsensusPct} />
+            {price(targets.mean, quote?.currency)} <Upside value={metrics.upsideConsensusPct} />
           </span>
           <span className="sub">
             {targets.analysts ?? '?'} analistas
@@ -307,28 +314,6 @@ const columns: Column[] = [
         </div>
       );
     },
-  },
-  {
-    id: 'per',
-    label: 'PER',
-    group: 'Datos',
-    optional: true,
-    align: 'right',
-    title: 'Precio / beneficio de los últimos 12 meses',
-    sort: (r) => r.targets?.trailingPE ?? null,
-    cell: ({ targets }) => <span className="num">{num(targets?.trailingPE, 1)}</span>,
-  },
-  {
-    id: 'yield',
-    label: 'Rent. div.',
-    group: 'Datos',
-    optional: true,
-    align: 'right',
-    title: 'Rentabilidad por dividendo anual al precio actual',
-    sort: (r) => r.targets?.dividendYield ?? null,
-    cell: ({ targets }) => (
-      <span className="num">{targets?.dividendYield ? pct(targets.dividendYield).replace('+', '') : '–'}</span>
-    ),
   },
   {
     id: 'mcap',
@@ -388,11 +373,11 @@ const columns: Column[] = [
     id: 'order',
     label: 'Orden',
     sort: (r) => (r.item.orderActive ? (r.metrics.orderDaysLeft ?? 9999) : null),
-    cell: ({ item, metrics }) =>
+    cell: ({ item, metrics, quote }) =>
       item.orderActive ? (
         <div className="stack">
           <span className={`badge ${metrics.orderExpired ? 'badge--danger' : 'badge--order'}`}>
-            {metrics.orderExpired ? 'Caducada' : 'Activa'} {item.orderPrice != null && `@ ${price(item.orderPrice)}`}
+            {metrics.orderExpired ? 'Caducada' : 'Activa'} {item.orderPrice != null && `@ ${price(item.orderPrice, quote?.currency)}`}
           </span>
           {item.orderUntil && (
             <span className="sub">
@@ -412,6 +397,28 @@ const columns: Column[] = [
           {item.notes}
         </span>
       ) : null,
+  },
+  {
+    id: 'per',
+    label: 'PER',
+    group: 'Valoración',
+    optional: true,
+    align: 'right',
+    title: 'Precio / beneficio de los últimos 12 meses',
+    sort: (r) => r.targets?.trailingPE ?? null,
+    cell: ({ targets }) => <span className="num">{num(targets?.trailingPE, 1)}</span>,
+  },
+  {
+    id: 'yield',
+    label: 'Rent. div.',
+    group: 'Valoración',
+    optional: true,
+    align: 'right',
+    title: 'Rentabilidad por dividendo anual al precio actual',
+    sort: (r) => r.targets?.dividendYield ?? null,
+    cell: ({ targets }) => (
+      <span className="num">{targets?.dividendYield ? pct(targets.dividendYield).replace('+', '') : '–'}</span>
+    ),
   },
 ];
 
@@ -450,9 +457,9 @@ export const isColumnVisible = (c: { id: string; optional?: boolean }, hidden: s
 
 const DEFAULT_SORT = { id: 'map', dir: 'desc' as SortDir }; // lo más cercano a un nivel de compra, arriba
 const sortKey = (listId: number) => `watchlist.orden.${listId}`;
-
 export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumns, extraColumns, sparks, onEdit, onTag, onSaveLevel }: Props) {
   const [wrapRef, wrapWidth] = useWidth<HTMLDivElement>();
+  const statusNames = useSettings().data?.statusNames ?? DEFAULT_STATUS_NAMES;
   const visible = useMemo(
     () => columns.filter((c) => isColumnVisible(c, hiddenColumns, extraColumns)),
     [hiddenColumns, extraColumns],
@@ -462,7 +469,8 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
   const [sort, setSort] = useState<{ id: string; dir: SortDir }>(DEFAULT_SORT);
   useEffect(() => {
     try {
-      setSort({ ...DEFAULT_SORT, ...JSON.parse(localStorage.getItem(sortKey(listId)) ?? '{}') });
+      const saved: { id?: string; dir?: SortDir } = JSON.parse(localStorage.getItem(sortKey(listId)) ?? '{}');
+      setSort({ ...DEFAULT_SORT, ...saved, id: saved.id === 'quotePrice' ? 'price' : saved.id ?? DEFAULT_SORT.id });
     } catch {
       setSort(DEFAULT_SORT);
     }
@@ -473,9 +481,9 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
   };
 
   const sorted = useMemo(() => {
-    const col = columns.find((c) => c.id === sort.id);
-    if (!col?.sort) return rows;
-    return [...rows].sort((a, b) => compare(col.sort!(a), col.sort!(b), sort.dir));
+    const getValue = columns.find((c) => c.id === sort.id)?.sort;
+    if (!getValue) return rows;
+    return [...rows].sort((a, b) => compare(getValue(a), getValue(b), sort.dir));
   }, [rows, sort]);
 
   const toggle = (id: string) =>
@@ -512,8 +520,8 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
   const ctx: CellCtx = { base: baseCurrency, onTag, sparks, onToggle, isOpen, onSaveLevel };
 
   return (
-    <div className="table-wrap" ref={wrapRef}>
-      <table className={`wl-table${blink ? ' wl-table--blink' : ''}`}>
+    <div className="table-wrap table-wrap--watchlist" ref={wrapRef}>
+      <table className={`wl-table wl-table--watchlist${blink ? ' wl-table--blink' : ''}`}>
         <thead>
           {hasGroups && (
             <tr className="group-row">
@@ -526,25 +534,38 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
             </tr>
           )}
           <tr>
-            {visible.map((c) => (
+            {visible.map((c) => {
+              const sortId = c.id;
+              return (
               <th
                 key={c.id}
                 className={`${c.align ? `al-${c.align}` : ''} col-${c.id}${c.group ? ' in-group' : ''}`}
-                aria-sort={sort.id === c.id ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
+                aria-sort={sort.id === sortId ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
                 aria-label={c.group ? fullLabel(c) : undefined}
               >
                 {c.sort ? (
-                  <button type="button" className="th-btn" onClick={() => toggle(c.id)} title={c.title}>
+                  <button type="button" className="th-btn" onClick={() => toggle(sortId)} title={c.title}>
                     {c.label}
                     <span className="sort-ind" aria-hidden>
-                      {sort.id === c.id ? (sort.dir === 'asc' ? '▲' : '▼') : ''}
+                      {sort.id === sortId ? (sort.dir === 'asc' ? '▲' : '▼') : ''}
                     </span>
                   </button>
                 ) : (
                   <span title={c.title}>{c.label}</span>
                 )}
               </th>
-            ))}
+              );
+            })}
+            <th className="col-mobile-price al-right" aria-sort={sort.id === 'price' ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
+              <button type="button" className="th-btn" onClick={() => toggle('price')} title="Ordena por variación de hoy (%)">
+                Precio<span className="sort-ind" aria-hidden>{sort.id === 'price' ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</span>
+              </button>
+            </th>
+            <th className="col-mobile-signal al-right" aria-sort={sort.id === 'map' ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
+              <button type="button" className="th-btn" onClick={() => toggle('map')} title="Ordena por cercanía al nivel de compra">
+                Compra<span className="sort-ind" aria-hidden>{sort.id === 'map' ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</span>
+              </button>
+            </th>
             <th className="col-actions">
               <span className="sr-only">Acciones</span>
             </th>
@@ -569,6 +590,18 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
                   </td>
                 </Fragment>
               ))}
+              <td className="col-mobile-price al-right"><PriceCell row={r} /></td>
+              <td className="col-mobile-signal al-right">
+                <span className="stack stack--right">
+                  {r.metrics.status === 'unknown' ? (
+                    <span className="muted">{r.metrics.levels.length ? 'Sin datos' : 'Sin nivel'}</span>
+                  ) : (
+                    <span className={`pill pill--${r.metrics.status}`}>{statusNames[r.metrics.status]}</span>
+                  )}
+                  {r.metrics.nearestDistancePct != null && <span className="num sub">{pct(r.metrics.nearestDistancePct)}</span>}
+                  {r.item.orderActive && <span className="pill watchlist-order-pill">Con orden</span>}
+                </span>
+              </td>
               <td className="col-actions">
                 <button
                   type="button"
@@ -583,7 +616,7 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
             </tr>
             {isOpen(r) && (
               <tr className="row-expand" id={`detalle-${r.item.id}`}>
-                <td colSpan={visible.length + 1}>
+                <td colSpan={visible.length + 3}>
                   <ValueExpanded
                     row={r}
                     base={baseCurrency}

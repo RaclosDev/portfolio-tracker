@@ -8,6 +8,7 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
-    proxy: { '/api': `http://127.0.0.1:${apiPort}` },
+    // changeOrigin: false conserva el Host del navegador; si no, el servidor rechaza las escrituras («Origen no permitido»).
+    proxy: { '/api': { target: `http://127.0.0.1:${apiPort}`, changeOrigin: false } },
   },
 });

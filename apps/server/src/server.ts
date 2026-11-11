@@ -13,17 +13,27 @@ export async function startServer() {
   });
 
   // Primer arranque en local: si hay datos de ejemplo y la base está vacía, se cargan.
-  if (fs.existsSync(config.seedFile) && (await services.lists.all()).every((l) => l.itemCount === 0)) {
+  if (!config.production && fs.existsSync(config.seedFile) && (await services.lists.all()).every((l) => l.itemCount === 0)) {
     await services.backup.import(JSON.parse(fs.readFileSync(config.seedFile, 'utf8')));
   }
 
   const app = await buildApp(services, {
     logLevel: config.production ? 'info' : 'warn',
+    backgroundJobs: true,
     webRoot: fs.existsSync(config.webDist) ? config.webDist : null,
-    auth: { password: config.appPassword, secret: config.sessionSecret, secure: config.production },
+    auth: {
+      password: config.appPassword,
+      ownerEmail: config.ownerEmail,
+      secret: config.sessionSecret,
+      secure: config.production,
+      google: config.googleClientId && config.googleClientSecret && config.publicUrl ? {
+        clientId: config.googleClientId,
+        clientSecret: config.googleClientSecret,
+        publicUrl: config.publicUrl,
+      } : undefined,
+    },
   });
   await app.listen({ host: config.host, port: config.port });
-  services.alerts.start();
 
   console.log(`\n  Watchlist en marcha → http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}`);
   console.log(`  Base de datos: ${config.databaseUrl ? 'PostgreSQL (DATABASE_URL)' : `PGlite en ${config.dataDir}`}`);
@@ -33,7 +43,6 @@ export async function startServer() {
 
   return {
     close: async () => {
-      services.alerts.stop();
       await app.close();
       await services.db.close();
     },

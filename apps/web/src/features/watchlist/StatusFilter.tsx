@@ -42,6 +42,7 @@ export function StatusFilter({ rows, bands, names, value, onChange }: Props) {
   ];
   return (
     <div className="segmented status-filter" role="group" aria-label="Filtrar por estado">
+      <span className="watchlist-filter-label" aria-hidden>Estado</span>
       {options.map((o) => {
         const n = rows.filter(filterRow(o.id)).length;
         return (

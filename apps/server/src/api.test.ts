@@ -3,11 +3,14 @@
  * proveedor de cotizaciones simulado: no dependen de internet, de Neon ni de Yahoo.
  */
 import { DEFAULT_COLORS, DEFAULT_SETTINGS, type CarteraView, type Settings, type WatchlistView } from '@watchlist/shared';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from './app.ts';
+import type { AuthOptions } from './modules/auth/auth.ts';
 import { migrate, openPGlite, type Db } from './db/database.ts';
 import type { MarketDataProvider } from './modules/market/provider.ts';
 import { createServicesFromDb } from './services.ts';
+import { FallbackProvider } from './modules/market/fallback.provider.ts';
+import { MarketService } from './modules/market/market.service.ts';
 
 const now = () => new Date().toISOString();
 const quote = (symbol: string, price: number, currency: string) => ({
@@ -19,6 +22,14 @@ class FakeProvider implements MarketDataProvider {
   readonly id = 'prueba';
   failWith: string | null = null;
   calls = 0;
+  dailyCalls: string[] = [];
+  async getDailyHistory(symbol: string) {
+    this.dailyCalls.push(symbol);
+    if (this.failWith) throw new Error(this.failWith);
+    const currency = symbol === 'BBB' ? 'USD' : symbol === 'PENCE' ? 'GBp' : 'EUR';
+    const values = symbol === 'EURUSD=X' ? [1.25, 2] : symbol === 'EURGBP=X' ? [0.8, 1] : [10, 12];
+    return { currency, points: [{ t: '2026-09-30', c: values[0]! }, ...values.map((c, i) => ({ t: `2026-10-0${i + 1}`, c }))] };
+  }
   async getQuotes(symbols: string[]) {
     this.calls++;
     if (this.failWith) throw new Error(this.failWith);
@@ -43,7 +54,7 @@ let provider: FakeProvider;
 let db: Db;
 let app: Awaited<ReturnType<typeof buildApp>>;
 
-async function setup(auth?: { password: string; secret: string; secure: boolean }) {
+async function setup(auth?: AuthOptions) {
   db = openPGlite();
   await migrate(db);
   provider = new FakeProvider();
@@ -61,33 +72,39 @@ beforeEach(async () => {
   await setup();
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await app.close();
   await db.close();
 });
 
 describe('acceso', () => {
+  const ownerEmail = 'cartera@example.com';
+
   beforeEach(async () => {
     await app.close();
     await db.close();
-    await setup({ password: 'pan-con-tomate', secret: 'x'.repeat(32), secure: true });
+    await setup({ ownerEmail, password: 'pan-con-tomate', secret: 'x'.repeat(32), secure: true });
   });
 
   it('sin entrar no se ven los datos; con la contraseña sí', async () => {
     expect((await get('/api/lists')).statusCode).toBe(401);
+    expect((await get('/api/portfolio/history?from=2026-10-01&to=2026-10-02')).statusCode).toBe(401);
     const health = await get('/api/health');
     expect(health.statusCode).toBe(200);
     // El lector de Excel usa workers blob:; si la CSP los bloquea, importar se cuelga sin error.
     expect(String(health.headers['content-security-policy'])).toMatch(/worker-src 'self' blob:/);
-    expect((await get('/api/session')).json()).toEqual({ authRequired: true, authenticated: false });
-    expect((await send('POST', '/api/login', { password: 'otra' })).statusCode).toBe(401);
-    const ok = await send('POST', '/api/login', { password: 'pan-con-tomate' });
+    expect((await get('/api/session')).json()).toMatchObject({ authRequired: true, authenticated: false, googleEnabled: false });
+    expect((await send('POST', '/api/login', { email: ownerEmail, password: 'otra' })).statusCode).toBe(401);
+    expect((await send('POST', '/api/login', { email: 'otra@example.com', password: 'pan-con-tomate' })).statusCode).toBe(401);
+    expect((await send('POST', '/api/login', { password: 'pan-con-tomate' })).statusCode).toBe(401);
+    const ok = await send('POST', '/api/login', { email: ' CARTERA@example.com ', password: 'pan-con-tomate' });
     expect(ok.statusCode).toBe(200);
     const setCookie = String(ok.headers['set-cookie']);
     expect(setCookie).toMatch(/HttpOnly/);
     expect(setCookie).toMatch(/Secure/);
     cookie = setCookie.split(';')[0]!;
     expect((await get('/api/lists')).statusCode).toBe(200);
-    expect((await get('/api/session')).json()).toEqual({ authRequired: true, authenticated: true });
+    expect((await get('/api/session')).json()).toMatchObject({ authRequired: true, authenticated: true, googleEnabled: false });
   });
 
   it('una cookie manipulada no vale', async () => {
@@ -96,8 +113,8 @@ describe('acceso', () => {
   });
 
   it('bloquea tras 5 intentos fallidos', async () => {
-    for (let i = 0; i < 5; i++) await send('POST', '/api/login', { password: 'mal' });
-    expect((await send('POST', '/api/login', { password: 'pan-con-tomate' })).statusCode).toBe(429);
+    for (let i = 0; i < 5; i++) await send('POST', '/api/login', { email: ownerEmail, password: 'mal' });
+    expect((await send('POST', '/api/login', { email: ownerEmail, password: 'pan-con-tomate' })).statusCode).toBe(429);
   });
 
   it('rechaza cambios enviados desde otra web', async () => {
@@ -108,6 +125,74 @@ describe('acceso', () => {
       headers: { host: 'cartera.test', origin: 'https://malvada.example' },
     });
     expect(res.statusCode).toBe(403);
+  });
+});
+
+describe('histórico de cartera', () => {
+  it('ofrece una serie parcial explícita sin mezclar compras, ventas o cobros de fondos sin histórico', async () => {
+    vi.spyOn(provider, 'getDailyHistory').mockImplementation(async symbol => ({ currency: 'EUR',
+      points: symbol === 'AAA.MC' ? [{ t: '2026-09-30', c: 10 }, { t: '2026-10-02', c: 12 }] : [],
+    }));
+    for (const [ticker, symbol] of [['AAA', 'AAA.MC'], ['POLAR', 'IE00B3VXGD32']]) {
+      await send('POST', '/api/operations', { operation: { type: 'buy', date: '2026-09-30', ticker, shares: 10, amountEur: 100 }, instrument: { symbol, currency: 'EUR' } });
+    }
+    await send('POST', '/api/operations', { operation: { type: 'buy', date: '2026-10-01', ticker: 'POLAR', shares: 5, amountEur: 50 } });
+    await send('POST', '/api/operations', { operation: { type: 'sell', date: '2026-10-02', ticker: 'POLAR', shares: 2, amountEur: 30 } });
+    await send('POST', '/api/operations', { operation: { type: 'dividend', date: '2026-10-02', ticker: 'POLAR', amountEur: 20 } });
+    const res = (await get('/api/portfolio/history?from=2026-10-01&to=2026-10-02')).json();
+    expect(res.stale).toBe(false);
+    expect(res.points.every((p: { valueEur: number | null }) => p.valueEur === null)).toBe(true);
+    expect(res.available).toMatchObject({ included: 1, excluded: [{ ticker: 'POLAR' }], points: [
+      { startingValueEur: 100, valueEur: 100, resultEur: 0, purchasesEur: 0, salesEur: 0, incomeEur: 0 },
+      { startingValueEur: 100, valueEur: 120, resultEur: 20, purchasesEur: 0, salesEur: 0, incomeEur: 0 },
+    ] });
+  });
+
+  it('no fabrica una curva de cero si ningún fondo tiene histórico', async () => {
+    vi.spyOn(provider, 'getDailyHistory').mockResolvedValue({ currency: 'EUR', points: [] });
+    await send('POST', '/api/operations', { operation: { type: 'buy', date: '2026-09-30', ticker: 'POLAR', shares: 10, amountEur: 100 }, instrument: { symbol: 'IE00B3VXGD32', currency: 'EUR' } });
+    const res = (await get('/api/portfolio/history?from=2026-10-01&to=2026-10-02')).json();
+    expect(res.available).toBeUndefined();
+    expect(res.points[0].valueEur).toBeNull();
+    expect(res.stale).toBe(false);
+  });
+
+  it('incluye posiciones ya cerradas, separa divisas y reutiliza la caché entre peticiones', async () => {
+    for (const [ticker, symbol, currency] of [['AAA', 'AAA.MC', 'EUR'], ['BBB', 'BBB', 'USD']]) {
+      expect((await send('POST', '/api/operations', { operation: { type: 'buy', date: '2026-09-30', ticker, shares: 10, amountEur: 100 }, instrument: { symbol, currency } })).statusCode).toBe(201);
+    }
+    await send('POST', '/api/operations', { operation: { type: 'sell', date: '2026-10-02', ticker: 'AAA', shares: 10, amountEur: 120 } });
+    const url = '/api/portfolio/history?from=2026-10-01&to=2026-10-02';
+    const [a, b] = await Promise.all([get(url), get(url)]);
+    expect(a.statusCode, a.body).toBe(200);
+    expect(b.json()).toEqual(a.json());
+    expect(a.json()).toMatchObject({ stale: false, missing: [], points: [
+      { valueEur: 180, constantFxEur: 180, fxEffectEur: 0, startingValueEur: 180, resultEur: 0, purchasesEur: 0, salesEur: 0, incomeEur: 0 },
+      { valueEur: 60, constantFxEur: 96, fxEffectEur: -36, startingValueEur: 180, resultEur: 0, purchasesEur: 0, salesEur: 120, incomeEur: 0 },
+    ] });
+    expect(provider.dailyCalls.sort()).toEqual(['AAA.MC', 'BBB', 'EURUSD=X']);
+    const future = Date.now() + 2 * 60 * 60_000;
+    vi.spyOn(Date, 'now').mockReturnValue(future);
+    provider.failWith = 'offline';
+    const stale = (await get(url)).json();
+    expect(stale.stale).toBe(true);
+    expect(stale.points).toEqual(a.json().points);
+  });
+
+  it('convierte cotizaciones en peniques con la divisa del proveedor', async () => {
+    await send('POST', '/api/operations', { operation: { type: 'buy', date: '2026-09-30', ticker: 'PENCE', shares: 100, amountEur: 10 }, instrument: { symbol: 'PENCE', currency: 'GBP' } });
+    const res = (await get('/api/portfolio/history?from=2026-10-01&to=2026-10-02')).json();
+    expect(res.points[0]).toMatchObject({ valueEur: 12.5, constantFxEur: 12.5 });
+    expect(res.points[1]).toMatchObject({ valueEur: 12, constantFxEur: 15, fxEffectEur: -3 });
+    expect(provider.dailyCalls).toContain('EURGBP=X');
+  });
+
+  it('rechaza periodos inválidos y devuelve una cartera vacía sin consultar mercado', async () => {
+    for (const query of ['from=2026-02-30&to=2026-03-01', 'from=2026-10-02&to=2026-10-01', 'from=2026-01-01&to=2999-01-01', 'from=2026-01-01']) {
+      expect((await get(`/api/portfolio/history?${query}`)).statusCode).toBe(400);
+    }
+    expect((await get('/api/portfolio/history?from=2026-10-01&to=2026-10-01')).json().points[0].valueEur).toBe(0);
+    expect(provider.dailyCalls).toEqual([]);
   });
 });
 
@@ -193,6 +278,21 @@ describe('copias', () => {
 });
 
 describe('límite de Yahoo', () => {
+  it('conserva en la base de datos el NAV y su fecha si fallan todas las fuentes', async () => {
+    const nav = { ...quote('IE00B3VXGD32', 65.5, 'EUR'), source: 'Borsa Italiana / FIDA', asOf: '2025-11-10' };
+    const alternative: MarketDataProvider = { id: 'borsa',
+      getQuotes: vi.fn().mockResolvedValue([nav]), getTargets: async () => null,
+      search: async () => [], getHistory: async () => [] };
+    const chain = new FallbackProvider([provider, alternative]);
+    const options = { quoteTtlMs: 45_000, targetsTtlMs: 60_000 };
+    const market = new MarketService(chain, db, options);
+    expect((await market.getQuotes([nav.symbol])).get(nav.symbol)).toMatchObject({ ...nav, stale: false });
+    provider.failWith = 'HTTP 429';
+    vi.mocked(alternative.getQuotes).mockRejectedValue(new Error('HTTP 503'));
+    const restarted = new MarketService(chain, db, options);
+    expect((await restarted.getQuotes([nav.symbol])).get(nav.symbol)).toMatchObject({ ...nav, stale: true });
+  });
+
   it('ante un 429 pausa las consultas y sirve los últimos precios guardados', async () => {
     await send('POST', '/api/items', { listId: 1, symbol: 'AAA.MC' });
     await get('/api/lists/1/watchlist'); // primera consulta: queda guardada
@@ -207,6 +307,27 @@ describe('límite de Yahoo', () => {
 });
 
 describe('históricos', () => {
+  it('recupera un minigráfico antes vacío sin invalidar los históricos válidos guardados', async () => {
+    const history = vi.spyOn(provider, 'getHistory');
+    const storedAt = new Date(Date.now() - 6 * 60_000).toISOString();
+    await db.query('INSERT INTO market_cache (kind, symbol, data, fetched_at) VALUES ($1, $2, $3::jsonb, $4)',
+      ['history-1y', 'AAA.MC', '[]', storedAt]);
+    await db.query('INSERT INTO market_cache (kind, symbol, data, fetched_at) VALUES ($1, $2, $3::jsonb, $4)',
+      ['history-1y', 'BBB', JSON.stringify([{ t: '2026-10-01', c: 50 }, { t: '2026-10-02', c: 51 }]), storedAt]);
+    const result = (await get('/api/market/sparklines?symbols=AAA.MC,BBB&range=1y')).json();
+    expect(result).toEqual({ 'AAA.MC': [10, 11, 9.5, 10.2], BBB: [50, 51] });
+    expect(history).toHaveBeenCalledTimes(1);
+    expect((await get('/api/market/history/AAA.MC?range=1y')).json().points).toHaveLength(4);
+    expect(history).toHaveBeenCalledTimes(1);
+  });
+
+  it('conserva brevemente un histórico vacío para no repetir consultas sin cobertura', async () => {
+    const history = vi.spyOn(provider, 'getHistory').mockResolvedValue([]);
+    await get('/api/market/history/AAA.MC?range=1y');
+    expect((await get('/api/market/sparklines?symbols=AAA.MC&range=1y')).json()).toEqual({ 'AAA.MC': [] });
+    expect(history).toHaveBeenCalledTimes(1);
+  });
+
   it('devuelve el histórico de un periodo y los minigráficos', async () => {
     const h = (await get('/api/market/history/aaa.mc?range=6m')).json() as { points: { c: number }[]; stale: boolean };
     expect(h.points.map((p) => p.c)).toEqual([10, 11, 9.5, 10.2]);
@@ -247,6 +368,39 @@ describe('cartera', () => {
     expect((await portfolio()).operations).toHaveLength(2);
   });
 
+  it('vincula un valor existente al añadir una compra sin perder sus datos personales', async () => {
+    await send('POST', '/api/operations', { ...buy('BBB', 1, 2), instrument: { name: 'Mi valor', sector: 'Salud', notes: 'Conservar' } });
+    const res = await send('POST', '/api/operations', {
+      ...buy('BBB', 2, 90), instrument: { symbol: 'BBB', currency: 'USD' },
+    });
+    expect(res.statusCode).toBe(201);
+    const view = await portfolio();
+    expect(view.instruments[0]).toMatchObject({ symbol: 'BBB', currency: 'USD', name: 'Mi valor', sector: 'Salud', notes: 'Conservar' });
+    expect(view.quotes.BBB?.price).toBe(50);
+  });
+
+  it('guarda la cotización y la divisa al editar una operación y revierte todo si el registro no cuadra', async () => {
+    const first = (await send('POST', '/api/operations', {
+      ...buy('BBB', 1, 2), instrument: { notes: 'Conservar' },
+    })).json() as { id: number };
+    const res = await send('PUT', `/api/operations/${first.id}`, {
+      operation: { ...buy('BBB', 1, 45).operation, price: 50, fxRate: 1.1 },
+      instrument: { symbol: 'BBB', name: 'Valor vinculado', currency: 'USD' },
+    });
+    expect(res.statusCode).toBe(200);
+    const view = await portfolio();
+    expect(view.operations[0]).toMatchObject({ amountEur: 45, price: 50, fxRate: 1.1 });
+    expect(view.instruments[0]).toMatchObject({ symbol: 'BBB', name: 'Valor vinculado', currency: 'USD', notes: 'Conservar' });
+    const invalid = await send('PUT', `/api/operations/${first.id}`, {
+      operation: { date: '2025-01-10', ticker: 'BBB', type: 'sell', shares: 2, amountEur: 90 },
+      instrument: { symbol: 'WRONG', currency: 'EUR' },
+    });
+    expect(invalid.statusCode).toBe(400);
+    const unchanged = await portfolio();
+    expect(unchanged.operations[0]).toMatchObject({ type: 'buy', amountEur: 45 });
+    expect(unchanged.instruments[0]).toMatchObject({ symbol: 'BBB', currency: 'USD' });
+  });
+
   it('edita, cambia el bróker de varias y borra', async () => {
     const a = (await send('POST', '/api/operations', buy('AAA', 10, 100))).json() as { id: number };
     const c = (await send('POST', '/api/operations', buy('AAA', 5, 60, '2025-02-01'))).json() as { id: number };
@@ -258,7 +412,7 @@ describe('cartera', () => {
     expect((await send('PUT', '/api/instruments/AAA', { sector: 'Industria', name: 'Triple A' })).json()).toMatchObject({ sector: 'Industria', name: 'Triple A' });
   });
 
-  it('importar sustituye lo importado antes, conserva lo manual y guarda una copia', async () => {
+  it('importar añade operaciones, conserva las anteriores y omite coincidencias', async () => {
     await send('POST', '/api/operations', buy('MAN', 1, 10));
     const excel = {
       instruments: [{ ticker: 'AAA', symbol: 'AAA.MC' }],
@@ -267,10 +421,10 @@ describe('cartera', () => {
         { date: '2021-01-01', ticker: 'AAA', type: 'dividend', amountEur: 5, sourceRef: 2 },
       ],
     };
-    expect((await send('POST', '/api/portfolio/import', excel)).json()).toMatchObject({ imported: 2, replaced: 0 });
-    const again = (await send('POST', '/api/portfolio/import', excel)).json() as { replaced: number; savedTo: number };
-    expect(again.replaced).toBe(2);
-    expect(again.savedTo).toBeGreaterThan(0);
+    const first = (await send('POST', '/api/portfolio/import', excel)).json() as { imported: number; skipped: number; savedTo: number };
+    expect(first).toMatchObject({ imported: 2, skipped: 0 });
+    expect(first.savedTo).toBeGreaterThan(0);
+    expect((await send('POST', '/api/portfolio/import', excel)).json()).toMatchObject({ imported: 0, skipped: 2, savedTo: null });
     const view = await portfolio();
     expect(view.operations.map((o) => [o.ticker, o.source])).toEqual([
       ['AAA', 'excel'],
@@ -283,6 +437,38 @@ describe('cartera', () => {
     });
     expect(bad.statusCode).toBe(400);
     expect((await portfolio()).operations).toHaveLength(3);
+    const overlap = { ...excel, operations: [...excel.operations, { date: '2026-01-01', ticker: 'AAA', type: 'buy', shares: 2, amountEur: 30 }] };
+    expect((await send('POST', '/api/portfolio/import', overlap)).json()).toMatchObject({ imported: 1, skipped: 2 });
+    expect((await portfolio()).operations).toHaveLength(4);
+  });
+
+  it('omite coincidencias dentro del archivo y permite confirmar compras idénticas reales', async () => {
+    const op = buy('AAA', 1, 10).operation;
+    const payload = { instruments: [], operations: [op, op] };
+    expect((await send('POST', '/api/portfolio/import', payload)).json()).toMatchObject({ imported: 1, skipped: 1 });
+    expect((await send('POST', '/api/portfolio/import', { ...payload, allowDuplicates: true })).json()).toMatchObject({ imported: 2, skipped: 0 });
+    expect((await portfolio()).operations).toHaveLength(3);
+  });
+
+  it('conserva la ficha existente y revierte todas las altas si hay un conflicto de divisa', async () => {
+    await send('POST', '/api/operations', { ...buy('AAA', 1, 10), instrument: { symbol: 'AAA.MC', name: 'Mi valor', notes: 'Nota personal' } });
+    const payload = { instruments: [{ ticker: 'AAA', symbol: null, name: 'Nombre del archivo' }], operations: [buy('AAA', 2, 25).operation] };
+    expect((await send('POST', '/api/portfolio/import', payload)).statusCode).toBe(200);
+    expect((await portfolio()).instruments[0]).toMatchObject({ symbol: 'AAA.MC', name: 'Mi valor', notes: 'Nota personal' });
+    const conflict = { instruments: [{ ticker: 'AAA', currency: 'USD' }], operations: [buy('NEW', 1, 1).operation, buy('AAA', 3, 40).operation] };
+    expect((await send('POST', '/api/portfolio/import', conflict)).statusCode).toBe(400);
+    const view = await portfolio();
+    expect(view.operations).toHaveLength(2);
+    expect(view.instruments).toHaveLength(1);
+  });
+
+  it('valida las ventas contra las posiciones existentes sin guardar un lote parcialmente válido', async () => {
+    await send('POST', '/api/operations', buy('AAA', 2, 20));
+    const sell = { date: '2026-01-01', ticker: 'AAA', type: 'sell', shares: 1, amountEur: 12 };
+    expect((await send('POST', '/api/portfolio/import', { instruments: [], operations: [sell] })).statusCode).toBe(200);
+    const invalid = { instruments: [], operations: [buy('NEW', 1, 3).operation, { ...sell, shares: 3 }] };
+    expect((await send('POST', '/api/portfolio/import', invalid)).statusCode).toBe(400);
+    expect((await portfolio()).operations).toHaveLength(2);
   });
 
   it('la copia de seguridad incluye la cartera y una copia antigua no la borra', async () => {
@@ -293,6 +479,23 @@ describe('cartera', () => {
     expect((await portfolio()).operations).toHaveLength(1);
     await send('POST', '/api/backup', { ...backup, portfolio: { instruments: [], operations: [] } });
     expect((await portfolio()).operations).toHaveLength(0);
+  });
+
+  it('guarda el vínculo del traspaso y revierte importaciones o borrados que dejan entradas huérfanas', async () => {
+    const purchase = buy('AAA', 10, 100).operation;
+    const outgoing = { ...purchase, date: '2026-02-01', type: 'transfer_out', amountEur: 120, transferRef: 'pair' };
+    const incoming = { ...outgoing, date: '2026-02-02', ticker: 'BBB', type: 'transfer_in', shares: 6 };
+    const result = await send('POST', '/api/portfolio/import', { instruments: [], operations: [purchase, outgoing, incoming] });
+    expect(result.statusCode).toBe(200);
+    const view = await portfolio();
+    expect(view.operations.filter(o => o.transferRef === 'pair')).toHaveLength(2);
+    const out = view.operations.find(o => o.type === 'transfer_out')!;
+    expect((await send('DELETE', `/api/operations/${out.id}`)).statusCode).toBe(400);
+    const backup = (await get('/api/backup')).json();
+    expect((await send('POST', '/api/backup', backup)).statusCode).toBe(200);
+    const invalid = { ...backup, portfolio: { ...backup.portfolio, operations: [incoming] } };
+    expect((await send('POST', '/api/backup', invalid)).statusCode).toBe(400);
+    expect((await portfolio()).operations).toHaveLength(3);
   });
 
   it('rellena el sector desde la ficha de la empresa', async () => {

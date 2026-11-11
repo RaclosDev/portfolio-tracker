@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addMonths, computeLedger } from './ledger.ts';
+import { addMonths, computeLedger, sortOperations } from './ledger.ts';
 import { operationInputSchema, type Operation, type OperationInput } from './schemas.ts';
 import { computeTaxYears, savingsTax } from './tax.ts';
 import { valueCartera, xirr } from './view.ts';
@@ -50,6 +50,21 @@ describe('FIFO', () => {
     const s = sell('2024-03-01', 'AAA', 10, 120);
     const b = buy('2024-03-01', 'AAA', 10, 100);
     expect(computeLedger([s, b]).issues).toEqual([]);
+  });
+
+  it('el «orden en el día» decide qué va antes entre operaciones de la misma fecha', () => {
+    // Tenía 10 a 10 €; ese día vende 10 a 15 € (1.º) y recompra 10 a 12 € (2.º).
+    const ops = [
+      buy('2024-01-01', 'AAA', 10, 100),
+      buy('2024-03-01', 'AAA', 10, 120, { dayOrder: 2 }),
+      sell('2024-03-01', 'AAA', 10, 150, { dayOrder: 1 }),
+    ];
+    const t = computeLedger(ops).byTicker.get('AAA')!;
+    expect(r2(t.sales[0]!.gainEur)).toBe(50); // vende el lote de 100 €, no el recién comprado
+    expect(r2(t.costEur)).toBe(120);
+    // Sin número, se aplica la regla por defecto: compra antes que venta (FIFO igual, el lote antiguo).
+    expect(sortOperations(ops.map((o) => ({ ...o, dayOrder: null }))).map((o) => o.type)).toEqual(['buy', 'buy', 'sell']);
+    expect(sortOperations(ops).map((o) => o.type)).toEqual(['buy', 'sell', 'buy']);
   });
 
   it('el FIFO es global aunque haya varios brókers', () => {
@@ -168,6 +183,24 @@ describe('regla de los dos meses', () => {
       buy('2026-05-02', 'X', 10, 80),
     ]);
     expect(l.sales[0]!.deferredLossEur).toBe(0);
+  });
+
+  it('límites exactos: el mismo día dos meses antes y dos meses después sí cuentan; un día más, no', () => {
+    const back = (buyDate: string) =>
+      computeLedger([buy('2026-01-02', 'B', 100, 2000), buy(buyDate, 'B', 50, 900), sell('2026-06-12', 'B', 100, 1800)]).sales[0]!.deferredLossEur;
+    expect(r2(back('2026-04-12'))).toBe(100);
+    expect(back('2026-04-11')).toBe(0);
+    const fwd = (buyDate: string) =>
+      computeLedger([buy('2026-01-10', 'F', 100, 3000), sell('2026-06-12', 'F', 100, 2500), buy(buyDate, 'F', 100, 2400)]).sales[0]!.deferredLossEur;
+    expect(r2(fwd('2026-08-12'))).toBe(500);
+    expect(fwd('2026-08-13')).toBe(0);
+  });
+
+  it('addMonths ajusta al último día del mes y cruza de año', () => {
+    expect(addMonths('2026-12-31', 2)).toBe('2027-02-28');
+    expect(addMonths('2027-12-31', 2)).toBe('2028-02-29');
+    expect(addMonths('2026-01-31', -2)).toBe('2025-11-30');
+    expect(addMonths('2026-03-31', -2)).toBe('2026-01-31');
   });
 });
 

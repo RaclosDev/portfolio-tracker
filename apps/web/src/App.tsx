@@ -9,11 +9,13 @@ import { useCarteraModel } from './features/cartera/model.ts';
 import { ItemDialog } from './features/items/ItemDialog.tsx';
 import { SettingsDialog } from './features/settings/SettingsDialog.tsx';
 import { PriceMapLegend } from './features/watchlist/PriceMap.tsx';
-import { Highlights } from './features/watchlist/Highlights.tsx';
+import { Highlights, goToRow } from './features/watchlist/Highlights.tsx';
+import { Dialog } from './components/Dialog.tsx';
 import { StatusFilter, filterRow, type Filter } from './features/watchlist/StatusFilter.tsx';
 import { WatchlistTable, type Tag } from './features/watchlist/WatchlistTable.tsx';
 import { TagFilters, rowType, type TypeFilter } from './features/watchlist/TagFilters.tsx';
 import { TOUR_STEPS } from './features/tour/steps.tsx';
+import { CARTERA_TOUR_STEPS } from './features/tour/carteraSteps.tsx';
 import { Tour } from './features/tour/Tour.tsx';
 import { num, timeAgo } from './lib/format.ts';
 import { applyAppearance, applyColors } from './lib/theme.ts';
@@ -25,6 +27,7 @@ import { AlertsDialog } from './features/alerts/AlertsDialog.tsx';
 
 const LS_LIST = 'watchlist.listId';
 const LS_TOUR = 'watchlist.tourSeen';
+const LS_CARTERA_TOUR = 'watchlist.cartera.tourSeen';
 const LS_PAGE = 'watchlist.pagina';
 type Page = 'lista' | 'cartera';
 
@@ -76,11 +79,15 @@ export function App() {
   };
   const [buyDraft, setBuyDraft] = useState<OperationDraft | null>(null);
   const clearDraft = useCallback(() => setBuyDraft(null), []);
-  const { create: createList } = useListMutations();
+  const { create: createList, rename: renameList } = useListMutations();
+  const selectedList = lists.find((list) => list.id === listId);
+  const [listError, setListError] = useState<string | null>(null);
   const now = useNow(10_000);
 
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [locateId, setLocateId] = useState<number | null>(null);
   const [editing, setEditing] = useState<WatchlistRow | 'new' | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
@@ -150,20 +157,51 @@ export function App() {
       ? setCurrencyFilter((c) => (c === tag.value ? 'all' : tag.value))
       : setTypeFilter((t) => (t === tag.value ? 'all' : tag.value));
 
-  // El tour se abre solo la primera vez, cuando ya hay datos que enseñar.
-  const hasRows = (view?.rows.length ?? 0) > 0;
+  const activeFilters = [filter, typeFilter, currencyFilter].filter((value) => value !== 'all').length;
+  const clearFilters = () => {
+    setFilter('all');
+    setTypeFilter('all');
+    setCurrencyFilter('all');
+  };
+  const locateRow = (id: number) => {
+    if (rows.some((row) => row.item.id === id)) {
+      goToRow(id);
+    } else {
+      clearFilters();
+      setSearch('');
+      setLocateId(id);
+    }
+  };
   useEffect(() => {
-    if (hasRows && !localStorage.getItem(LS_TOUR)) setTourOpen(true);
-  }, [hasRows]);
+    if (locateId === null || !rows.some((row) => row.item.id === locateId)) return;
+    goToRow(locateId);
+    setLocateId(null);
+  }, [locateId, rows]);
+
+  const filterControls = (
+    <>
+      {view && <StatusFilter rows={tagged} bands={settings.bands} names={settings.statusNames} value={filter} onChange={setFilter} />}
+      <TagFilters type={typeFilter} onType={setTypeFilter} currency={currencyFilter} currencies={currencies} onCurrency={setCurrencyFilter} names={settings.tagNames} />
+    </>
+  );
+
+  // El tour se abre solo la primera vez, cuando ya hay datos que enseñar.
+  const hasTourData = onPortfolio ? (pf.data?.operations.length ?? 0) > 0 : (view?.rows.length ?? 0) > 0;
+  const tourKey = onPortfolio ? LS_CARTERA_TOUR : LS_TOUR;
+  useEffect(() => {
+    if (hasTourData && !localStorage.getItem(tourKey)) setTourOpen(true);
+  }, [hasTourData, tourKey]);
   const closeTour = () => {
-    localStorage.setItem(LS_TOUR, '1');
+    localStorage.setItem(tourKey, '1');
     setTourOpen(false);
   };
   const startTour = () => {
-    setFilter('all');
-    setSearch('');
-    setTypeFilter('all');
-    setCurrencyFilter('all');
+    if (!onPortfolio) {
+      setFilter('all');
+      setSearch('');
+      setTypeFilter('all');
+      setCurrencyFilter('all');
+    }
     setTourOpen(true);
   };
 
@@ -175,6 +213,15 @@ export function App() {
   const fetching = onPortfolio ? pf.isFetching || pfRefreshing : wl.isFetching || refresh.isPending;
   const generatedAt = onPortfolio ? pf.data?.generatedAt : view?.generatedAt;
   const refetchFailed = onPortfolio ? pf.isRefetchError : wl.isRefetchError;
+  const updateLabel = fetching ? 'Actualizando…'
+    : refetchFailed ? `Sin conexión con el servidor · precios de ${timeAgo(generatedAt, now)}`
+    : anyStale ? 'Sin conexión: datos guardados'
+    : `Actualizado ${timeAgo(generatedAt, now)}`;
+  const fxBadges = fxChips.map(([currency, rate]) => (
+    <span key={currency} className="chip" title={`1 ${base} = ${rate} ${currency}`}>
+      {base}/{currency} <strong>{num(rate, 4)}</strong>
+    </span>
+  ));
 
   // Con la app en segundo plano (pantalla apagada, ventana minimizada) el navegador para los
   // temporizadores. Si al volver los precios llevan más de dos ciclos sin renovarse, se piden ya.
@@ -194,8 +241,25 @@ export function App() {
   const newList = async () => {
     const name = await ask('Nueva lista', 'Nombre de la lista');
     if (name) {
-      setListId((await createList.mutateAsync(name)).id);
-      setPage('lista');
+      setListError(null);
+      try {
+        setListId((await createList.mutateAsync(name)).id);
+        setPage('lista');
+      } catch {
+        setListError('No se ha podido crear la lista. Vuelve a intentarlo.');
+      }
+    }
+  };
+
+  const renameCurrentList = async () => {
+    if (!selectedList) return;
+    const name = await ask('Renombrar lista', 'Nuevo nombre', selectedList.name);
+    if (!name || name === selectedList.name) return;
+    setListError(null);
+    try {
+      await renameList.mutateAsync({ id: selectedList.id, name });
+    } catch {
+      setListError('No se ha podido cambiar el nombre de la lista. Vuelve a intentarlo.');
     }
   };
 
@@ -208,22 +272,44 @@ export function App() {
         </div>
 
         <nav className="tabs" aria-label="Listas">
-          {lists.map((l) => (
+          {lists.length > 1 ? (
+            <select
+              className={`tabs__select${!onPortfolio ? ' tab--active' : ''}`}
+              aria-label="Seleccionar lista"
+              value={onPortfolio ? '' : String(listId ?? '')}
+              onChange={(e) => {
+                setListId(Number(e.target.value));
+                setPage('lista');
+              }}
+            >
+              <option value="" disabled>Listas</option>
+              {lists.map((list) => (
+                <option key={list.id} value={list.id}>{list.name} ({list.itemCount})</option>
+              ))}
+            </select>
+          ) : lists.map((l) => (
             <button
               key={l.id}
               type="button"
-              className={`tab${!onPortfolio && l.id === listId ? ' tab--active' : ''}`}
+              className={`tab tab--list${!onPortfolio && l.id === listId ? ' tab--active' : ''}`}
+              title={l.name}
               aria-current={!onPortfolio && l.id === listId ? 'page' : undefined}
               onClick={() => {
                 setListId(l.id);
                 setPage('lista');
               }}
             >
-              {l.name}
+              <span className="tab__name">{l.name}</span>
               <span className="tab__count">{l.itemCount}</span>
             </button>
           ))}
-          <button type="button" className="tab tab--add" title="Nueva lista" onClick={newList}>
+          {!onPortfolio && selectedList && (
+            <button type="button" className="tab" onClick={renameCurrentList} disabled={renameList.isPending} title="Cambiar el nombre de la lista">
+              <Icon name="pencil" size={16} />
+              Renombrar
+            </button>
+          )}
+          <button type="button" className="tab tab--add" title="Nueva lista" onClick={newList} disabled={createList.isPending}>
             Nueva lista
           </button>
           <span className="tabs__sep" aria-hidden />
@@ -240,48 +326,51 @@ export function App() {
           </button>
         </nav>
 
-        {/* Móvil: un selector con las listas y la cartera, y un botón para crear lista. */}
         <div className="list-picker">
-          <select
-            className="list-picker__select"
-            aria-label="Lista"
-            value={onPortfolio ? 'cartera' : String(listId ?? '')}
-            onChange={(e) => {
-              if (e.target.value === 'cartera') setPage('cartera');
-              else {
-                setListId(Number(e.target.value));
-                setPage('lista');
-              }
-            }}
-          >
-            <optgroup label="Listas">
-              {lists.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </optgroup>
-            <option value="cartera">Cartera</option>
-          </select>
-          <button type="button" className="icon-btn" aria-label="Nueva lista" title="Nueva lista" onClick={newList}>
-            <Icon name="plus" size={20} />
-          </button>
+          {onPortfolio ? <strong className="list-picker__title">Cartera</strong> : (
+            <>
+              <select
+                className="list-picker__select"
+                aria-label="Seleccionar lista"
+                value={String(listId ?? '')}
+                onChange={(e) => {
+                  setListId(Number(e.target.value));
+                  setPage('lista');
+                }}
+              >
+                <optgroup label="Listas">
+                  {lists.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+              {selectedList && (
+                <button type="button" className="icon-btn" aria-label="Renombrar lista" title="Renombrar lista" onClick={renameCurrentList} disabled={renameList.isPending}>
+                  <Icon name="pencil" size={18} />
+                </button>
+              )}
+              <button type="button" className="icon-btn" aria-label="Nueva lista" title="Nueva lista" onClick={newList} disabled={createList.isPending}>
+                <Icon name="plus" size={20} />
+              </button>
+            </>
+          )}
         </div>
 
+        <nav className="mobile-primary-nav" aria-label="Secciones">
+          <button type="button" aria-current={!onPortfolio ? 'page' : undefined} onClick={() => setPage('lista')}>
+            Lista
+          </button>
+          <button type="button" aria-current={onPortfolio ? 'page' : undefined} onClick={() => setPage('cartera')}>
+            Cartera
+          </button>
+        </nav>
+
         <div className="topbar__right">
-          {fxChips.map(([c, r]) => (
-            <span key={c} className="chip" title={`1 ${base} = ${r} ${c}`}>
-              {base}/{c} <strong>{num(r, 4)}</strong>
-            </span>
-          ))}
+          {fxBadges}
           <span className={`updated${anyStale || refetchFailed ? ' updated--stale' : ''}`} aria-live="polite">
-            {fetching
-              ? 'Actualizando…'
-              : refetchFailed
-                ? `Sin conexión con el servidor · precios de ${timeAgo(generatedAt, now)}`
-                : anyStale
-                ? 'Sin conexión: datos guardados'
-                : `Actualizado ${timeAgo(generatedAt, now)}`}
+            {updateLabel}
           </span>
           <button
             type="button"
@@ -308,7 +397,6 @@ export function App() {
             className="btn btn--ghost"
             data-tour="tour"
             onClick={startTour}
-            disabled={!hasRows}
             title="Volver a ver la explicación de la app"
           >
             Guía
@@ -325,6 +413,7 @@ export function App() {
       <main className="content">
         <UpdateBanner />
         <PushBanner />
+        {listError && <p className="error-box" role="alert">{listError}</p>}
         {throttleMin != null && (
           <p className="notice" role="status">
             Yahoo ha pedido ir más despacio. Mientras tanto ves los últimos precios guardados; se vuelve a consultar en{' '}
@@ -341,45 +430,43 @@ export function App() {
           />
         ) : (
           <>
-            {view && <Highlights rows={view.rows} base={base} />}
+            {view && <Highlights rows={view.rows} base={base} onLocate={locateRow} quoteInfo={<>{updateLabel} {fxBadges}</>} />}
 
-            <div className="toolbar">
-              {view && (
-                <StatusFilter
-                  rows={tagged}
-                  bands={settings.bands}
-                  names={settings.statusNames}
-                  value={filter}
-                  onChange={setFilter}
-                />
-              )}
-              <TagFilters
-                type={typeFilter}
-                onType={setTypeFilter}
-                currency={currencyFilter}
-                currencies={currencies}
-                onCurrency={setCurrencyFilter}
-                names={settings.tagNames}
-              />
+            <div className="toolbar watchlist-toolbar">
+              <div className="watchlist-desktop-filters">{filterControls}</div>
               <span className="spacer" />
               <input
                 type="search"
                 className="search"
-                placeholder="Buscar por nombre, ticker o nota"
+                placeholder="Buscar valor"
                 aria-label="Buscar en la lista"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
+              <button type="button" className="btn watchlist-filter-trigger" onClick={() => setShowFilters(true)}>
+                Filtros{activeFilters > 0 ? ` (${activeFilters})` : ''}
+              </button>
               <button
                 type="button"
                 className="btn btn--primary"
                 data-tour="add"
+                aria-label="Añadir valor"
                 onClick={() => setEditing('new')}
                 disabled={!listId}
               >
-                Añadir valor
+                Añadir<span className="watchlist-desktop-hint"> valor</span>
               </button>
             </div>
+            {showFilters && (
+              <Dialog title="Filtros" className="watchlist-filter-dialog" onClose={() => setShowFilters(false)} footer={(
+                <>
+                  <button type="button" className="btn" onClick={clearFilters} disabled={!activeFilters}>Limpiar</button>
+                  <button type="button" className="btn btn--primary" onClick={() => setShowFilters(false)}>Listo</button>
+                </>
+              )}>
+                {filterControls}
+              </Dialog>
+            )}
 
             {wl.isError && <p className="error-box">No se pudo cargar la lista: {(wl.error as Error).message}</p>}
             {wl.isPending && listId && <p className="muted center">Cargando cotizaciones…</p>}
@@ -428,7 +515,8 @@ export function App() {
           </>
         )}
         <p className="footnote">
-          Cotizaciones y consenso de analistas: Yahoo Finance (pueden tener retraso). Doble clic en una fila para editarla.
+          Cotizaciones: Yahoo Finance, Borsa Italiana / FIDA y Quefondos / VDOS. Consenso: Yahoo Finance. Los datos pueden tener retraso.
+          {!onPortfolio && <span className="watchlist-desktop-hint"> Doble clic en una fila para editarla.</span>}
         </p>
       </main>
 
@@ -447,7 +535,7 @@ export function App() {
         />
       )}
       {promptEl}
-      {tourOpen && <Tour steps={TOUR_STEPS} onClose={closeTour} />}
+      {tourOpen && <Tour key={page} steps={onPortfolio ? CARTERA_TOUR_STEPS : TOUR_STEPS} onClose={closeTour} />}
       {showSettings && <SettingsDialog settings={settings} lists={lists} onClose={() => setShowSettings(false)} />}
       {showAlerts && (
         <AlertsDialog

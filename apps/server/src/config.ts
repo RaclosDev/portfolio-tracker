@@ -21,7 +21,10 @@ export const config = {
   targetsTtlMs: num(process.env.TARGETS_TTL_HOURS, 12) * 3_600_000,
   /** Contraseña de acceso. Sin ella (solo en desarrollo) la app no pide entrar. */
   appPassword: env('APP_PASSWORD'),
-  /** Clave para firmar la sesión. Render la genera sola (render.yaml). */
+  ownerEmail: env('APP_OWNER_EMAIL'),
+  googleClientId: env('GOOGLE_CLIENT_ID'),
+  googleClientSecret: env('GOOGLE_CLIENT_SECRET'),
+  /** Clave para firmar el flujo de Google. Render la genera sola (render.yaml). */
   sessionSecret: env('SESSION_SECRET'),
   /** Claves VAPID para las notificaciones (npm run claves-push). */
   vapid: {

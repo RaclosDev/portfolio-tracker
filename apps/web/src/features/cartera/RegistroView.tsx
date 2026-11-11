@@ -1,4 +1,4 @@
-import { KNOWN_BROKERS, OPERATION_LABELS, OPERATION_TYPES, type Operation, type OperationType } from '@watchlist/shared';
+import { KNOWN_BROKERS, OPERATION_LABELS, OPERATION_TYPES, sortOperations, type Operation, type OperationType } from '@watchlist/shared';
 import { useMemo, useState } from 'react';
 import { useOperationMutations } from '../../api/hooks.ts';
 import { money, num, price, shortDate } from '../../lib/format.ts';
@@ -10,9 +10,11 @@ const PAGE = 200;
 export function RegistroView({
   model,
   onEdit,
+  onImport,
 }: {
   model: CarteraModel;
   onEdit: (op: Operation) => void;
+  onImport: () => void;
 }) {
   const ops = model.view.operations;
   const [q, setQ] = useState('');
@@ -26,10 +28,18 @@ export function RegistroView({
   const { setBroker: bulk } = useOperationMutations();
 
   const years = useMemo(() => [...new Set(ops.map((o) => o.date.slice(0, 4)))].sort().reverse(), [ops]);
+  /** Divisa de cada valor, para rotular su precio por acción. */
+  const currencies = useMemo(() => {
+    const m = new Map<string, string>(model.view.instruments.map((i) => [i.ticker, i.currency]));
+    for (const r of [...model.valuation.open, ...model.valuation.closed]) m.set(r.ticker, r.currency);
+    return m;
+  }, [model.view.instruments, model.valuation]);
   const issues = useMemo(() => new Map(model.ledger.issues.map((i) => [i.opId, i.message])), [model.ledger.issues]);
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return [...ops]
+    // Más recientes arriba, en el orden inverso exacto en que se procesan (fecha y «orden en el día»).
+    return sortOperations(ops)
+      .reverse()
       .filter(
         (o) =>
           (!needle ||
@@ -40,8 +50,7 @@ export function RegistroView({
           (!broker || (broker === '-' ? !o.broker : o.broker === broker)) &&
           (!year || o.date.startsWith(year)) &&
           (!review || o.needsReview),
-      )
-      .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+      );
   }, [ops, q, type, broker, year, review, model.names]);
   const reviewCount = ops.filter((o) => o.needsReview).length;
   const allSelected = filtered.length > 0 && filtered.every((o) => selected.has(o.id));
@@ -99,6 +108,7 @@ export function RegistroView({
             <input type="checkbox" checked={review} onChange={(e) => setReview(e.target.checked)} /> Por revisar ({reviewCount})
           </label>
         )}
+        <button type="button" className="btn" onClick={onImport}>Importar operaciones</button>
       </div>
 
       {selected.size > 0 && (
@@ -125,7 +135,7 @@ export function RegistroView({
         una fila para editarla.
       </p>
       <div className="table-wrap">
-        <table className="wl-table cartera-table registro-table">
+        <table className="wl-table cartera-table cartera-compact registro-table">
           <thead>
             <tr>
               <th className="col-check">
@@ -136,12 +146,12 @@ export function RegistroView({
                   onChange={() => setSelected(allSelected ? new Set() : new Set(filtered.map((o) => o.id)))}
                 />
               </th>
-              <th>Fecha</th>
-              <th>Valor</th>
-              <th>Tipo</th>
+              <th className="col-date">Fecha</th>
+              <th className="col-instrument">Valor<span className="registro-mobile"> y fecha</span></th>
+              <th className="col-type">Tipo</th>
               <th className="al-right">Acciones</th>
               <th className="al-right">Precio</th>
-              <th className="al-right">Importe €</th>
+              <th className="al-right col-amount">Importe €</th>
               <th className="al-right" title="Retención en España / en origen">
                 Retenciones
               </th>
@@ -155,20 +165,28 @@ export function RegistroView({
                 <td className="col-check" onClick={(e) => e.stopPropagation()}>
                   <input type="checkbox" aria-label={`Seleccionar ${o.ticker} ${o.date}`} checked={selected.has(o.id)} onChange={() => toggle(o.id)} />
                 </td>
-                <td className="num">{shortDate(o.date)}</td>
-                <td>
+                <td className="num col-date">
+                  {shortDate(o.date)}
+                  {o.dayOrder != null && <span className="sub" title="Orden en el día"> ·{o.dayOrder}</span>}
+                </td>
+                <td className="col-instrument">
                   <div className="stack">
-                    <span className="ticker">{o.ticker}</span>
-                    <span className="sub">{model.names.get(o.ticker) !== o.ticker ? model.names.get(o.ticker) : ''}</span>
+                    <button type="button" className="name name-btn ticker" onClick={(event) => {
+                      event.stopPropagation();
+                      onEdit(o);
+                    }} aria-label={`Editar ${o.ticker} del ${shortDate(o.date)}`}>{o.ticker}</button>
+                    <span className="sub registro-desktop">{model.names.get(o.ticker) !== o.ticker ? model.names.get(o.ticker) : ''}</span>
+                    <span className="sub registro-mobile">{shortDate(o.date)}</span>
+                    {o.needsReview && <span className="sub registro-mobile">Por revisar</span>}
                   </div>
                 </td>
-                <td>
+                <td className="col-type">
                   <span className={`optype optype--${o.type}`}>{OPERATION_LABELS[o.type]}</span>
                   {o.type === 'split' && <span className="sub"> ×{num(o.splitRatio, 2)}</span>}
                 </td>
                 <td className="al-right num">{o.shares ? num(o.shares, Number.isInteger(o.shares) ? 0 : 3) : ''}</td>
-                <td className="al-right num">{o.price ? price(o.price) : ''}</td>
-                <td className="al-right num">{o.amountEur ? money(o.amountEur, 'EUR', 2) : o.fees ? `−${money(o.fees, 'EUR', 2)}` : ''}</td>
+                <td className="al-right num">{o.price ? price(o.price, currencies.get(o.ticker) ?? 'EUR') : ''}</td>
+                <td className="al-right num col-amount">{o.amountEur ? money(o.amountEur, 'EUR', 2) : o.fees ? `−${money(o.fees, 'EUR', 2)}` : ''}</td>
                 <td className="al-right num small">
                   {[o.withholdingEs, o.withholdingForeign].some((v) => v != null)
                     ? `${money(o.withholdingEs, 'EUR', 2)} / ${money(o.withholdingForeign, 'EUR', 2)}`

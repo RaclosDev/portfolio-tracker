@@ -1,4 +1,4 @@
-import type { AnalystTargets, HistoryRange, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
+import { shiftDate, type AnalystTargets, type DailyHistory, type HistoryRange, type PricePoint, type Quote, type SymbolSearchResult } from '@watchlist/shared';
 import type { Db } from '../../db/database.ts';
 import { isinCandidates, isIsin } from './isin.ts';
 import type { CompanyProfile, MarketDataProvider } from './provider.ts';
@@ -7,14 +7,19 @@ type Kind = string; // 'quote' | TARGETS_KIND | 'history-<periodo>'
 /** Sube la versión cuando AnalystTargets gane campos: así no se sirve la caché antigua sin ellos. */
 const TARGETS_KIND = 'targets-v2';
 const HISTORY_TTL_MS = 60 * 60_000;
+const EMPTY_HISTORY_TTL_MS = 5 * 60_000;
 const PROFILE_TTL_MS = 30 * 24 * 60 * 60_000;
+/** Los minigráficos usan observaciones diarias o mensuales: se renuevan cada 3 h. */
+const SPARK_TTL_MS = 3 * 60 * 60_000;
+/** Pausa entre históricos renovados en segundo plano, para no ir a ráfagas. */
+const REFRESH_GAP_MS = 1_500;
 interface Entry<T> {
   value: T;
   fetchedAt: number;
 }
 
 /** Divisas que cotizan en centésimas (Londres en peniques, Tel Aviv en agorot…). */
-const MINOR_UNITS: Record<string, { major: string; factor: number }> = {
+export const MINOR_UNITS: Record<string, { major: string; factor: number }> = {
   GBp: { major: 'GBP', factor: 100 },
   GBX: { major: 'GBP', factor: 100 },
   ILA: { major: 'ILS', factor: 100 },
@@ -78,6 +83,39 @@ export class MarketService {
 
   get providerId() {
     return this.provider.id;
+  }
+
+  private dailyPending = new Map<string, Promise<DailyHistory & { stale: boolean }>>();
+
+  async getDailyHistory(symbol: string, from: string): Promise<DailyHistory & { stale: boolean }> {
+    const start = `${shiftDate(from, -7).slice(0, 4)}-01-01`;
+    const key = `${start}:${symbol}`;
+    const pending = this.dailyPending.get(key);
+    if (pending) return pending;
+    const request = this.loadDailyHistory(symbol, start);
+    this.dailyPending.set(key, request);
+    try { return await request; }
+    finally { this.dailyPending.delete(key); }
+  }
+
+  private async loadDailyHistory(symbol: string, start: string): Promise<DailyHistory & { stale: boolean }> {
+    const kind = `daily-v1-${start}`;
+    const key = `${kind}:${symbol}`;
+    const cached = (this.mem.get(key) as Entry<DailyHistory> | undefined) ?? await this.load<DailyHistory>(kind, symbol);
+    if (cached && Date.now() - cached.fetchedAt < HISTORY_TTL_MS) {
+      this.mem.set(key, cached);
+      return { ...cached.value, stale: false };
+    }
+    if (!this.throttled && this.provider.getDailyHistory) {
+      try {
+        const value = await this.provider.getDailyHistory(symbol, start);
+        if (!value.points.length && cached?.value.points.length) throw new Error('Sin cierres diarios actualizados');
+        this.mem.set(key, { value, fetchedAt: Date.now() });
+        await this.persist(kind, symbol, value);
+        return { ...value, stale: false };
+      } catch (err) { this.onProviderError(err, `Sin histórico diario de ${symbol}`); }
+    }
+    return { ...(cached?.value ?? { currency: null, points: [] }), stale: true };
   }
 
   invalidateQuotes() {
@@ -173,6 +211,8 @@ export class MarketService {
   /** Búsqueda por nombre o ticker; si es un ISIN, se traduce con OpenFIGI y se comprueba en el proveedor. */
   async search(query: string): Promise<SymbolSearchResult[]> {
     if (!isIsin(query)) return this.provider.search(query);
+    const direct = await this.provider.search(query).catch(() => []);
+    if (direct.length) return direct;
     let candidates: string[] = [];
     try {
       candidates = await isinCandidates(query);
@@ -198,10 +238,11 @@ export class MarketService {
       hit = await this.load<PricePoint[]>(kind, symbol);
       if (hit) this.mem.set(key, hit);
     }
-    if (hit && Date.now() - hit.fetchedAt < HISTORY_TTL_MS) return { points: hit.value, stale: false };
+    if (hit && Date.now() - hit.fetchedAt < (hit.value.length ? HISTORY_TTL_MS : EMPTY_HISTORY_TTL_MS)) return { points: hit.value, stale: false };
     if (!this.throttled) {
       try {
         const points = await this.provider.getHistory(symbol, range);
+        if (!points.length && hit?.value.length) throw new Error('Sin cierres históricos');
         this.mem.set(key, { value: points, fetchedAt: Date.now() });
         await this.persist(kind, symbol, points);
         return { points, stale: false };
@@ -213,13 +254,58 @@ export class MarketService {
     return { points: stored?.value ?? [], stale: true };
   }
 
-  /** Cierres del periodo (3 meses por defecto) de varios valores, para los minigráficos de las tablas. */
+  /**
+   * Cierres del periodo (3 meses por defecto) de varios valores, para los minigráficos de las tablas.
+   * Lo guardado se sirve al momento aunque tenga horas; lo viejo se renueva en segundo plano de uno en
+   * uno. Pedir a Yahoo el histórico de toda la lista de golpe (p. ej. tras cada publicación) es lo que
+   * hace que nos limite.
+   */
   async getSparklines(symbols: string[], range: HistoryRange = '3m'): Promise<Record<string, number[]>> {
     const out: Record<string, number[]> = {};
-    await mapLimit([...new Set(symbols)], 4, async (sym) => {
+    const kind = `history-${range}`;
+    await mapLimit([...new Set(symbols)], 2, async (sym) => {
+      const key = `${kind}:${sym}`;
+      let hit = this.mem.get(key) as Entry<PricePoint[]> | undefined;
+      if (!hit) {
+        hit = await this.load<PricePoint[]>(kind, sym);
+        if (hit) this.mem.set(key, hit);
+      }
+      // Reintentar pronto los vacíos permite aprovechar nuevas fuentes o cobertura recuperada.
+      if (hit && (hit.value.length || Date.now() - hit.fetchedAt < EMPTY_HISTORY_TTL_MS)) {
+        out[sym] = hit.value.map((p) => p.c);
+        if (Date.now() - hit.fetchedAt >= SPARK_TTL_MS) this.queueRefresh(sym, range);
+        return;
+      }
       out[sym] = (await this.getHistory(sym, range)).points.map((p) => p.c);
     });
     return out;
+  }
+
+  private refreshQueue = new Map<string, HistoryRange>();
+  private refreshing = false;
+
+  /** Renueva históricos viejos poco a poco, sin bloquear la respuesta. Se para si Yahoo nos limita. */
+  private queueRefresh(symbol: string, range: HistoryRange) {
+    this.refreshQueue.set(`${range}:${symbol}`, range);
+    if (this.refreshing) return;
+    this.refreshing = true;
+    void (async () => {
+      try {
+        for (const [k, r] of this.refreshQueue) {
+          if (this.throttled) break;
+          this.refreshQueue.delete(k);
+          const sym = k.slice(r.length + 1);
+          const hit = this.mem.get(`history-${r}:${sym}`);
+          if (hit && Date.now() - hit.fetchedAt < SPARK_TTL_MS) continue;
+          this.mem.delete(`history-${r}:${sym}`);
+          await this.getHistory(sym, r).catch(() => {});
+          await new Promise((res) => setTimeout(res, REFRESH_GAP_MS));
+        }
+      } finally {
+        this.refreshQueue.clear();
+        this.refreshing = false;
+      }
+    })();
   }
 
   /** Ficha de la empresa (sector y nombre). Cambia poco: se guarda 30 días. null si no hay. */

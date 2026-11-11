@@ -3,6 +3,7 @@ import type {
   Backup,
   CarteraImport,
   CarteraView,
+  PortfolioHistory,
   Instrument,
   InstrumentInput,
   InstrumentPatch,
@@ -22,6 +23,12 @@ import type {
 } from '@watchlist/shared';
 
 export const SESSION_LOST = 'watchlist:sin-sesion';
+export const AUTH_CHANGED = 'watchlist.auth-changed';
+
+export function reloadSession() {
+  localStorage.setItem(AUTH_CHANGED, crypto.randomUUID());
+  window.location.replace('/');
+}
 
 export interface PushDevice {
   id: number;
@@ -65,8 +72,12 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 
 export const api = {
   health: () => request<{ ok: boolean; version: string }>('GET', '/api/health'),
-  session: () => request<{ authRequired: boolean; authenticated: boolean }>('GET', '/api/session'),
-  login: (password: string) => request<{ ok: true }>('POST', '/api/login', { password }),
+  session: () => request<{
+    authRequired: boolean; authenticated: boolean; googleEnabled: boolean; registrationEnabled: boolean;
+    user: { id: string; email: string; googleLinked: boolean } | null;
+  }>('GET', '/api/session'),
+  login: (email: string, password: string) => request<{ ok: true }>('POST', '/api/login', { email, password }),
+  register: (email: string, password: string) => request<{ ok: true }>('POST', '/api/register', { email, password }),
   logout: () => request<{ ok: true }>('POST', '/api/logout', {}),
 
   pushKey: () => request<{ publicKey: string | null; enabled: boolean }>('GET', '/api/push/key'),
@@ -97,16 +108,18 @@ export const api = {
   deleteItem: (id: number) => request<void>('DELETE', `/api/items/${id}`),
 
   portfolio: (force = false) => request<CarteraView>('GET', `/api/portfolio${force ? '?force=1' : ''}`),
+  portfolioHistory: (from: string, to: string) => request<PortfolioHistory>('GET', `/api/portfolio/history?${new URLSearchParams({ from, to })}`),
   createOperation: (operation: OperationInput, instrument?: Partial<InstrumentInput>) =>
     request<Operation>('POST', '/api/operations', { operation, instrument }),
-  updateOperation: (id: number, data: OperationInput) => request<Operation>('PUT', `/api/operations/${id}`, data),
+  updateOperation: (id: number, operation: OperationInput, instrument?: Partial<InstrumentInput>) =>
+    request<Operation>('PUT', `/api/operations/${id}`, { operation, instrument }),
   deleteOperation: (id: number) => request<void>('DELETE', `/api/operations/${id}`),
   setBroker: (ids: number[], broker: string | null, needsReview = false) =>
     request<{ updated: number }>('POST', '/api/operations/broker', { ids, broker, needsReview }),
   updateInstrument: (ticker: string, patch: InstrumentPatch) =>
     request<Instrument>('PUT', `/api/instruments/${encodeURIComponent(ticker)}`, patch),
   importCartera: (data: CarteraImport) =>
-    request<{ imported: number; replaced: number; savedTo: number | null }>('POST', '/api/portfolio/import', data),
+    request<{ imported: number; skipped: number; savedTo: number | null }>('POST', '/api/portfolio/import', data),
 
   search: (q: string) => request<SymbolSearchResult[]>('GET', `/api/market/search?q=${encodeURIComponent(q)}`),
   fx: (currencies: string[]) =>

@@ -35,13 +35,17 @@ export function HistoryChart({
   refs,
   range,
   current,
+  currency,
 }: {
   points: PricePoint[];
   refs: RefLine[];
   range: HistoryRange;
   /** Precio actual (si no, el último cierre): se rotula a la derecha como una referencia más. */
   current?: number | null;
+  /** Moneda del valor: sus precios llevan el símbolo (en el eje, solo las cifras). */
+  currency?: string | null;
 }) {
+  const pr = (v: number) => price(v, currency);
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
 
@@ -78,15 +82,22 @@ export function HistoryChart({
   const last = points[points.length - 1]!;
   const lowest = points.reduce((a, b) => (b.c < a.c ? b : a));
   const highest = points.reduce((a, b) => (b.c > a.c ? b : a));
-  const summary = `De ${price(first.c)} a ${price(last.c)} (${pct((last.c - first.c) / first.c)}). Mínimo ${price(lowest.c)} el ${new Date(lowest.t).toLocaleDateString('es-ES')}, máximo ${price(highest.c)} el ${new Date(highest.t).toLocaleDateString('es-ES')}.`;
+  const summary = `De ${pr(first.c)} a ${pr(last.c)} (${pct((last.c - first.c) / first.c)}). Mínimo ${pr(lowest.c)} el ${new Date(lowest.t).toLocaleDateString('es-ES')}, máximo ${pr(highest.c)} el ${new Date(highest.t).toLocaleDateString('es-ES')}.`;
 
   const onMove = (e: PointerEvent<SVGSVGElement>) => {
-    const rect = svgRef.current!.getBoundingClientRect();
-    const px = ((e.clientX - rect.left) / rect.width) * W;
+    // Coordenada real del ratón dentro del viewBox (el SVG puede quedar centrado con huecos a los lados).
+    const svg = svgRef.current!;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
+    const px = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse()).x;
     const f = (px - M.left) / (W - M.left - M.right);
-    setHover(Math.min(points.length - 1, Math.max(0, Math.round(f * (points.length - 1)))));
+    // Posición fraccionaria: el marcador sigue al ratón sin saltar de punto en punto.
+    setHover(Math.min(points.length - 1, Math.max(0, f * (points.length - 1))));
   };
-  const h = hover != null ? points[hover]! : null;
+  const lo = hover != null ? Math.floor(hover) : 0;
+  const hi = Math.min(points.length - 1, lo + 1);
+  const k = hover != null ? hover - lo : 0;
+  const h = hover != null ? { t: new Date(+new Date(points[lo]!.t) + (+new Date(points[hi]!.t) - +new Date(points[lo]!.t)) * k).toISOString(), c: points[lo]!.c + (points[hi]!.c - points[lo]!.c) * k } : null;
 
   return (
     <figure className="chart">
@@ -103,7 +114,7 @@ export function HistoryChart({
           <g key={v} className="chart__grid">
             <line x1={M.left} x2={W - M.right} y1={geo.y(v)} y2={geo.y(v)} />
             <text x={M.left - 6} y={geo.y(v) + 3.5} textAnchor="end">
-              {price(v)}
+              {pr(v)}
             </text>
           </g>
         ))}
@@ -121,16 +132,16 @@ export function HistoryChart({
             // El precio actual va en un recuadro, como en los gráficos de los brókers.
             <g key="precio" className="chart__ref chart__ref--price">
               <line x1={geo.x(points.length - 1)} x2={W - M.right} y1={r.y} y2={r.y} />
-              <rect x={W - M.right + 2} y={r.ly - 7.5} width={(r.label.length + price(r.value).length + 1) * 6.2 + 8} height={15} rx={3} />
+              <rect x={W - M.right + 2} y={r.ly - 7.5} width={(r.label.length + pr(r.value).length + 1) * 6.2 + 8} height={15} rx={3} />
               <text x={W - M.right + 6} y={r.ly + 3.5}>
-                {r.label} {price(r.value)}
+                {r.label} {pr(r.value)}
               </text>
             </g>
           ) : (
             <g key={`${r.label}-${r.value}`} className={`chart__ref chart__ref--${r.kind}`}>
               <line x1={M.left} x2={W - M.right} y1={r.y} y2={r.y} />
               <text x={W - M.right + 6} y={r.ly + 3.5}>
-                {r.label} {price(r.value)}
+                {r.label} {pr(r.value)}
               </text>
             </g>
           ),
@@ -148,7 +159,7 @@ export function HistoryChart({
       <figcaption className="chart__caption" aria-live="polite">
         {h ? (
           <>
-            <strong>{new Date(h.t).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>: {price(h.c)}
+            <strong>{new Date(h.t).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>: {pr(h.c)}
           </>
         ) : (
           summary

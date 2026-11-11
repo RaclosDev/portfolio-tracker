@@ -8,6 +8,9 @@ import { ListsRepository } from './modules/lists/lists.repository.ts';
 import { MarketService } from './modules/market/market.service.ts';
 import type { MarketDataProvider } from './modules/market/provider.ts';
 import { YahooProvider } from './modules/market/yahoo.provider.ts';
+import { BorsaProvider } from './modules/market/borsa.provider.ts';
+import { QuefondosProvider } from './modules/market/quefondos.provider.ts';
+import { FallbackProvider } from './modules/market/fallback.provider.ts';
 import { PortfolioService } from './modules/portfolio/portfolio.service.ts';
 import { InstrumentsRepository, OperationsRepository } from './modules/portfolio/cartera.repository.ts';
 import { SettingsRepository, StateRepository } from './modules/settings/settings.repository.ts';
@@ -20,6 +23,8 @@ export function createServicesFromDb(
     provider?: MarketDataProvider;
     vapid?: { publicKey: string | null; privateKey: string | null; subject: string };
     log?: (msg: string, err?: unknown) => void;
+    market?: MarketService;
+    push?: PushService;
   } = {},
 ) {
   const log = opts.log ?? (() => {});
@@ -27,8 +32,8 @@ export function createServicesFromDb(
   const items = new ItemsRepository(db);
   const settings = new SettingsRepository(db);
   const state = new StateRepository(db);
-  const market = new MarketService(
-    opts.provider ?? new YahooProvider(),
+  const market = opts.market ?? new MarketService(
+    opts.provider ?? new FallbackProvider([new YahooProvider(), new BorsaProvider(), new QuefondosProvider()], log),
     db,
     { quoteTtlMs: config.quoteTtlMs, targetsTtlMs: config.targetsTtlMs },
     log,
@@ -38,7 +43,7 @@ export function createServicesFromDb(
   const instruments = new InstrumentsRepository(db);
   const portfolio = new PortfolioService(operations, instruments, settings, market);
   const backup = new BackupService(db);
-  const push = new PushService(db, opts.vapid ?? { publicKey: null, privateKey: null, subject: 'mailto:avisos@raclos.es' }, log);
+  const push = opts.push ?? new PushService(db, opts.vapid ?? { publicKey: null, privateKey: null, subject: 'mailto:avisos@raclos.es' }, log);
   const alerts = new AlertsService(db, lists, settings, state, watchlist, push, backup, log);
   return { db, lists, items, settings, state, market, watchlist, operations, instruments, portfolio, backup, push, alerts };
 }

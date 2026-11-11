@@ -3,18 +3,29 @@ const LOCALE = 'es-ES';
 const cache = new Map<string, Intl.NumberFormat>();
 function nf(key: string, opts: Intl.NumberFormatOptions) {
   let f = cache.get(key);
-  if (!f) cache.set(key, (f = new Intl.NumberFormat(LOCALE, opts)));
+  // En es-ES Intl no agrupa los números de 4 cifras (1000 en vez de 1.000): forzamos el punto de miles siempre.
+  if (!f) cache.set(key, (f = new Intl.NumberFormat(LOCALE, { useGrouping: 'always' as unknown as boolean, ...opts })));
   return f;
 }
 
 /** Marca de dato vacío en tablas (guion corto). */
 const DASH = '–';
 
-/** Precio con decimales adaptados a su magnitud (2,485 vs 276,47). */
-export function price(v: number | null | undefined) {
+/**
+ * Precio con decimales adaptados a su magnitud (2,485 vs 276,47). Con `currency` (la de la cotización)
+ * añade su símbolo: 276,47 $, 2,485 €. Las libras en peniques (GBp) llevan «p».
+ */
+export function price(v: number | null | undefined, currency?: string | null) {
   if (v == null) return DASH;
   const digits = Math.abs(v) < 10 ? 3 : 2;
-  return nf(`p${digits}`, { minimumFractionDigits: 2, maximumFractionDigits: digits }).format(v);
+  const opts = { minimumFractionDigits: 2, maximumFractionDigits: digits };
+  if (!currency) return nf(`p${digits}`, opts).format(v);
+  if (currency === 'GBp') return `${nf(`p${digits}`, opts).format(v)} p`;
+  try {
+    return nf(`p${digits}${currency}`, { ...opts, style: 'currency', currency, currencyDisplay: 'narrowSymbol' }).format(v);
+  } catch {
+    return `${nf(`p${digits}`, opts).format(v)} ${currency}`;
+  }
 }
 
 export function money(v: number | null | undefined, currency = 'EUR', digits = 0) {
