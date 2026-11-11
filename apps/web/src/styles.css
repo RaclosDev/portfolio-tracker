@@ -231,8 +231,6 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
 .watchlist-desktop-filters { display: contents; }
 .watchlist-filter-trigger, .watchlist-filter-label, .highlights-quotes { display: none; }
-.watchlist-sort { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; color: var(--text-2); font-size: 13px; }
-.watchlist-sort .select { min-width: 0; }
 .watchlist-order-pill { color: var(--text); background: var(--order-bg); border: 1px solid var(--order-edge); }
 .watchlist-filter-dialog .dialog__body, .watchlist-filter-dialog .tag-filters { display: grid; gap: 14px; }
 .watchlist-filter-dialog .dialog__body { padding-top: 14px; }
@@ -288,6 +286,11 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .th-btn:focus-visible { outline: 2px solid var(--accent); border-radius: 3px; }
 .al-right .th-btn { flex-direction: row; }
 .sort-ind { font-size: 9px; width: 8px; }
+.wl-table--watchlist th[aria-sort] {
+  color: var(--text);
+  background: color-mix(in oklab, var(--accent) 10%, var(--surface-2));
+  box-shadow: inset 0 -2px var(--accent);
+}
 
 .col-name { position: sticky; left: 0; z-index: 1; background: var(--surface); min-width: 210px; max-width: 260px; }
 th.col-name { z-index: 2; background: var(--surface-2); }
@@ -826,10 +829,9 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .watchlist-desktop-filters, .watchlist-desktop-hint { display: none; }
   .watchlist-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; }
   .watchlist-toolbar .search { width: 100%; min-width: 0; padding-inline: 8px; }
-  .watchlist-toolbar :is(.search, .btn), .watchlist-sort :is(.select, .btn) { min-height: 44px; }
+  .watchlist-toolbar :is(.search, .btn) { min-height: 44px; }
   .watchlist-toolbar .btn { padding-inline: 9px; }
   .watchlist-filter-trigger { display: inline-flex; }
-  .watchlist-sort .btn { min-width: 44px; }
 
   /* Tarjeta del valor: tres columnas de cifras; precio y tendencia en la misma línea. */
   .wl-table tr.row { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; padding: 12px 14px 14px; }
