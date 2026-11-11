@@ -144,6 +144,7 @@ function carteraSheets(v: CarteraValuation, operations: Operation[], used: Set<s
       num(o.splitRatio, '0.####'),
       str(o.broker),
       str(o.notes),
+      str(o.transferRef ?? null),
     ]);
   return [
     sheet(
@@ -158,8 +159,8 @@ function carteraSheets(v: CarteraValuation, operations: Operation[], used: Set<s
     ),
     sheet(
       sheetName('Registro', used),
-      [head(['Fecha', 'Ticker', 'Tipo', 'Acciones', 'Precio', 'Comisiones', 'Cambio', 'Importe €', 'Ret. España', 'Ret. origen', 'Split', 'Bróker', 'Notas']), ...ops],
-      [11, 10, 22, 10, 10, 11, 9, 13, 11, 11, 7, 12, 40],
+      [head(['Fecha', 'Ticker', 'Tipo', 'Acciones', 'Precio', 'Comisiones', 'Cambio', 'Importe €', 'Ret. España', 'Ret. origen', 'Split', 'Bróker', 'Notas', 'Referencia del traspaso']), ...ops],
+      [11, 10, 22, 10, 10, 11, 9, 13, 11, 11, 7, 12, 40, 28],
     ),
   ];
 }

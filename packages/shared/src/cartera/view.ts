@@ -141,10 +141,10 @@ export function valueCartera(args: {
     }
   }
 
-  const valueEur = open.reduce((s, r) => s + (r.valueEur ?? 0), 0);
+  const valueEur = open.reduce((s, r) => s + (r.valueEur ?? 0), ledger.inTransitEur);
   for (const r of open) r.weight = r.valueEur != null && valueEur ? r.valueEur / valueEur : null;
   const priced = open.filter((r) => r.valueEur != null);
-  const costEur = priced.reduce((s, r) => s + r.ledger.costEur, 0);
+  const costEur = priced.reduce((s, r) => s + r.ledger.costEur, ledger.inTransitCostEur);
   const dayChangeEur = open.reduce((s, r) => s + (r.dayChangeEur ?? 0), 0);
   const unrealizedEur = valueEur - costEur;
   const all = ledger.tickers;
@@ -154,12 +154,7 @@ export function valueCartera(args: {
   const missing = open.filter((r) => r.valueEur == null).map((r) => r.ticker);
 
   // TIR: compras (sale dinero), ventas y cobros (entra) y el valor de hoy.
-  const flows: { date: string; amount: number }[] = [];
-  for (const t of all) {
-    for (const l of [...t.openLots, ...t.closedLots]) if (l.costBought > 0) flows.push({ date: l.date, amount: -l.costBought });
-    for (const s of t.sales) flows.push({ date: s.date, amount: s.proceedsEur });
-    for (const i of t.income) flows.push({ date: i.date, amount: i.econEur });
-  }
+  const flows = [...ledger.cashFlows];
   flows.push({ date: today, amount: valueEur });
 
   const sectors = new Map<string, number>();

@@ -13,6 +13,7 @@ const nonNeg = z.number().finite().nonnegative();
 /**
  * Tipos de operación del registro. Los nombres de pantalla están en OPERATION_LABELS.
  *  - buy / sell: compra y venta de acciones.
+ *  - transfer_out / transfer_in: pareja de traspaso entre fondos, con coste y antigüedad conservados.
  *  - dividend: dividendo (en bruto, con sus retenciones aparte).
  *  - scrip: acciones liberadas (dividendo en acciones): suman acciones sin coste.
  *  - rights_sale: venta de derechos de suscripción.
@@ -23,6 +24,8 @@ const nonNeg = z.number().finite().nonnegative();
 export const OPERATION_TYPES = [
   'buy',
   'sell',
+  'transfer_out',
+  'transfer_in',
   'dividend',
   'scrip',
   'rights_sale',
@@ -35,6 +38,8 @@ export type OperationType = (typeof OPERATION_TYPES)[number];
 export const OPERATION_LABELS: Record<OperationType, string> = {
   buy: 'Compra',
   sell: 'Venta',
+  transfer_out: 'Traspaso de salida',
+  transfer_in: 'Traspaso de entrada',
   dividend: 'Dividendo',
   scrip: 'Scrip (acciones liberadas)',
   rights_sale: 'Venta de derechos',
@@ -88,15 +93,21 @@ export const operationInputSchema = z
      * mismo valor en la misma fecha (p. ej. compra y venta). Sin él, se respeta el orden en que se metieron.
      */
     dayOrder: z.number().int().min(1).max(99).nullable().default(null),
+    /** Referencia compartida por las dos patas de un traspaso de fondos con diferimiento. */
+    transferRef: z.string().trim().min(1).max(100).nullable().optional(),
   })
   .superRefine((o, ctx) => {
     const need = (cond: boolean, path: string, message: string) => {
       if (!cond) ctx.addIssue({ code: 'custom', path: [path], message });
     };
-    if (o.type === 'buy' || o.type === 'sell') {
+    if (o.type === 'buy' || o.type === 'sell' || o.type === 'transfer_out' || o.type === 'transfer_in') {
       need((o.shares ?? 0) > 0, 'shares', 'Indica cuántas acciones');
       need(o.amountEur >= 0, 'amountEur', 'El importe no puede ser negativo');
     }
+    if (o.type === 'transfer_out' || o.type === 'transfer_in') {
+      need(!!o.transferRef, 'transferRef', 'Indica la referencia común del traspaso');
+      need(o.amountEur > 0, 'amountEur', 'Indica el importe traspasado');
+    } else need(!o.transferRef, 'transferRef', 'La referencia solo corresponde a un traspaso');
     if (o.type === 'buy') need(o.amountEur > 0, 'amountEur', 'Indica el importe total en euros');
     if (o.type === 'scrip') need((o.shares ?? 0) > 0, 'shares', 'Indica cuántas acciones has recibido');
     if (o.type === 'split') need(o.splitRatio != null && o.splitRatio !== 1, 'splitRatio', 'Indica el ratio (p. ej. 2 = cada acción pasa a ser 2)');

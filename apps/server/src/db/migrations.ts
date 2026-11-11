@@ -162,4 +162,6 @@ export const migrations: string[] = [
     AND (i.symbol = i.ticker || '.MC' OR (i.symbol IS NULL AND i.updated_at = i.created_at))
     AND EXISTS (SELECT 1 FROM operations o WHERE o.ticker = i.ticker AND o.source = 'excel');
   `,
+  // 7: vínculo entre salida y entrada de un traspaso de fondos.
+  `ALTER TABLE operations ADD COLUMN transfer_ref TEXT;`,
 ];
