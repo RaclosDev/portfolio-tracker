@@ -46,6 +46,12 @@ describe('parseTable', () => {
 });
 
 describe('parseCsv y fechas', () => {
+  it('respeta sep=, los preámbulos y los separadores dentro de títulos entrecomillados', () => {
+    expect(parseCsv('sep=;\r\nFecha;Importe\n2026-01-01;12,30')).toEqual([['Fecha', 'Importe'], ['2026-01-01', '12,30']]);
+    expect(parseCsv('Extracto\nFecha,Ticker\n2026-01-01,AAA')).toEqual([['Extracto'], ['Fecha', 'Ticker'], ['2026-01-01', 'AAA']]);
+    expect(parseCsv('"Nombre, ticker, ISIN";Cantidad\n"Valor, S.A.";1')).toEqual([['Nombre, ticker, ISIN', 'Cantidad'], ['Valor, S.A.', '1']]);
+    expect(() => parseCsv('Ticker,Notas\nAAA,"incompleto')).toThrow('sin cerrar');
+  });
   it('lee CSV con punto y coma, comillas y saltos de línea', () => {
     expect(parseCsv('﻿Ticker;Notas\r\nITX.MC;"hola; ""amigo"""\nSAN.MC;\n')).toEqual([
       ['Ticker', 'Notas'],

@@ -108,7 +108,7 @@ export function RegistroView({
             <input type="checkbox" checked={review} onChange={(e) => setReview(e.target.checked)} /> Por revisar ({reviewCount})
           </label>
         )}
-        <button type="button" className="btn" onClick={onImport}>Importar Excel</button>
+        <button type="button" className="btn" onClick={onImport}>Importar operaciones</button>
       </div>
 
       {selected.size > 0 && (
