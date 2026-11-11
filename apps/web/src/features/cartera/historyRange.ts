@@ -1,16 +1,18 @@
 export const HISTORY_PERIODS = [
-  { id: '1m', label: '1 mes', months: 1 },
-  { id: '3m', label: '3 meses', months: 3 },
-  { id: '6m', label: '6 meses', months: 6 },
-  { id: '1y', label: '1 año', months: 12 },
-  { id: '2y', label: '2 años', months: 24 },
-  { id: '5y', label: '5 años', months: 60 },
-  { id: 'all', label: 'Todo', months: 0 },
+  { id: '1m', label: '1M', title: '1 mes', months: 1 },
+  { id: '3m', label: '3M', title: '3 meses', months: 3 },
+  { id: '6m', label: '6M', title: '6 meses', months: 6 },
+  { id: 'ytd', label: 'Este año', title: 'Este año', months: 0 },
+  { id: '1y', label: '1A', title: '1 año', months: 12 },
+  { id: '2y', label: '2A', title: '2 años', months: 24 },
+  { id: '5y', label: '5A', title: '5 años', months: 60 },
+  { id: 'all', label: 'Todo', title: 'Desde el principio', months: 0 },
 ] as const;
 export type HistoryPeriod = (typeof HISTORY_PERIODS)[number]['id'];
 
 export function periodStart(period: HistoryPeriod, today: string, first: string): string {
   if (period === 'all') return first;
+  if (period === 'ytd') return [first, `${today.slice(0, 4)}-01-01`].sort()[1]!;
   const months = HISTORY_PERIODS.find((p) => p.id === period)!.months;
   const date = new Date(`${today}T00:00:00Z`);
   const day = date.getUTCDate();

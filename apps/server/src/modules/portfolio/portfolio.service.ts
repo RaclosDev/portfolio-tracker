@@ -1,6 +1,7 @@
 import {
   computeLedger,
   computePortfolioHistory,
+  shiftDate,
   type DailyHistory,
   type PortfolioHistory,
   type PricePoint,
@@ -50,7 +51,7 @@ export class PortfolioService {
     // Dos peticiones como máximo a la vez: una cartera importada puede tener cientos de valores.
     for (let i = 0; i < symbols.length; i += 2) {
       await Promise.all(symbols.slice(i, i + 2).map(async (symbol) => {
-        const history = await this.market.getDailyHistory(symbol, from);
+        const history = await this.market.getDailyHistory(symbol, shiftDate(from, -1));
         prices[symbol] = history;
         stale ||= history.stale;
       }));
@@ -59,7 +60,7 @@ export class PortfolioService {
     for (const currency of currencies) {
       if (currency === 'EUR') continue;
       const { major, factor } = MINOR_UNITS[currency] ?? { major: currency, factor: 1 };
-      const history = await this.market.getDailyHistory(`EUR${major}=X`, from);
+      const history = await this.market.getDailyHistory(`EUR${major}=X`, shiftDate(from, -1));
       fx[currency] = history.points.map((p) => ({ ...p, c: p.c * factor }));
       stale ||= history.stale;
     }

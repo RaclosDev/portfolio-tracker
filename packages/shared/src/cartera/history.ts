@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { PricePoint } from '../types.ts';
-import { sortOperations } from './ledger.ts';
+import { computeLedger, sortOperations } from './ledger.ts';
 import type { Instrument, Operation } from './schemas.ts';
 
 const DAY = 86_400_000;
@@ -21,6 +21,13 @@ export interface PortfolioHistoryPoint {
   valueEur: number | null;
   constantFxEur: number | null;
   fxEffectEur: number | null;
+  /** Valor al cierre anterior al periodo, antes de sus compras y ventas. */
+  startingValueEur: number | null;
+  /** Resultado económico del periodo: valor final − inicial − compras + ventas + cobros. */
+  resultEur: number | null;
+  purchasesEur: number;
+  salesEur: number;
+  incomeEur: number;
   missing: string[];
 }
 
@@ -59,17 +66,28 @@ export function computePortfolioHistory(args: {
   const { from, to, prices } = args;
   const instruments = new Map(args.instruments.map((i) => [i.ticker, i]));
   const ops = sortOperations(args.operations);
+  const income = new Map(computeLedger(ops).income.map((i) => [i.id, i.econEur]));
   const priceReaders = new Map(Object.entries(prices).map(([symbol, series]) => [symbol, reader(series.points)]));
   const fxReaders = new Map(Object.entries(args.fx).map(([currency, series]) => [currency, reader(series)]));
-  const fixedFx = new Map([...fxReaders].map(([currency, read]) => [currency, read(from)]));
+  const fixedFx = new Map(Object.entries(args.fx).map(([currency, series]) => [currency, reader(series)(from)]));
   const shares = new Map<string, number>();
   const lastSplit = new Map<string, string>();
   const points: PortfolioHistoryPoint[] = [];
   let cursor = 0;
-  for (let date = from; date <= to; date = shiftDate(date, 1)) {
+  let startingValueEur: number | null = null;
+  let startingMissing: string[] = [];
+  let purchasesEur = 0;
+  let salesEur = 0;
+  let incomeEur = 0;
+  for (let date = shiftDate(from, -1); date <= to; date = shiftDate(date, 1)) {
     while (cursor < ops.length && ops[cursor]!.date <= date) {
       const op = ops[cursor++]!;
       const held = shares.get(op.ticker) ?? 0;
+      if (op.date >= from) {
+        if (op.type === 'buy') purchasesEur += op.amountEur;
+        else if (op.type === 'sell') salesEur += op.amountEur;
+        else incomeEur += income.get(op.id) ?? 0;
+      }
       if (op.type === 'buy' || op.type === 'scrip') shares.set(op.ticker, held + (op.shares ?? 0));
       else if (op.type === 'sell') shares.set(op.ticker, held - (op.shares ?? 0));
       else if (op.type === 'split') {
@@ -103,9 +121,16 @@ export function computePortfolioHistory(args: {
     }
     const valueEur = missingPrice || missingFx ? null : value;
     const constantFxEur = missingPrice || missingFixedFx ? null : constant;
+    if (date < from) {
+      startingValueEur = valueEur;
+      if (valueEur == null) startingMissing = [...missing].map((s) => `${s} al cierre previo`);
+      continue;
+    }
     points.push({ date, valueEur, constantFxEur,
       fxEffectEur: valueEur != null && constantFxEur != null ? valueEur - constantFxEur : null,
-      missing: [...missing],
+      startingValueEur, purchasesEur, salesEur, incomeEur,
+      resultEur: valueEur != null && startingValueEur != null ? valueEur - startingValueEur - purchasesEur + salesEur + incomeEur : null,
+      missing: [...new Set([...missing, ...startingMissing])],
     });
   }
   return points;
