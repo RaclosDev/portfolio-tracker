@@ -77,7 +77,9 @@ export function App() {
   };
   const [buyDraft, setBuyDraft] = useState<OperationDraft | null>(null);
   const clearDraft = useCallback(() => setBuyDraft(null), []);
-  const { create: createList } = useListMutations();
+  const { create: createList, rename: renameList } = useListMutations();
+  const selectedList = lists.find((list) => list.id === listId);
+  const [listError, setListError] = useState<string | null>(null);
   const now = useNow(10_000);
 
   const [filter, setFilter] = useState<Filter>('all');
@@ -234,8 +236,25 @@ export function App() {
   const newList = async () => {
     const name = await ask('Nueva lista', 'Nombre de la lista');
     if (name) {
-      setListId((await createList.mutateAsync(name)).id);
-      setPage('lista');
+      setListError(null);
+      try {
+        setListId((await createList.mutateAsync(name)).id);
+        setPage('lista');
+      } catch {
+        setListError('No se ha podido crear la lista. Vuelve a intentarlo.');
+      }
+    }
+  };
+
+  const renameCurrentList = async () => {
+    if (!selectedList) return;
+    const name = await ask('Renombrar lista', 'Nuevo nombre', selectedList.name);
+    if (!name || name === selectedList.name) return;
+    setListError(null);
+    try {
+      await renameList.mutateAsync({ id: selectedList.id, name });
+    } catch {
+      setListError('No se ha podido cambiar el nombre de la lista. Vuelve a intentarlo.');
     }
   };
 
@@ -248,22 +267,44 @@ export function App() {
         </div>
 
         <nav className="tabs" aria-label="Listas">
-          {lists.map((l) => (
+          {lists.length > 1 ? (
+            <select
+              className={`tabs__select${!onPortfolio ? ' tab--active' : ''}`}
+              aria-label="Seleccionar lista"
+              value={onPortfolio ? '' : String(listId ?? '')}
+              onChange={(e) => {
+                setListId(Number(e.target.value));
+                setPage('lista');
+              }}
+            >
+              <option value="" disabled>Listas</option>
+              {lists.map((list) => (
+                <option key={list.id} value={list.id}>{list.name} ({list.itemCount})</option>
+              ))}
+            </select>
+          ) : lists.map((l) => (
             <button
               key={l.id}
               type="button"
-              className={`tab${!onPortfolio && l.id === listId ? ' tab--active' : ''}`}
+              className={`tab tab--list${!onPortfolio && l.id === listId ? ' tab--active' : ''}`}
+              title={l.name}
               aria-current={!onPortfolio && l.id === listId ? 'page' : undefined}
               onClick={() => {
                 setListId(l.id);
                 setPage('lista');
               }}
             >
-              {l.name}
+              <span className="tab__name">{l.name}</span>
               <span className="tab__count">{l.itemCount}</span>
             </button>
           ))}
-          <button type="button" className="tab tab--add" title="Nueva lista" onClick={newList}>
+          {!onPortfolio && selectedList && (
+            <button type="button" className="tab" onClick={renameCurrentList} disabled={renameList.isPending} title="Cambiar el nombre de la lista">
+              <Icon name="pencil" size={16} />
+              Renombrar
+            </button>
+          )}
+          <button type="button" className="tab tab--add" title="Nueva lista" onClick={newList} disabled={createList.isPending}>
             Nueva lista
           </button>
           <span className="tabs__sep" aria-hidden />
@@ -300,7 +341,12 @@ export function App() {
                   ))}
                 </optgroup>
               </select>
-              <button type="button" className="icon-btn" aria-label="Nueva lista" title="Nueva lista" onClick={newList}>
+              {selectedList && (
+                <button type="button" className="icon-btn" aria-label="Renombrar lista" title="Renombrar lista" onClick={renameCurrentList} disabled={renameList.isPending}>
+                  <Icon name="pencil" size={18} />
+                </button>
+              )}
+              <button type="button" className="icon-btn" aria-label="Nueva lista" title="Nueva lista" onClick={newList} disabled={createList.isPending}>
                 <Icon name="plus" size={20} />
               </button>
             </>
@@ -363,6 +409,7 @@ export function App() {
       <main className="content">
         <UpdateBanner />
         <PushBanner />
+        {listError && <p className="error-box" role="alert">{listError}</p>}
         {throttleMin != null && (
           <p className="notice" role="status">
             Yahoo ha pedido ir más despacio. Mientras tanto ves los últimos precios guardados; se vuelve a consultar en{' '}
