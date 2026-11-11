@@ -7,4 +7,6 @@ it('selecciona meses y años naturales ajustando finales de mes, bisiestos y pri
   expect(periodStart('2y', '2026-11-11', '2020-01-01')).toBe('2024-11-11');
   expect(periodStart('5y', '2026-11-11', '2025-03-01')).toBe('2025-03-01');
   expect(periodStart('all', '2026-11-11', '2015-01-01')).toBe('2015-01-01');
+  expect(periodStart('ytd', '2026-11-11', '2015-01-01')).toBe('2026-01-01');
+  expect(periodStart('ytd', '2026-11-11', '2026-06-01')).toBe('2026-06-01');
 });

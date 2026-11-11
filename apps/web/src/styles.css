@@ -890,7 +890,6 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   #watchlist-highlights:not(.highlights--open) { display: none; }
   .highlights-quotes { display: block; }
   .highlights-quotes__data { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--text-2); font-size: 12px; }
-  .resumen-grid > * { min-width: 0; }
   .cartera .table-wrap { max-width: 100%; overflow-x: auto; }
 }
 
@@ -1069,36 +1068,48 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .optype--dividend, .optype--attendance_premium, .optype--issue_premium, .optype--rights_sale { color: var(--up); }
 .registro-table .notes { max-width: 260px; }
 .cartera-tab-select, .registro-mobile { display: none; }
-.portfolio-overview { display: grid; grid-template-columns: minmax(285px, 0.75fr) minmax(0, 1.8fr); gap: 20px; align-items: start; margin-bottom: 24px; }
-.portfolio-summary, .portfolio-charts { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
-.portfolio-summary .highlights { display: block; background: transparent; border: 0; margin: 0; }
-.portfolio-summary .hl-cell { padding: 12px 0; }
-.portfolio-summary .cartera-totals .hl-cell + .hl-cell { border-top: 1px solid var(--border); }
-.portfolio-summary .cartera-totals .hl-cell:first-child { padding-top: 0; padding-bottom: 20px; }
-.portfolio-summary .cartera-totals .hl-cell:first-child .hl-figure { font-size: 32px; letter-spacing: -0.03em; }
-.cartera-breakdown { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 14px; }
-.cartera-breakdown h3 { font-size: 13px; margin: 0 0 8px; font-weight: 600; }
-.cartera-breakdown .hl-cell { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; padding: 6px 0; }
-.cartera-breakdown .hl-figure, .cartera-breakdown .hl-figure.delta { font-size: 15px; }
+.portfolio-overview { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; align-items: start; margin-bottom: 24px; }
+.portfolio-ledger, .portfolio-analytics { min-width: 0; display: grid; gap: 20px; }
+.portfolio-summary, .portfolio-charts { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.portfolio-summary .highlights { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; background: transparent; border: 0; margin: 0; }
+.portfolio-summary .hl-cell { padding: 0; }
+.portfolio-summary .hl-cell--full { grid-column: 1 / -1; }
+.portfolio-summary .cartera-totals .hl-cell:nth-child(-n+2) .hl-figure { font-size: 25px; letter-spacing: -0.03em; }
+.portfolio-summary .cartera-totals .hl-cell:nth-child(n+3) .hl-figure { font-size: 17px; }
+.cartera-breakdown { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 12px; }
+.cartera-breakdown h3 { font-size: 12px; margin: 0 0 12px; font-weight: 600; }
+.portfolio-summary .cartera-breakdown .highlights { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.cartera-breakdown .hl-figure, .cartera-breakdown .hl-figure.delta { font-size: 16px; }
+.cartera-breakdown .hl-figure small { display: block; font-size: 12px; margin-top: 2px; }
+.portfolio-annual .renta__h, .portfolio-lifetime .renta__h { margin-top: 0; }
+.portfolio-annual > p { margin: 0 0 10px; }
+.portfolio-annual .table-wrap { overflow-x: auto; }
+.portfolio-annual .cartera-table { display: table; }
+.portfolio-annual .cartera-table thead { display: table-header-group; }
+.portfolio-annual .cartera-table tbody { display: table-row-group; }
+.portfolio-annual .cartera-table :is(th, td) { padding: 10px 8px; }
+.portfolio-annual .cartera-table th { white-space: normal; }
+.portfolio-annual .cartera-table tfoot { border-top: 2px solid var(--border); font-weight: 600; }
 .portfolio-charts { --history-fixed: #a76808; }
 [data-theme='dark'] .portfolio-charts { --history-fixed: #e9ac49; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .portfolio-charts { --history-fixed: #e9ac49; } }
 .portfolio-charts__heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.portfolio-charts__heading h3 { margin: 0; font-size: 17px; }
-.portfolio-charts__arrows { display: flex; align-items: center; gap: 8px; }
+.portfolio-charts__heading h3 { margin: 0; font-size: 15px; }
+.portfolio-charts__arrows { display: flex; align-items: center; gap: 8px; flex-shrink: 0; white-space: nowrap; }
 .portfolio-charts__arrows .btn { min-height: 36px; min-width: 36px; padding: 4px 8px; font-size: 18px; }
 .portfolio-chart-tabs, .portfolio-periods { display: flex; flex-wrap: wrap; gap: 4px; }
-.portfolio-chart-tabs { border-bottom: 1px solid var(--border); margin: 12px 0 16px; padding-bottom: 8px; }
-.portfolio-chart-tabs button, .portfolio-periods button { border: 0; background: transparent; color: var(--text-2); font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 4px; cursor: pointer; min-height: 36px; }
+.portfolio-chart-tabs { border-bottom: 1px solid var(--border); margin: 8px 0; padding-bottom: 6px; }
+.portfolio-chart-tabs button, .portfolio-periods button { border: 0; background: transparent; color: var(--text-2); font: inherit; font-size: 12px; padding: 6px 8px; border-radius: 4px; cursor: pointer; min-height: 32px; }
 .portfolio-chart-tabs button[aria-pressed='true'], .portfolio-periods button[aria-pressed='true'] { color: var(--text); background: var(--surface-2); font-weight: 650; }
 .portfolio-chart-tabs button:hover, .portfolio-periods button:hover { color: var(--text); background: var(--surface-2); }
-.portfolio-periods { margin-bottom: 10px; }
-.portfolio-dates { display: flex; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.portfolio-periods { margin-bottom: 6px; }
+.portfolio-dates { display: flex; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .portfolio-dates label, .portfolio-history__cursor label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
 .portfolio-dates .input, .portfolio-history__cursor .input { width: auto; min-width: 0; padding: 6px 8px; font-size: 12px; }
-.portfolio-history__readout { display: flex; flex-wrap: wrap; gap: 12px 28px; margin-bottom: 8px; }
+.portfolio-history__readout { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 16px; margin-bottom: 6px; }
 .portfolio-history__readout > div { display: grid; gap: 3px; }
 .portfolio-history__readout strong { font-size: 20px; font-weight: 600; }
+.portfolio-history__asof { text-align: right; }
 .portfolio-history__readout strong small { font-size: 12px; font-weight: 500; }
 .portfolio-history__svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
 .portfolio-history__svg text { fill: var(--text-2); font: 12px system-ui; }
@@ -1108,21 +1119,42 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .portfolio-history__legend span { display: flex; align-items: center; gap: 6px; }
 .portfolio-history__legend span::before { content: ''; width: 20px; border-top: 3px solid var(--accent); }
 .portfolio-history__legend span + span::before { border-color: var(--history-fixed); border-top-style: dashed; }
-.portfolio-history__cursor { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; margin-top: 14px; }
+.portfolio-history__cursor { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 8px; }
 .portfolio-history__cursor input[type='range'] { flex: 1; min-width: 100px; accent-color: var(--accent); }
-.portfolio-chart-note { color: var(--text-2); font-size: 12px; line-height: 1.5; margin: 14px 0 0; }
-.portfolio-charts .donut { border: 0; padding: 16px 0; }
-.portfolio-charts .donut__body { gap: 24px; }
-.portfolio-charts .donut__body svg { width: 180px; height: 180px; }
-.portfolio-charts .donut__legend { gap: 10px; font-size: 13px; }
+.portfolio-history__bridge { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; border-top: 1px solid var(--border); margin: 12px 0 0; padding-top: 10px; font-size: 12px; }
+.portfolio-history__bridge > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 2px 8px; }
+.portfolio-history__bridge > div:last-child { grid-column: 1 / -1; }
+.portfolio-history__bridge dt { color: var(--text-2); }
+.portfolio-history__bridge dt small { display: block; }
+.portfolio-history__bridge dd { margin: 0; font-variant-numeric: tabular-nums; }
+.portfolio-chart-note { color: var(--text-2); font-size: 11px; line-height: 1.5; margin: 10px 0 0; }
+.portfolio-charts .donut { border: 0; padding: 10px 0; }
+.portfolio-charts .donut__body { gap: 16px; }
+.portfolio-charts .donut__body svg { width: 120px; height: 120px; }
+.portfolio-charts .donut__legend { gap: 8px; font-size: 12px; }
 .portfolio-charts .donut__label { white-space: normal; }
 .portfolio-charts .donut__legend .num { text-align: right; }
 .portfolio-charts .donut__legend small { display: block; font-size: 11px; margin-top: 2px; }
-@media (max-width: 1000px) { .portfolio-overview { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1050px) {
+  .portfolio-overview { grid-template-columns: minmax(0, 1fr); }
+  .portfolio-ledger, .portfolio-analytics { display: contents; }
+  .portfolio-summary { order: 0; }
+  .portfolio-charts { order: 2; }
+  .portfolio-annual { order: 1; }
+  .portfolio-lifetime { order: 3; }
+}
 @media (max-width: 600px) {
   .portfolio-overview { gap: 14px; }
   .portfolio-summary, .portfolio-charts { padding: 14px; }
+  .portfolio-summary .cartera-totals .hl-cell:nth-child(-n+2) .hl-figure { font-size: 21px; }
+  .portfolio-summary .cartera-breakdown .highlights { grid-template-columns: 1fr; gap: 8px; }
+  .cartera-breakdown .hl-cell { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .cartera-breakdown .hl-figure small { display: inline; }
   .portfolio-charts__arrows .btn, .portfolio-chart-tabs button, .portfolio-periods button { min-height: 42px; }
+  .portfolio-chart-tabs { flex-wrap: nowrap; overflow-x: auto; }
+  .portfolio-chart-tabs button { flex-shrink: 0; }
+  .portfolio-periods { gap: 0; }
+  .portfolio-periods button { padding-inline: 4px; }
   .portfolio-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .portfolio-dates label { display: grid; gap: 4px; min-width: 0; }
   .portfolio-dates .input { width: 100%; }
@@ -1189,9 +1221,6 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .donut__legend li { display: grid; grid-template-columns: 10px 1fr auto; gap: 6px; align-items: center; }
 .donut__legend i { width: 10px; height: 10px; border-radius: 2px; }
 .donut__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.resumen-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 16px; align-items: start; }
-@media (max-width: 900px) { .resumen-grid { grid-template-columns: minmax(0, 1fr); } }
 
 .renta__title { font-size: 17px; margin: 6px 0 12px; }
 .renta__h { font-size: 14px; margin: 18px 0 8px; }
