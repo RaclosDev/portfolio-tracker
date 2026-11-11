@@ -22,6 +22,12 @@ import type {
 } from '@watchlist/shared';
 
 export const SESSION_LOST = 'watchlist:sin-sesion';
+export const AUTH_CHANGED = 'watchlist.auth-changed';
+
+export function reloadSession() {
+  localStorage.setItem(AUTH_CHANGED, crypto.randomUUID());
+  window.location.replace('/');
+}
 
 export interface PushDevice {
   id: number;
@@ -65,8 +71,12 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 
 export const api = {
   health: () => request<{ ok: boolean; version: string }>('GET', '/api/health'),
-  session: () => request<{ authRequired: boolean; authenticated: boolean; googleEnabled: boolean }>('GET', '/api/session'),
+  session: () => request<{
+    authRequired: boolean; authenticated: boolean; googleEnabled: boolean; registrationEnabled: boolean;
+    user: { id: string; email: string; googleLinked: boolean } | null;
+  }>('GET', '/api/session'),
   login: (email: string, password: string) => request<{ ok: true }>('POST', '/api/login', { email, password }),
+  register: (email: string, password: string) => request<{ ok: true }>('POST', '/api/register', { email, password }),
   logout: () => request<{ ok: true }>('POST', '/api/logout', {}),
 
   pushKey: () => request<{ publicKey: string | null; enabled: boolean }>('GET', '/api/push/key'),

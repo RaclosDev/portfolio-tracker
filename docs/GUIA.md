@@ -28,7 +28,7 @@ Todo en planes gratuitos: **Neon** (base de datos), **Render** (servidor), **Upt
 2. **Claves de las notificaciones**: en este repositorio ejecuta `npm run claves-push` y guarda las dos claves.
 3. **Render** → *New → Blueprint* con este repositorio (`render.yaml`). Rellena:
    - `DATABASE_URL`: la cadena de Neon.
-   - `APP_PASSWORD`: la contraseña para entrar en la web.
+   - `APP_PASSWORD`: la contraseña inicial de la cuenta propietaria (conserva la contraseña anterior al habilitar el registro).
    - `APP_OWNER_EMAIL`: el correo de la cuenta propietaria. Los datos existentes se conservan en la misma base de datos.
    - `VAPID_PUBLIC_KEY` y `VAPID_PRIVATE_KEY`: las del paso 2.
 4. **Despliegue automático**: en Render, *Settings → Deploy Hook*, copia la URL y guárdala en GitHub como secreto del repositorio `RENDER_DEPLOY_HOOK` (*Settings → Secrets and variables → Actions*). Desde entonces, cada push a `main` se despliega solo si pasan los tests.
@@ -36,9 +36,19 @@ Todo en planes gratuitos: **Neon** (base de datos), **Render** (servidor), **Upt
 6. **UptimeRobot** → monitor HTTP(s) a `https://cartera.raclos.es/api/health` cada 5 minutos. Así no se duerme y los avisos funcionan siempre.
 7. **Datos**: entra en la web, *Ajustes → Copias y Excel → Importar JSON…* con una copia exportada antes (o importa el Excel con *Importar desde Excel o CSV…*).
 
-En producción se necesitan `APP_OWNER_EMAIL` y `APP_PASSWORD`. Cambiar cualquiera de los dos cierra la sesión en todos los dispositivos.
+En producción se necesitan `APP_OWNER_EMAIL`, `APP_PASSWORD` y `SESSION_SECRET`. Al primer arranque con cuentas, los datos existentes se asignan al propietario sin moverlos. La contraseña se guarda como hash scrypt; posteriores cambios de `APP_PASSWORD` no la sustituyen. `APP_OWNER_EMAIL` debe seguir coincidiendo con el propietario. `SESSION_SECRET` firma el flujo de Google; las sesiones se almacenan en la base de datos y se revocan al cerrar sesión.
 
-Para habilitar Google, crea un cliente OAuth de tipo **Aplicación web** en Google Auth Platform. Añade `https://cartera.raclos.es/api/auth/google/callback` como URI de redirección autorizada y configura `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` en Render. La app pide los permisos `openid email` y solo admite el Gmail verificado de `APP_OWNER_EMAIL`. Si el cliente sigue en pruebas, añade ese Gmail a la lista de usuarios de prueba.
+Para habilitar Google, crea un cliente OAuth de tipo **Aplicación web** en Google Auth Platform. Añade `https://cartera.raclos.es/api/auth/google/callback` como URI de redirección autorizada y configura `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` en Render. La app pide los permisos `openid email`. Configura la audiencia externa y el estado de publicación en producción para admitir a cualquier usuario.
+
+### Cuentas
+
+- **Crear cuenta** permite registrarse con correo y una contraseña de al menos 12 caracteres. **Continuar con Google** crea la cuenta si todavía no existe.
+- Cada cuenta nueva empieza con una lista vacía y sin operaciones. Las listas, la cartera, los ajustes, los avisos y las copias son independientes.
+- Si ya te registraste con contraseña, entra primero y usa **Ajustes → General → Vincular Google**, con el mismo correo. No se unen cuentas automáticamente por compartir un correo. Se mantiene el acceso de Google que ya tenía el propietario.
+- **Cerrar sesión**, en Ajustes, revoca la sesión de ese dispositivo. Las pestañas abiertas se recargan al cambiar de cuenta.
+- Todavía no se envían correos de verificación ni de recuperación de contraseña. Vincular Google permite entrar también por esa vía.
+
+Las copias JSON contienen los datos de la cuenta que las exporta, sin credenciales ni otras cuentas. Para recuperar toda la instalación hay que respaldar la base de datos completa, incluidos `public`, `watchlist_auth` y los esquemas `account_*`.
 
 ## Copias de seguridad
 

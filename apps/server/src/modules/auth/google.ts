@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { OAuth2Client } from 'google-auth-library';
 import { z } from 'zod';
+import type { Account } from './accounts.ts';
 
 export interface GoogleOptions {
   clientId: string;
@@ -10,11 +11,11 @@ export interface GoogleOptions {
 }
 
 interface GoogleSession {
-  ownerEmail: string;
   readCookie: (req: FastifyRequest, name: string) => string | undefined;
   cookie: (name: string, value: string, maxAge: number, path: string) => string;
   sign: (payload: string) => string;
-  setSession: (reply: FastifyReply) => unknown;
+  setSession: (reply: FastifyReply, account: Account) => Promise<unknown>;
+  resolveIdentity: (identity: { sub: string; email: string; hd?: string }, linkingId: string | null) => Promise<Account | 'account-exists' | null | undefined>;
 }
 
 const START = '/api/auth/google';
@@ -35,12 +36,12 @@ export function registerGoogleAuth(app: FastifyInstance, options: GoogleOptions,
   const client = new OAuth2Client(options.clientId, options.clientSecret, redirectUri);
   const flowCookie = (value: string, age: number) => session.cookie(FLOW_COOKIE, value, age, CALLBACK);
 
-  app.get(START, async (_req, reply) => {
+  app.get(START, async (req, reply) => {
     const state = random();
     const nonce = random();
     const verifier = random();
     const challenge = createHash('sha256').update(verifier).digest('base64url');
-    const payload = `${Date.now() + FLOW_SECONDS * 1000}.${state}.${nonce}.${verifier}`;
+    const payload = `${Date.now() + FLOW_SECONDS * 1000}.${state}.${nonce}.${verifier}.${req.account?.id ?? '0'}`;
     const params = new URLSearchParams({
       client_id: options.clientId,
       redirect_uri: redirectUri,
@@ -64,10 +65,11 @@ export function registerGoogleAuth(app: FastifyInstance, options: GoogleOptions,
     const failed = () => reply.redirect('/?login=google-error');
     const query = callbackQuery.safeParse(req.query);
     const flow = session.readCookie(req, FLOW_COOKIE);
-    const [expires, state, nonce, verifier, signature, extra] = flow?.split('.') ?? [];
-    if (!query.success || !expires || !state || !nonce || !verifier || !signature || extra !== undefined ||
+    const [expires, state, nonce, verifier, linkingId, signature, extra] = flow?.split('.') ?? [];
+    if (!query.success || !expires || !state || !nonce || !verifier || !linkingId || !signature || extra !== undefined ||
         !(Number(expires) > Date.now()) || !equal(query.data.state, state) ||
-        !equal(signature, session.sign(`${expires}.${state}.${nonce}.${verifier}`))) return failed();
+        !equal(signature, session.sign(`${expires}.${state}.${nonce}.${verifier}.${linkingId}`)) ||
+        (linkingId !== '0' && req.account?.id !== linkingId)) return failed();
 
     try {
       const { tokens } = await client.getToken({
@@ -76,9 +78,12 @@ export function registerGoogleAuth(app: FastifyInstance, options: GoogleOptions,
       if (!tokens.id_token) return failed();
       const ticket = await client.verifyIdToken({ idToken: tokens.id_token, audience: options.clientId });
       const identity = ticket.getPayload();
-      if (!identity?.email_verified || identity.email?.toLowerCase() !== session.ownerEmail ||
+      if (!identity?.email_verified || !identity.email ||
           identity.nonce !== nonce || !identity.sub) return failed();
-      session.setSession(reply);
+      const account = await session.resolveIdentity({ sub: identity.sub, email: identity.email, hd: identity.hd }, linkingId === '0' ? null : linkingId);
+      if (account === 'account-exists') return reply.redirect('/?login=google-account-exists');
+      if (!account) return failed();
+      await session.setSession(reply, account);
       return reply.redirect('/');
     } catch {
       req.log.warn('No se pudo completar la autenticación con Google.');

@@ -81,7 +81,7 @@ describe('acceso', () => {
     expect(health.statusCode).toBe(200);
     // El lector de Excel usa workers blob:; si la CSP los bloquea, importar se cuelga sin error.
     expect(String(health.headers['content-security-policy'])).toMatch(/worker-src 'self' blob:/);
-    expect((await get('/api/session')).json()).toEqual({ authRequired: true, authenticated: false, googleEnabled: false });
+    expect((await get('/api/session')).json()).toMatchObject({ authRequired: true, authenticated: false, googleEnabled: false });
     expect((await send('POST', '/api/login', { email: ownerEmail, password: 'otra' })).statusCode).toBe(401);
     expect((await send('POST', '/api/login', { email: 'otra@example.com', password: 'pan-con-tomate' })).statusCode).toBe(401);
     expect((await send('POST', '/api/login', { password: 'pan-con-tomate' })).statusCode).toBe(401);
@@ -92,7 +92,7 @@ describe('acceso', () => {
     expect(setCookie).toMatch(/Secure/);
     cookie = setCookie.split(';')[0]!;
     expect((await get('/api/lists')).statusCode).toBe(200);
-    expect((await get('/api/session')).json()).toEqual({ authRequired: true, authenticated: true, googleEnabled: false });
+    expect((await get('/api/session')).json()).toMatchObject({ authRequired: true, authenticated: true, googleEnabled: false });
   });
 
   it('una cookie manipulada no vale', async () => {
