@@ -57,6 +57,21 @@ describe('parseRegistro', () => {
     expect(p.instruments[0]!.symbol).toBe('GRF-P.MC');
   });
 
+  it('conserva los símbolos completos de fondos y otras bolsas sin añadir Madrid', () => {
+    const symbols = ['0P0001OJNQ.F', '0P00019OVT.F', 'ITX.MC', 'VWCE.DE', 'BP.L', 'EURUSD=X', '0P0001OJNQ'];
+    const p = parseRegistro([HEADER, ...symbols.map((symbol, index) =>
+      [index + 1, d('2026-04-13'), null, symbol, 'Compra', 76.616, 30, 0, 1, 2298.48] as Cell[],
+    )]);
+    expect(p.instruments.map((i) => i.symbol)).toEqual(symbols);
+    expect(p.operations.every((o) => o.shares === 76.616)).toBe(true);
+  });
+
+  it('guarda operaciones identificadas por ISIN sin inventar un símbolo de Yahoo', () => {
+    const p = parseRegistro([HEADER, [1, d('2026-04-13'), null, 'IE00B3VXGD32', 'Compra', 8, 60.8, 0, 1, 486.4]]);
+    expect(p.instruments[0]).toMatchObject({ ticker: 'IE00B3VXGD32', symbol: null, currency: 'EUR' });
+    expect(p.operations[0]).toMatchObject({ ticker: 'IE00B3VXGD32', shares: 8, amountEur: 486.4 });
+  });
+
   it('falla con un mensaje claro si no es la hoja Registro', () => {
     expect(() => parseRegistro([['a', 'b']])).toThrow(/cabecera/);
   });

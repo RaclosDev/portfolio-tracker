@@ -7,6 +7,7 @@ import { Dialog } from '../../components/Dialog.tsx';
 import { money, num, pct, price, shortDate } from '../../lib/format.ts';
 import { HistoryChart, type RefLine } from '../detail/HistoryChart.tsx';
 import { signed, type CarteraModel } from './model.ts';
+import { QuoteSymbolField } from './QuoteSymbolField.tsx';
 
 /** Ficha de un valor de la cartera: datos editables, lotes FIFO abiertos, ventas, cobros y gráfico. */
 export function TickerDialog({
@@ -190,8 +191,7 @@ export function TickerDialog({
               <input id="tk-name" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="field">
-              <label htmlFor="tk-symbol">Símbolo Yahoo</label>
-              <input id="tk-symbol" value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder={`${ticker}.MC`} />
+              <QuoteSymbolField inputId="tk-symbol" value={symbol} onChange={setSymbol} onPick={(r) => { if (!name) setName(r.name); }} />
             </div>
             <div className="field">
               <label htmlFor="tk-sector">Sector</label>

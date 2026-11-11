@@ -265,6 +265,7 @@ export function symbolCandidates(raw: string, defaultSuffix: string): string[] {
   const exch = words.length === 2 ? EXCHANGE_WORDS[words[1]!] : undefined;
   if (exch !== undefined) return [words[0]! + exch];
   const compact = sym.replace(/\s+/g, '');
+  if (/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(compact) || /^0P[A-Z0-9]{8}$/.test(compact)) return [compact];
   const cls = compact.match(/^([A-Z0-9]+)\.([A-Z])$/);
   if (cls && !ONE_LETTER_MARKETS.has(cls[2]!)) {
     const base = `${cls[1]}-${cls[2]}`;
