@@ -4,7 +4,7 @@
 
 ![Portfolio Tracker: lista de vigilancia, resumen de cartera y registro de operaciones](docs/screenshots/hero.jpg)
 
-[Arquitectura](docs/ARQUITECTURA.md) · [Instalación y uso](docs/GUIA.md) · [Capturas reproducibles](docs/screenshots/README.md) · [Aplicación con acceso privado](https://cartera.raclos.es)
+[Arquitectura](docs/ARQUITECTURA.md) · [Instalación y uso](docs/GUIA.md) · [Capturas reproducibles](docs/screenshots/README.md) · [Abrir Watchlist](https://cartera.raclos.es)
 
 ## Qué resuelve
 
@@ -29,7 +29,7 @@
   </tr>
 </table>
 
-Capturas de la interfaz real con datos ficticios reproducibles. No representan una cuenta, cotizaciones actuales ni resultados de inversión. El despliegue es privado y admite únicamente a su propietario.
+Capturas de la interfaz real con datos ficticios reproducibles. No representan una cuenta, cotizaciones actuales ni resultados de inversión. Cada usuario dispone de listas, cartera y ajustes privados.
 
 ## Decisiones técnicas que puedes revisar
 
@@ -39,7 +39,7 @@ Capturas de la interfaz real con datos ficticios reproducibles. No representan u
 | Reconstruir posiciones desde operaciones | Cálculo de lotes FIFO separado de la presentación, con pruebas de dominio | [`ledger.ts`](packages/shared/src/cartera/ledger.ts), [`ledger.test.ts`](packages/shared/src/cartera/ledger.test.ts) |
 | Trabajar con datos de mercado externos | Proveedor aislado, caché y tratamiento de fallos en el servicio de mercado | [`modules/market`](apps/server/src/modules/market) |
 | Recuperar una cartera tras una importación | Copias automáticas y servicio de restauración | [`backup.service.ts`](apps/server/src/modules/backup/backup.service.ts) |
-| Mantener el despliegue de uso personal | Sesiones y acceso restringido a la cuenta propietaria, con opción Google | [`modules/auth`](apps/server/src/modules/auth) |
+| Separar los datos de cada usuario | Registro con correo y contraseña o Google, sesiones revocables y un esquema de datos por cuenta | [`modules/auth`](apps/server/src/modules/auth) |
 | Desarrollar sin instalar un servidor de base de datos | PostgreSQL en producción y PGlite en desarrollo y pruebas | [`database.ts`](apps/server/src/db/database.ts) |
 
 **Stack:** Node.js · TypeScript · Fastify 5 · React 19 · TanStack Query · Vite · PostgreSQL / PGlite · Vitest · GitHub Actions.

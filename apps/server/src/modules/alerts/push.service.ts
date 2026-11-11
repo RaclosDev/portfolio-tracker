@@ -24,6 +24,7 @@ export interface PushDevice {
 
 export class PushService {
   readonly enabled: boolean;
+  accountId: string | null = null;
 
   constructor(
     private db: Db,
@@ -36,6 +37,10 @@ export class PushService {
 
   get publicKey() {
     return this.keys.publicKey;
+  }
+
+  forDatabase(db: Db) {
+    return new PushService(db, this.keys, this.log);
   }
 
   async subscribe(sub: { endpoint: string; keys: { p256dh: string; auth: string } }, label: string | null) {
@@ -84,7 +89,7 @@ export class PushService {
         try {
           await webpush.sendNotification(
             { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-            JSON.stringify(payload),
+            JSON.stringify({ ...payload, accountId: this.accountId }),
             { TTL: 6 * 3600, urgency: 'high' },
           );
           sent++;
