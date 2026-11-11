@@ -20,6 +20,8 @@ export function createServicesFromDb(
     provider?: MarketDataProvider;
     vapid?: { publicKey: string | null; privateKey: string | null; subject: string };
     log?: (msg: string, err?: unknown) => void;
+    market?: MarketService;
+    push?: PushService;
   } = {},
 ) {
   const log = opts.log ?? (() => {});
@@ -27,7 +29,7 @@ export function createServicesFromDb(
   const items = new ItemsRepository(db);
   const settings = new SettingsRepository(db);
   const state = new StateRepository(db);
-  const market = new MarketService(
+  const market = opts.market ?? new MarketService(
     opts.provider ?? new YahooProvider(),
     db,
     { quoteTtlMs: config.quoteTtlMs, targetsTtlMs: config.targetsTtlMs },
@@ -38,7 +40,7 @@ export function createServicesFromDb(
   const instruments = new InstrumentsRepository(db);
   const portfolio = new PortfolioService(operations, instruments, settings, market);
   const backup = new BackupService(db);
-  const push = new PushService(db, opts.vapid ?? { publicKey: null, privateKey: null, subject: 'mailto:avisos@raclos.es' }, log);
+  const push = opts.push ?? new PushService(db, opts.vapid ?? { publicKey: null, privateKey: null, subject: 'mailto:avisos@raclos.es' }, log);
   const alerts = new AlertsService(db, lists, settings, state, watchlist, push, backup, log);
   return { db, lists, items, settings, state, market, watchlist, operations, instruments, portfolio, backup, push, alerts };
 }

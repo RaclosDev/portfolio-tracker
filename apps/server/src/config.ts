@@ -24,7 +24,7 @@ export const config = {
   ownerEmail: env('APP_OWNER_EMAIL'),
   googleClientId: env('GOOGLE_CLIENT_ID'),
   googleClientSecret: env('GOOGLE_CLIENT_SECRET'),
-  /** Clave para firmar la sesión. Render la genera sola (render.yaml). */
+  /** Clave para firmar el flujo de Google. Render la genera sola (render.yaml). */
   sessionSecret: env('SESSION_SECRET'),
   /** Claves VAPID para las notificaciones (npm run claves-push). */
   vapid: {

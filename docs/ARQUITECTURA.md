@@ -84,6 +84,10 @@ Flujo: el navegador pide `GET /api/lists/:id/watchlist`; el servidor combina los
 
 ## 5. Avisos
 
+Las cuentas y los hashes de sesión viven en `watchlist_auth`. El propietario conserva sus datos en `public`; cada alta crea y migra un esquema `account_<uuid>`. El servidor resuelve el esquema a partir de la sesión, nunca de un parámetro del cliente. `schemaDatabase` fija `search_path` dentro de cada transacción, sin recurrir a `public`. Se comparten únicamente el proveedor y la caché de cotizaciones. Las migraciones de datos se aplican a todos los esquemas al arrancar.
+
+El planificador recorre las cuentas y ejecuta avisos y copias con los servicios de cada una. Cada notificación lleva el identificador de cuenta; el service worker comprueba la sesión antes de mostrarla para evitar avisos de otra cuenta en un dispositivo compartido.
+
 El servidor ejecuta `AlertsService` cada minuto (o la frecuencia de Ajustes): calcula todas las listas (la
 cartera no genera avisos), compara con la memoria de avisos (`app_state`), guarda lo nuevo en `alert_history` y lo envía a cada
 suscripción de `push_subscriptions`. Respeta fines de semana, horas de silencio y el resumen diario (hora de

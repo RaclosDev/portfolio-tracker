@@ -4,15 +4,17 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { registerAuth, type AuthOptions } from './modules/auth/auth.ts';
 import { errorHandler, registerRoutes } from './routes.ts';
 import type { Services } from './services.ts';
+import { UserServices } from './modules/auth/user-services.ts';
 
 export interface AppOptions {
   logLevel?: string;
   /** Carpeta con el frontend compilado (apps/web/dist). */
   webRoot?: string | null;
   auth?: AuthOptions;
+  backgroundJobs?: boolean;
 }
 
-export async function buildApp(services: Services, { logLevel = 'warn', webRoot = null, auth }: AppOptions = {}) {
+export async function buildApp(services: Services, { logLevel = 'warn', webRoot = null, auth, backgroundJobs = false }: AppOptions = {}) {
   // trustProxy: en Render la petición llega a través de su proxy (IP real en X-Forwarded-For).
   const app = Fastify({
     logger: {
@@ -21,7 +23,7 @@ export async function buildApp(services: Services, { logLevel = 'warn', webRoot 
       serializers: { req: (req) => ({ method: req.method, url: req.url?.split('?')[0] }) },
     },
     bodyLimit: 5 * 1024 * 1024,
-    trustProxy: true,
+    trustProxy: (_address, hop) => hop < 1,
   });
   await app.register(fastifyHelmet, {
     contentSecurityPolicy: {
@@ -45,8 +47,11 @@ export async function buildApp(services: Services, { logLevel = 'warn', webRoot 
     crossOriginEmbedderPolicy: false,
   });
   app.setErrorHandler(errorHandler);
-  registerAuth(app, auth ?? { password: null, ownerEmail: null, secret: null, secure: false });
-  await registerRoutes(app, services);
+  const users = new UserServices(services);
+  const accounts = await registerAuth(app, auth ?? { password: null, ownerEmail: null, secret: null, secure: false }, services, users);
+  await registerRoutes(app);
+  if (backgroundJobs) users.start(accounts);
+  app.addHook('onClose', () => users.stop());
   if (webRoot) await serveDir(app, webRoot);
   return app;
 }

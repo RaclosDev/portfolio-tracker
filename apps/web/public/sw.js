@@ -13,14 +13,21 @@ self.addEventListener('push', (event) => {
   }
   const title = data.title || 'Watchlist';
   event.waitUntil(
-    self.registration.showNotification(title, {
-      body: data.body || '',
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      tag: data.tag,
-      renotify: !!data.tag,
-      data: { url: data.url || '/' },
-    }),
+    (async () => {
+      // Una suscripción puede sobrevivir a un cambio de cuenta en el mismo navegador.
+      const response = await fetch('/api/session', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) return;
+      const session = await response.json();
+      if (session.authRequired && (!session.authenticated || !data.accountId || session.user?.id !== data.accountId)) return;
+      await self.registration.showNotification(title, {
+        body: data.body || '',
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        tag: data.tag,
+        renotify: !!data.tag,
+        data: { url: data.url || '/' },
+      });
+    })().catch(() => {}),
   );
 });
 

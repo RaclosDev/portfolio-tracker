@@ -1,11 +1,19 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ApiError, SESSION_LOST, api } from '../../api/client.ts';
+import { ApiError, AUTH_CHANGED, SESSION_LOST, api, reloadSession } from '../../api/client.ts';
 
 /** Muestra la app solo con la sesión iniciada; si no, la pantalla de entrada. */
 export function Gate({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
-  const session = useQuery({ queryKey: ['session'], queryFn: api.session, staleTime: Infinity, retry: 2 });
+  const session = useQuery({ queryKey: ['session'], queryFn: api.session, staleTime: Infinity, refetchOnWindowFocus: 'always', retry: 2 });
+  const [initialAccount, setInitialAccount] = useState<string>();
+  const accountId = session.data ? session.data.user?.id ?? 'anonymous' : undefined;
+  useEffect(() => {
+    if (!accountId) return;
+    if (initialAccount && initialAccount !== accountId) { window.location.reload(); return; }
+    setInitialAccount(accountId);
+    if (localStorage.getItem(AUTH_CHANGED) !== accountId) localStorage.setItem(AUTH_CHANGED, accountId);
+  }, [accountId, initialAccount]);
 
   useEffect(() => {
     const lost = () => {
@@ -14,7 +22,12 @@ export function Gate({ children }: { children: ReactNode }) {
       });
     };
     window.addEventListener(SESSION_LOST, lost);
-    return () => window.removeEventListener(SESSION_LOST, lost);
+    const changed = (event: StorageEvent) => { if (event.key === AUTH_CHANGED) window.location.reload(); };
+    window.addEventListener('storage', changed);
+    return () => {
+      window.removeEventListener(SESSION_LOST, lost);
+      window.removeEventListener('storage', changed);
+    };
   }, [qc]);
 
   if (session.isPending) return <p className="muted center login-loading">Cargando…</p>;
@@ -35,29 +48,37 @@ export function Gate({ children }: { children: ReactNode }) {
     return (
       <Login
         googleEnabled={session.data.googleEnabled}
-        onDone={async () => {
-          qc.setQueryData(['session'], { ...session.data, authenticated: true });
-          await qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'session' });
-        }}
+        registrationEnabled={session.data.registrationEnabled}
+        onDone={reloadSession}
       />
     );
   }
-  return <>{children}</>;
+  return <>
+    {new URLSearchParams(window.location.search).has('login') && <p className="error-box" role="alert">
+      No se pudo vincular Google. Usa la cuenta de Google con el mismo correo que tu cuenta de Watchlist.
+      <button type="button" className="btn" onClick={() => window.location.replace('/')}>Cerrar</button>
+    </p>}
+    {children}
+  </>;
 }
 
-function Login({ googleEnabled, onDone }: { googleEnabled: boolean; onDone: () => void }) {
+function Login({ googleEnabled, registrationEnabled, onDone }: {
+  googleEnabled: boolean; registrationEnabled: boolean; onDone: () => void;
+}) {
+  const [registering, setRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(() =>
-    new URLSearchParams(window.location.search).get('login') === 'google-error'
-      ? 'No se pudo entrar con Google. Comprueba que has elegido la cuenta de esta cartera.'
-      : null,
-  );
+  const [confirmation, setConfirmation] = useState('');
+  const [error, setError] = useState<string | null>(() => {
+    const status = new URLSearchParams(window.location.search).get('login');
+    if (status === 'google-account-exists') return 'Ya existe una cuenta con ese correo. Entra con tu contraseña y vincula Google desde Ajustes.';
+    return status === 'google-error' ? 'No se pudo entrar con Google. Vuelve a intentarlo.' : null;
+  });
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (url.searchParams.get('login') === 'google-error') {
+    if (url.searchParams.has('login')) {
       url.searchParams.delete('login');
       window.history.replaceState(window.history.state, '', url);
     }
@@ -66,10 +87,14 @@ function Login({ googleEnabled, onDone }: { googleEnabled: boolean; onDone: () =
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
+    if (registering && password !== confirmation) {
+      setError('Las contraseñas no coinciden.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      await api.login(email, password);
+      await (registering ? api.register(email, password) : api.login(email, password));
       onDone();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No se pudo conectar. Inténtalo de nuevo.');
@@ -84,11 +109,16 @@ function Login({ googleEnabled, onDone }: { googleEnabled: boolean; onDone: () =
           <img src="/favicon.svg" alt="" width={28} height={28} />
           <h1>Watchlist</h1>
         </div>
+        <h2 className="login__title">{registering ? 'Crear cuenta' : 'Iniciar sesión'}</h2>
+        {!registering && <p className="muted small">Organiza tus listas de seguimiento y tu cartera en una cuenta privada.</p>}
+        {registering && <p className="muted small">Tu cartera y tus listas serán privadas. Empieza con una cuenta vacía.</p>}
+        <fieldset className="login__fields" disabled={busy}>
         <label htmlFor="login-email">Correo electrónico</label>
         <input
           id="login-email"
           name="email"
           type="email"
+          maxLength={254}
           autoComplete="username"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -99,18 +129,28 @@ function Login({ googleEnabled, onDone }: { googleEnabled: boolean; onDone: () =
           id="login-pass"
           name="password"
           type="password"
-          autoComplete="current-password"
+          autoComplete={registering ? 'new-password' : 'current-password'}
+          minLength={registering ? 12 : undefined}
+          maxLength={200}
+          aria-describedby={registering ? 'password-help' : undefined}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
         />
+        {registering && <>
+          <p id="password-help" className="muted small">Al menos 12 caracteres. Puedes usar una frase.</p>
+          <label htmlFor="login-confirm">Repetir contraseña</label>
+          <input id="login-confirm" name="confirmation" type="password" autoComplete="new-password"
+            value={confirmation} onChange={(e) => setConfirmation(e.target.value)} maxLength={200} required />
+        </>}
+        </fieldset>
         {error && (
           <p className="error-box" role="alert">
             {error}
           </p>
         )}
         <button type="submit" className="btn btn--primary" disabled={busy || !email || !password}>
-          {busy ? 'Entrando…' : 'Entrar'}
+          {busy ? (registering ? 'Creando cuenta…' : 'Entrando…') : (registering ? 'Crear cuenta' : 'Entrar')}
         </button>
         {googleEnabled && (
           <a className="login__google" href="/api/auth/google">
@@ -123,7 +163,16 @@ function Login({ googleEnabled, onDone }: { googleEnabled: boolean; onDone: () =
             <span>Continuar con Google</span>
           </a>
         )}
+        {registrationEnabled && <p className="small login__switch">
+          {registering ? '¿Ya tienes cuenta? ' : '¿No tienes cuenta? '}
+          <button type="button" className="login__link" disabled={busy} onClick={() => {
+            setRegistering(!registering); setPassword(''); setConfirmation(''); setError(null);
+          }}>{registering ? 'Inicia sesión' : 'Crear cuenta'}</button>
+        </p>}
         <p className="muted small">La sesión se recuerda en este dispositivo durante 6 meses.</p>
+        <nav className="small login__legal" aria-label="Información de la aplicación">
+          <a href="/privacidad.html">Privacidad</a><a href="/condiciones.html">Condiciones de uso</a>
+        </nav>
       </form>
     </main>
   );

@@ -15,13 +15,14 @@ import {
 } from '@watchlist/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { api } from '../../api/client.ts';
+import { api, reloadSession } from '../../api/client.ts';
 import { buildModel } from '../cartera/model.ts';
 import { useImportBackup, useListMutations, useUpdateSettings } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
 import { usePrompt } from '../../components/usePrompt.tsx';
 import { exportExcel, readSpreadsheet, type ReadSheet } from '../../lib/excel.ts';
 import { parseDecimal } from '../../lib/format.ts';
+import { disablePush } from '../../lib/push.ts';
 import { ImportDialog } from '../import/ImportDialog.tsx';
 import { BandsEditor } from './BandsEditor.tsx';
 import { NotificationsPanel } from './NotificationsPanel.tsx';
@@ -116,15 +117,22 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
   const [ask, promptEl] = usePrompt();
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { data: authRequired } = useQuery({
+  const { data: session } = useQuery({
     queryKey: ['session'],
     queryFn: api.session,
     staleTime: Infinity,
-    select: (session) => session.authRequired,
   });
   const logout = useMutation({
-    mutationFn: api.logout,
-    onSuccess: () => window.location.reload(),
+    mutationFn: async () => {
+      await disablePush().catch(() => {});
+      await api.logout();
+      try {
+        const registration = await navigator.serviceWorker?.getRegistration('/');
+        const notifications = await registration?.getNotifications();
+        notifications?.forEach((notification) => notification.close());
+      } catch { /* La sesión ya está cerrada aunque el navegador no permita limpiar avisos. */ }
+    },
+    onSuccess: reloadSession,
   });
   const health = useQuery({
     queryKey: ['health'],
@@ -258,6 +266,10 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
     general: (
       <>
         <h3>General</h3>
+        {session?.user && <Row label="Tu cuenta" hint={session.user.email}>
+          {session.user.googleLinked ? <span className="muted small">Google vinculado</span>
+            : session.googleEnabled && <a className="btn" href="/api/auth/google">Vincular Google</a>}
+        </Row>}
         <p className="intro">Cálculos y actualización de precios. Se guardan con tus datos y valen para todos los PCs.</p>
         <Row label="Importe a invertir por defecto" hint="Se usa en los valores que no tienen un importe propio.">
           <NumberInput label="Importe por defecto" value={invest} onChange={setInvest} suffix={baseCurrency} />
@@ -623,7 +635,7 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
               {logout.isError ? 'No se pudo cerrar la sesión. Vuelve a intentarlo.' : error}
             </span>
           )}
-          {authRequired && (
+          {session?.authRequired && (
             <button
               type="button"
               className="btn"
