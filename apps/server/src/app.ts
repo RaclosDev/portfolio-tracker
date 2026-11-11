@@ -14,7 +14,15 @@ export interface AppOptions {
 
 export async function buildApp(services: Services, { logLevel = 'warn', webRoot = null, auth }: AppOptions = {}) {
   // trustProxy: en Render la petición llega a través de su proxy (IP real en X-Forwarded-For).
-  const app = Fastify({ logger: { level: logLevel }, bodyLimit: 5 * 1024 * 1024, trustProxy: true });
+  const app = Fastify({
+    logger: {
+      level: logLevel,
+      // El callback de OAuth recibe el código de autorización en la query.
+      serializers: { req: (req) => ({ method: req.method, url: req.url?.split('?')[0] }) },
+    },
+    bodyLimit: 5 * 1024 * 1024,
+    trustProxy: true,
+  });
   await app.register(fastifyHelmet, {
     contentSecurityPolicy: {
       directives: {
@@ -37,7 +45,7 @@ export async function buildApp(services: Services, { logLevel = 'warn', webRoot 
     crossOriginEmbedderPolicy: false,
   });
   app.setErrorHandler(errorHandler);
-  registerAuth(app, auth ?? { password: null, secret: null, secure: false });
+  registerAuth(app, auth ?? { password: null, ownerEmail: null, secret: null, secure: false });
   await registerRoutes(app, services);
   if (webRoot) await serveDir(app, webRoot);
   return app;

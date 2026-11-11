@@ -29,13 +29,16 @@ Todo en planes gratuitos: **Neon** (base de datos), **Render** (servidor), **Upt
 3. **Render** → *New → Blueprint* con este repositorio (`render.yaml`). Rellena:
    - `DATABASE_URL`: la cadena de Neon.
    - `APP_PASSWORD`: la contraseña para entrar en la web.
+   - `APP_OWNER_EMAIL`: el correo de la cuenta propietaria. Los datos existentes se conservan en la misma base de datos.
    - `VAPID_PUBLIC_KEY` y `VAPID_PRIVATE_KEY`: las del paso 2.
 4. **Despliegue automático**: en Render, *Settings → Deploy Hook*, copia la URL y guárdala en GitHub como secreto del repositorio `RENDER_DEPLOY_HOOK` (*Settings → Secrets and variables → Actions*). Desde entonces, cada push a `main` se despliega solo si pasan los tests.
 5. **Dominio**: en el DNS de `raclos.es` crea un `CNAME` `cartera` → `<servicio>.onrender.com` (el que muestra Render en *Settings → Custom Domains*). Render pone el certificado HTTPS solo.
 6. **UptimeRobot** → monitor HTTP(s) a `https://cartera.raclos.es/api/health` cada 5 minutos. Así no se duerme y los avisos funcionan siempre.
 7. **Datos**: entra en la web, *Ajustes → Copias y Excel → Importar JSON…* con una copia exportada antes (o importa el Excel con *Importar desde Excel o CSV…*).
 
-El servidor solo arranca en producción si `APP_PASSWORD` está definida. Cambiar `APP_PASSWORD` cierra la sesión en todos los dispositivos.
+En producción se necesitan `APP_OWNER_EMAIL` y `APP_PASSWORD`. Cambiar cualquiera de los dos cierra la sesión en todos los dispositivos.
+
+Para habilitar Google, crea un cliente OAuth de tipo **Aplicación web** en Google Auth Platform. Añade `https://cartera.raclos.es/api/auth/google/callback` como URI de redirección autorizada y configura `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` en Render. La app pide los permisos `openid email` y solo admite el Gmail verificado de `APP_OWNER_EMAIL`. Si el cliente sigue en pruebas, añade ese Gmail a la lista de usuarios de prueba.
 
 ## Copias de seguridad
 
@@ -55,7 +58,7 @@ npm run seed -- copia.json --force   # carga una copia en la base de datos local
 
 En local no hace falta PostgreSQL: sin `DATABASE_URL` se usa **PGlite** (PostgreSQL en WebAssembly) en `apps/server/data/pg`. Sin `APP_PASSWORD` no se pide contraseña y sin claves VAPID no hay notificaciones.
 
-Variables de entorno: `DATABASE_URL`, `APP_PASSWORD`, `SESSION_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `PUBLIC_URL`, `TZ` (Europe/Madrid), `PORT` (5174), `HOST`, `DATA_DIR`, `QUOTE_TTL_SECONDS` (45), `TARGETS_TTL_HOURS` (12).
+Variables de entorno: `DATABASE_URL`, `APP_PASSWORD`, `APP_OWNER_EMAIL`, `SESSION_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `PUBLIC_URL`, `TZ` (Europe/Madrid), `PORT` (5174), `HOST`, `DATA_DIR`, `QUOTE_TTL_SECONDS` (45), `TARGETS_TTL_HOURS` (12).
 
 Estructura: `apps/server` (API, avisos y notificaciones), `apps/web` (interfaz, PWA), `packages/shared` (tipos y cálculos). Arquitectura y decisiones: [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
 

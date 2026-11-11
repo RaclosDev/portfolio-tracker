@@ -13,7 +13,7 @@ import {
   type TagNames,
   type WatchList,
 } from '@watchlist/shared';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../api/client.ts';
 import { buildModel } from '../cartera/model.ts';
@@ -116,6 +116,16 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
   const [ask, promptEl] = usePrompt();
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { data: authRequired } = useQuery({
+    queryKey: ['session'],
+    queryFn: api.session,
+    staleTime: Infinity,
+    select: (session) => session.authRequired,
+  });
+  const logout = useMutation({
+    mutationFn: api.logout,
+    onSuccess: () => window.location.reload(),
+  });
   const health = useQuery({
     queryKey: ['health'],
     queryFn: () => fetch('/api/health').then((r) => r.json() as Promise<{ version?: string }>),
@@ -261,18 +271,6 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
         </Row>
         <Row label="Actualizar cotizaciones cada" hint="Con la web abierta (mínimo 15 s). Los avisos se comprueban como mucho cada minuto.">
           <NumberInput label="Segundos entre actualizaciones" value={refresh} onChange={setRefresh} suffix="segundos" />
-        </Row>
-        <Row label="Sesión" hint="Cierra la sesión en este dispositivo. Para entrar otra vez hará falta la contraseña.">
-          <button
-            type="button"
-            className="btn btn--small"
-            onClick={async () => {
-              await api.logout();
-              location.reload();
-            }}
-          >
-            Cerrar sesión
-          </button>
         </Row>
       </>
     ),
@@ -620,18 +618,40 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
       className="dialog--settings"
       footer={
         <>
-          {error && (
-            <span className="error-text small" role="alert">
-              {error}
+          {(error || logout.isError) && (
+            <span className="settings__footer-error error-text small" role="alert">
+              {logout.isError ? 'No se pudo cerrar la sesión. Vuelve a intentarlo.' : error}
             </span>
           )}
-          <span className="spacer" />
-          <button type="button" className="btn" onClick={onClose}>
-            Cancelar
-          </button>
-          <button type="button" className="btn btn--primary" onClick={() => void save()} disabled={update.isPending}>
-            Guardar
-          </button>
+          {authRequired && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setError(null);
+                logout.mutate();
+              }}
+              disabled={logout.isPending || update.isPending}
+            >
+              {logout.isPending ? 'Cerrando sesión…' : 'Cerrar sesión'}
+            </button>
+          )}
+          <div className="settings__footer-actions">
+            <button type="button" className="btn" onClick={onClose}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => {
+                logout.reset();
+                void save();
+              }}
+              disabled={update.isPending || logout.isPending}
+            >
+              Guardar
+            </button>
+          </div>
         </>
       }
     >
