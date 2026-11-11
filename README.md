@@ -1,65 +1,64 @@
-# Portfolio Tracker · Watchlist
+# Portfolio Tracker
 
-Web para vigilar acciones y ETF en los que quieres entrar y para llevar la cartera: hasta 3 precios de compra y la distancia a cada uno, objetivo de tu bróker y consenso de analistas, tamaño de la compra con conversión de divisa, órdenes puestas en el banco y la cartera real a partir del registro de operaciones (FIFO), con lo cobrado y el informe para la Renta.
+**Seguimiento de inversiones, desde una lista de vigilancia hasta el registro de operaciones.** Una aplicación personal para ver niveles de compra, ordenar una cartera y consultar cómo se calcula cada posición.
 
-Está en **https://cartera.raclos.es**, protegida con contraseña. Funciona en el PC, el móvil y la tablet. El servidor vigila los precios todo el día y avisa con **notificaciones** (zona de compra, cerca de un nivel, órdenes y un resumen diario). Las cotizaciones vienen de Yahoo Finance.
+![Portfolio Tracker: lista de vigilancia, resumen de cartera y registro de operaciones](docs/screenshots/hero.jpg)
 
-## Uso
+[Arquitectura](docs/ARQUITECTURA.md) · [Instalación y uso](docs/GUIA.md) · [Capturas reproducibles](docs/screenshots/README.md) · [Aplicación con acceso privado](https://cartera.raclos.es)
 
-La primera vez se abre una **guía** que explica cada parte (botón **Guía** para repetirla).
+## Qué resuelve
 
-- **Listas** en pestañas para vigilar lo que quieres comprar.
-- **Cartera**: se calcula del **registro de operaciones** (compras, ventas, dividendos, scrip, derechos, splits…), por lotes FIFO de cada valor y con el bróker de cada operación. Pestañas *Resumen* (reparto por valor, sector y bróker; resultado por año), *En cartera*, *Cerradas*, *Registro* (filtros y cambio de bróker de varias a la vez) y *Renta* (ganancias y pérdidas por año con la regla de los dos meses, compensación y pérdidas pendientes; se descarga en Excel o PDF). Pulsando un valor se abre su ficha con gráfico, lotes y operaciones.
-- **Importar Excel** (en la Cartera): lee la hoja *Registro* del Excel de cartera. Volver a importar sustituye lo importado antes (lo añadido a mano se queda) y antes guarda una copia.
-- **Mapa de precios**: rango de 52 semanas, precio actual, tus niveles de compra, el objetivo del bróker y el consenso.
-- **Compra 1/2/3**: precio y distancia (%); se editan pulsando en la celda.
-- **Acciones / Importe / Ahorro**: en euros aunque el valor cotice en otra divisa. Las acciones se redondean siempre hacia arriba.
-- **Ajustes**: umbrales, colores y columnas, notificaciones, listas, copias de seguridad y Excel.
+- **Vigilar acciones y ETF:** listas, búsqueda por nombre, ticker o ISIN, hasta tres niveles de compra y distancia al precio actual. Los importes contemplan la conversión de divisa.
+- **Entender la cartera:** posiciones, reparto por valor, sector y bróker, rentabilidad y posiciones cerradas, calculados a partir de compras, ventas y otras operaciones.
+- **Mantener un registro:** dividendos, scrip, derechos y splits; importación desde Excel y exportación de informes. El cálculo de lotes utiliza FIFO.
+- **Recibir avisos:** notificaciones push de niveles y órdenes registradas, con un resumen diario. La aplicación hace seguimiento; no envía operaciones a un bróker.
+- **Conservar los datos:** copias diarias y una copia antes de importar, con exportación y restauración desde la interfaz.
 
-**En el móvil o la tablet:** abre la web y añádela a la pantalla de inicio (Chrome: menú ⋮ → Añadir a pantalla de inicio; iPhone/iPad: Compartir → Añadir a pantalla de inicio). Después, **Ajustes → Notificaciones → Activar en este dispositivo**. Hay que activarlas en cada dispositivo donde se quieran recibir.
+## Un recorrido por la aplicación
 
-Símbolos: los de Yahoo Finance (el buscador acepta nombre, ticker o ISIN). Sufijos: `.MC` Madrid, `.PA` París, `.AS` Ámsterdam, `.DE` Xetra, `.MI` Milán, `.L` Londres, sin sufijo para EE. UU.
+<table>
+  <tr>
+    <td align="center"><strong>Lista de vigilancia</strong></td>
+    <td align="center"><strong>Resumen de cartera</strong></td>
+    <td align="center"><strong>Registro de operaciones</strong></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/watchlist-mobile.png" alt="Lista con distancias a los niveles de compra" width="260"></td>
+    <td><img src="docs/screenshots/portfolio-mobile.png" alt="Resumen y distribución de una cartera de ejemplo" width="260"></td>
+    <td><img src="docs/screenshots/operations-mobile.png" alt="Registro filtrable de compras y dividendos" width="260"></td>
+  </tr>
+</table>
 
-## Puesta en marcha (una vez)
+Capturas de la interfaz real con datos ficticios reproducibles. No representan una cuenta, cotizaciones actuales ni resultados de inversión. El despliegue es privado y admite únicamente a su propietario.
 
-Todo en planes gratuitos: **Neon** (base de datos), **Render** (servidor), **UptimeRobot** (lo mantiene despierto) y el DNS de `raclos.es`.
+## Decisiones técnicas que puedes revisar
 
-1. **Neon** → crea un proyecto en la región *AWS Europe Central 1 (Frankfurt)* y copia la cadena de conexión (*Connection string*, con `?sslmode=require`).
-2. **Claves de las notificaciones**: en este repositorio ejecuta `npm run claves-push` y guarda las dos claves.
-3. **Render** → *New → Blueprint* con este repositorio (`render.yaml`). Rellena:
-   - `DATABASE_URL`: la cadena de Neon.
-   - `APP_PASSWORD`: la contraseña para entrar en la web.
-   - `APP_OWNER_EMAIL`: el correo de la cuenta propietaria. Los datos existentes se conservan en la misma base de datos.
-   - `VAPID_PUBLIC_KEY` y `VAPID_PRIVATE_KEY`: las del paso 2.
-4. **Despliegue automático**: en Render, *Settings → Deploy Hook*, copia la URL y guárdala en GitHub como secreto del repositorio `RENDER_DEPLOY_HOOK` (*Settings → Secrets and variables → Actions*). Desde entonces, cada push a `main` se despliega solo si pasan los tests.
-5. **Dominio**: en el DNS de `raclos.es` crea un `CNAME` `cartera` → `<servicio>.onrender.com` (el que muestra Render en *Settings → Custom Domains*). Render pone el certificado HTTPS solo.
-6. **UptimeRobot** → monitor HTTP(s) a `https://cartera.raclos.es/api/health` cada 5 minutos. Así no se duerme y los avisos funcionan siempre.
-7. **Datos**: entra en la web, *Ajustes → Copias y Excel → Importar JSON…* con una copia exportada antes (o importa el Excel con *Importar desde Excel o CSV…*).
+| Problema | Implementación | Dónde verlo |
+| --- | --- | --- |
+| Compartir reglas entre API e interfaz | Monorepo TypeScript con esquemas Zod y funciones de cálculo compartidas | [`packages/shared`](packages/shared/src) |
+| Reconstruir posiciones desde operaciones | Cálculo de lotes FIFO separado de la presentación, con pruebas de dominio | [`ledger.ts`](packages/shared/src/cartera/ledger.ts), [`ledger.test.ts`](packages/shared/src/cartera/ledger.test.ts) |
+| Trabajar con datos de mercado externos | Proveedor aislado, caché y tratamiento de fallos en el servicio de mercado | [`modules/market`](apps/server/src/modules/market) |
+| Recuperar una cartera tras una importación | Copias automáticas y servicio de restauración | [`backup.service.ts`](apps/server/src/modules/backup/backup.service.ts) |
+| Mantener el despliegue de uso personal | Sesiones y acceso restringido a la cuenta propietaria, con opción Google | [`modules/auth`](apps/server/src/modules/auth) |
+| Desarrollar sin instalar un servidor de base de datos | PostgreSQL en producción y PGlite en desarrollo y pruebas | [`database.ts`](apps/server/src/db/database.ts) |
 
-En producción se necesitan `APP_OWNER_EMAIL` y `APP_PASSWORD`. Cambiar cualquiera de los dos cierra la sesión en todos los dispositivos.
+**Stack:** Node.js · TypeScript · Fastify 5 · React 19 · TanStack Query · Vite · PostgreSQL / PGlite · Vitest · GitHub Actions.
 
-Para habilitar Google, crea un cliente OAuth de tipo **Aplicación web** en Google Auth Platform. Añade `https://cartera.raclos.es/api/auth/google/callback` como URI de redirección autorizada y configura `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` en Render. La app pide los permisos `openid email` y solo admite el Gmail verificado de `APP_OWNER_EMAIL`. Si el cliente sigue en pruebas, añade ese Gmail a la lista de usuarios de prueba.
+## Desarrollo local
 
-## Copias de seguridad
-
-- Cada día se guarda una copia completa en la propia base de datos (las 40 últimas) y otra antes de cada importación. Se descargan o restauran en *Ajustes → Copias y Excel*.
-- *Exportar JSON* descarga todo (listas, cartera y ajustes); *Exportar a Excel* genera un .xlsx con una hoja por lista y otras con la cartera, las posiciones cerradas y el registro de operaciones.
-
-## Desarrollo
+Requiere Node.js 22.13 o superior.
 
 ```bash
-npm install
-npm run dev        # API :5174 + Vite :5173 con recarga al instante
-npm start          # web compilada en http://localhost:5174 (antes: npm run build)
-npm test           # tests (la base de datos de los tests es un PostgreSQL en memoria)
-npm run typecheck
-npm run seed -- copia.json --force   # carga una copia en la base de datos local
+npm ci
+npm run dev
 ```
 
-En local no hace falta PostgreSQL: sin `DATABASE_URL` se usa **PGlite** (PostgreSQL en WebAssembly) en `apps/server/data/pg`. Sin `APP_PASSWORD` no se pide contraseña y sin claves VAPID no hay notificaciones.
+La web arranca en `http://localhost:5173` y la API en `http://localhost:5174`. Sin `DATABASE_URL`, se utiliza PGlite local. La [guía de configuración](docs/GUIA.md) explica autenticación, notificaciones, copias y despliegue.
 
-Variables de entorno: `DATABASE_URL`, `APP_PASSWORD`, `APP_OWNER_EMAIL`, `SESSION_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `PUBLIC_URL`, `TZ` (Europe/Madrid), `PORT` (5174), `HOST`, `DATA_DIR`, `QUOTE_TTL_SECONDS` (45), `TARGETS_TTL_HOURS` (12).
+```bash
+npm test
+npm run typecheck
+npm run build
+```
 
-Estructura: `apps/server` (API, avisos y notificaciones), `apps/web` (interfaz, PWA), `packages/shared` (tipos y cálculos). Arquitectura y decisiones: [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
-
-> Los datos de Yahoo Finance pueden llevar retraso y no son asesoramiento de inversión.
+La [CI](.github/workflows/desplegar.yml) comprueba tipos, pruebas y compilación antes del despliegue. Las cotizaciones externas pueden tener retraso; la aplicación organiza información y no ofrece asesoramiento de inversión.
