@@ -1,15 +1,16 @@
-import type { SymbolSearchResult } from '@watchlist/shared';
+import type { Quote, SymbolSearchResult } from '@watchlist/shared';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../api/client.ts';
 import { price } from '../../lib/format.ts';
 import { SymbolPicker } from '../items/SymbolPicker.tsx';
 
-export function QuoteSymbolField({ inputId, value, onChange, onPick }: {
+export function QuoteSymbolField({ inputId, value, onChange, onPick, onQuote }: {
   inputId: string;
   value: string;
   onChange: (symbol: string) => void;
   onPick?: (result: SymbolSearchResult) => void;
+  onQuote?: (quote: Quote | null) => void;
 }) {
   const symbol = value.trim().toUpperCase();
   const [checked, setChecked] = useState(symbol);
@@ -21,6 +22,7 @@ export function QuoteSymbolField({ inputId, value, onChange, onPick }: {
     retry: false,
   });
   const quote = checked === symbol ? result.data?.find((q) => q.symbol === symbol) : undefined;
+  useEffect(() => { onQuote?.(quote?.price != null ? quote : null); }, [quote, onQuote]);
   return <>
     <label htmlFor={inputId}>Cotización en Yahoo (opcional)</label>
     <SymbolPicker inputId={inputId} value={value} onChange={onChange} onPick={(r) => {

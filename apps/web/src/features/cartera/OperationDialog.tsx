@@ -8,13 +8,15 @@ import {
   type Operation,
   type OperationInput,
   type OperationType,
+  type Quote,
 } from '@watchlist/shared';
-import { useState, type FormEvent } from 'react';
+import { useCallback, useState, type FormEvent } from 'react';
 import { ApiError } from '../../api/client.ts';
 import { useOperationMutations } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
 import { money, parseDecimal } from '../../lib/format.ts';
 import { QuoteSymbolField } from './QuoteSymbolField.tsx';
+import { tradeTotal } from './tradeTotal.ts';
 
 /** Datos con los que abrir el alta (p. ej. «Lo he comprado» desde la lista de vigilancia). */
 export interface OperationDraft {
@@ -22,6 +24,7 @@ export interface OperationDraft {
   ticker?: string;
   symbol?: string;
   name?: string | null;
+  currency?: string;
   shares?: number;
   price?: number;
   date?: string;
@@ -45,15 +48,19 @@ export const tickerFromSymbol = (symbol: string) => symbol.toUpperCase().replace
 /** Alta y edición de una operación del registro (compra, venta, dividendo…). */
 export function OperationDialog({ operation: op, draft, instruments, brokers, onClose }: Props) {
   const { save, remove } = useOperationMutations();
+  const initial = instruments.find((i) => i.ticker === (op?.ticker ?? draft?.ticker ?? '').trim().toUpperCase());
   const [type, setType] = useState<OperationType>(op?.type ?? draft?.type ?? 'buy');
   const [date, setDate] = useState(op?.date ?? draft?.date ?? localToday());
   const [ticker, setTicker] = useState(op?.ticker ?? draft?.ticker ?? '');
-  const [symbol, setSymbol] = useState<string | null>(draft?.symbol ?? null);
-  const [name, setName] = useState(draft?.name ?? null);
+  const [symbol, setSymbol] = useState<string | null>(initial?.symbol ?? draft?.symbol ?? null);
+  const [name, setName] = useState(initial?.name ?? draft?.name ?? null);
+  const [currency, setCurrency] = useState(initial?.currency ?? draft?.currency ?? 'EUR');
+  const [verifiedSymbol, setVerifiedSymbol] = useState<string | null>(null);
+  const [withoutQuote, setWithoutQuote] = useState(false);
   const [shares, setShares] = useState(str(op?.shares ?? draft?.shares));
   const [priceRaw, setPrice] = useState(str(op?.price ?? draft?.price));
   const [fees, setFees] = useState(str(op?.fees || null));
-  const [fx, setFx] = useState(str(op && op.fxRate !== 1 ? op.fxRate : null));
+  const [fx, setFx] = useState(str(op?.fxRate));
   const [amount, setAmount] = useState(str(op?.amountEur));
   const [amountTouched, setAmountTouched] = useState(!!op);
   const [whEs, setWhEs] = useState(str(op?.withholdingEs));
@@ -68,24 +75,31 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
   const t = ticker.trim().toUpperCase();
   const quoteSymbol = symbol ?? (/^0P[A-Z0-9]{8}(?:\.[A-Z]{1,3})?$/.test(t) ? t : '');
   const known = instruments.find((i) => i.ticker === t);
-  const currency = known?.currency ?? 'EUR';
-  const foreign = currency !== 'EUR' || !!fx;
+  const foreign = currency !== 'EUR';
   const income = isIncome(type);
   const trade = type === 'buy' || type === 'sell';
 
   // Importe en euros propuesto a partir de acciones, precio, comisiones y cambio (se puede corregir).
   const n = (s: string) => parseDecimal(s);
-  const fxN = n(fx) || 1;
-  const suggested =
-    trade && n(shares) && n(priceRaw)
-      ? round2((n(shares)! * n(priceRaw)! + (type === 'buy' ? 1 : -1) * (n(fees) ?? 0)) / fxN)
-      : null;
+  const fxN = foreign ? n(fx) : 1;
+  const suggested = trade ? tradeTotal(type, n(shares), n(priceRaw), n(fees) ?? 0, currency, fxN) : null;
   const amountShown = amountTouched ? amount : suggested != null ? str(suggested) : amount;
+  const quoteVerified = !!quoteSymbol && verifiedSymbol === quoteSymbol.trim().toUpperCase();
+  const acceptQuote = useCallback((quote: Quote | null) => {
+    setVerifiedSymbol(quote?.symbol ?? null);
+    if (quote) {
+      setName((current) => current || quote.name);
+      if (quote.currency) setCurrency(quote.currency);
+    }
+  }, []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     if (!t) return setError('Indica el ticker.');
+    if (!/^[A-Za-z]{3}$/.test(currency)) return setError('Indica la divisa del precio (EUR, USD, GBP…).');
+    if (!quoteVerified && !withoutQuote) return setError('Comprueba la cotización o marca que quieres guardar sin precio actualizado.');
+    if (trade && foreign && (fxN == null || fxN <= 0)) return setError(`Indica el cambio de la operación: cuántos ${currency} equivalían a 1 €.`);
     if (dayOrder.trim() && !/^[1-9]\d?$/.test(dayOrder.trim())) return setError('El orden en el día debe ser un número del 1 al 99.');
     const data: OperationInput = {
       date,
@@ -94,7 +108,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
       shares: trade || type === 'scrip' ? n(shares) : null,
       price: trade ? n(priceRaw) : null,
       fees: n(fees) ?? 0,
-      fxRate: fxN,
+      fxRate: trade ? (fxN ?? 1) : (op?.fxRate ?? 1),
       amountEur: type === 'scrip' || type === 'split' ? 0 : (n(amountShown) ?? 0),
       withholdingEs: income ? n(whEs) : null,
       withholdingForeign: income ? n(whForeign) : null,
@@ -111,7 +125,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
       await save.mutateAsync({
         id: op?.id,
         data,
-        instrument: known ? undefined : { symbol: quoteSymbol.trim() || null, name, currency: fx ? 'USD' : 'EUR' },
+        instrument: { symbol: quoteSymbol.trim() || null, name, currency },
       });
       onClose();
     } catch (err) {
@@ -173,8 +187,13 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
               <label htmlFor="op-ticker">Ticker</label>
               <input id="op-ticker" list="op-tickers" value={ticker} onChange={(e) => {
                 setTicker(e.target.value);
-                setSymbol(null);
-                setName(null);
+                const next = instruments.find((i) => i.ticker === e.target.value.trim().toUpperCase());
+                setSymbol(next?.symbol ?? null);
+                setName(next?.name ?? null);
+                setCurrency(next?.currency ?? 'EUR');
+                setVerifiedSymbol(null);
+                setWithoutQuote(false);
+                setFx('');
               }} autoComplete="off" />
               <datalist id="op-tickers">
                 {instruments.map((i) => (
@@ -186,11 +205,21 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
               <span className="field__help">{known ? (known.name ?? known.symbol ?? ' ') : t ? 'Valor nuevo' : ' '}</span>
             </div>
           </div>
-          {!known && t && (
+          {t && (
             <div className="field field--wide">
-              <QuoteSymbolField inputId="op-symbol" value={quoteSymbol} onChange={(value) => { setSymbol(value); setName(null); }} onPick={(r) => setName(r.name)} />
+              <QuoteSymbolField inputId="op-symbol" value={quoteSymbol} onChange={(value) => { setSymbol(value); setName(null); setVerifiedSymbol(null); setWithoutQuote(false); }} onPick={(r) => setName(r.name)} onQuote={acceptQuote} />
+              {!quoteVerified && <label className="check">
+                <input type="checkbox" checked={withoutQuote} onChange={(e) => setWithoutQuote(e.target.checked)} />
+                Guardar sin precio actualizado (no se podrá valorar esta posición)
+              </label>}
             </div>
           )}
+          <div className="field">
+            <label htmlFor="op-currency">Divisa del precio</label>
+            <input id="op-currency" list="op-currencies" maxLength={3} value={currency} onChange={(e) => { setCurrency(e.target.value.toUpperCase()); setFx(''); }} />
+            <datalist id="op-currencies">{['EUR', 'USD', 'GBP', 'CHF', 'JPY', 'CAD'].map((c) => <option key={c} value={c} />)}</datalist>
+            <span className="field__help">Se obtiene de la cotización. Comprueba que coincide con la clase y el mercado de tu compra.</span>
+          </div>
         </fieldset>
 
         {(trade || type === 'scrip') && (
@@ -198,13 +227,13 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
             <legend>Importe {foreign && <span className="muted">({currency} y cambio del día)</span>}</legend>
             <div className="grid-3">
               <div className="field">
-                <label htmlFor="op-shares">{type === 'scrip' ? 'Acciones recibidas' : 'Acciones'}</label>
+                <label htmlFor="op-shares">{type === 'scrip' ? 'Acciones recibidas' : 'Acciones / participaciones'}</label>
                 <input id="op-shares" inputMode="decimal" value={shares} onChange={(e) => setShares(e.target.value)} />
               </div>
               {trade && (
                 <>
                   <div className="field">
-                    <label htmlFor="op-price">Precio {currency !== 'EUR' ? `(${currency})` : ''}</label>
+                    <label htmlFor="op-price">Precio por unidad ({currency})</label>
                     <input id="op-price" inputMode="decimal" value={priceRaw} onChange={(e) => setPrice(e.target.value)} />
                   </div>
                   <div className="field">
@@ -220,6 +249,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
                   <div className="field">
                     <label htmlFor="op-fx">Cambio ({currency} por 1 €)</label>
                     <input id="op-fx" inputMode="decimal" value={fx} onChange={(e) => setFx(e.target.value)} />
+                    <span className="field__help">Cambio aplicado por el bróker el día de la operación.</span>
                   </div>
                 )}
                 <div className="field">
