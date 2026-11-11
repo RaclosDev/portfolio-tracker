@@ -245,7 +245,7 @@ export function CarteraPage({ model, isPending, error, draft, onDraftUsed }: Pro
         </select>
         <span className="spacer" />
         {!empty && tab !== 'renta' && (
-          <button type="button" className="btn btn--primary" onClick={() => setEditing({ op: null })}>
+          <button type="button" className="btn btn--primary" data-tour="operation" onClick={() => setEditing({ op: null })}>
             Añadir operación
           </button>
         )}
@@ -268,7 +268,7 @@ export function CarteraPage({ model, isPending, error, draft, onDraftUsed }: Pro
             <button type="button" className="btn btn--primary" onClick={() => setImporting(true)}>
               Importar operaciones
             </button>
-            <button type="button" className="btn" onClick={() => setEditing({ op: null })}>
+            <button type="button" className="btn" data-tour="operation" onClick={() => setEditing({ op: null })}>
               Añadir operación
             </button>
           </div>

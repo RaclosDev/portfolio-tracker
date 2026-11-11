@@ -15,6 +15,7 @@ import { StatusFilter, filterRow, type Filter } from './features/watchlist/Statu
 import { WatchlistTable, type Tag } from './features/watchlist/WatchlistTable.tsx';
 import { TagFilters, rowType, type TypeFilter } from './features/watchlist/TagFilters.tsx';
 import { TOUR_STEPS } from './features/tour/steps.tsx';
+import { CARTERA_TOUR_STEPS } from './features/tour/carteraSteps.tsx';
 import { Tour } from './features/tour/Tour.tsx';
 import { num, timeAgo } from './lib/format.ts';
 import { applyAppearance, applyColors } from './lib/theme.ts';
@@ -26,6 +27,7 @@ import { AlertsDialog } from './features/alerts/AlertsDialog.tsx';
 
 const LS_LIST = 'watchlist.listId';
 const LS_TOUR = 'watchlist.tourSeen';
+const LS_CARTERA_TOUR = 'watchlist.cartera.tourSeen';
 const LS_PAGE = 'watchlist.pagina';
 type Page = 'lista' | 'cartera';
 
@@ -184,19 +186,22 @@ export function App() {
   );
 
   // El tour se abre solo la primera vez, cuando ya hay datos que enseñar.
-  const hasRows = (view?.rows.length ?? 0) > 0;
+  const hasTourData = onPortfolio ? (pf.data?.operations.length ?? 0) > 0 : (view?.rows.length ?? 0) > 0;
+  const tourKey = onPortfolio ? LS_CARTERA_TOUR : LS_TOUR;
   useEffect(() => {
-    if (hasRows && !localStorage.getItem(LS_TOUR)) setTourOpen(true);
-  }, [hasRows]);
+    if (hasTourData && !localStorage.getItem(tourKey)) setTourOpen(true);
+  }, [hasTourData, tourKey]);
   const closeTour = () => {
-    localStorage.setItem(LS_TOUR, '1');
+    localStorage.setItem(tourKey, '1');
     setTourOpen(false);
   };
   const startTour = () => {
-    setFilter('all');
-    setSearch('');
-    setTypeFilter('all');
-    setCurrencyFilter('all');
+    if (!onPortfolio) {
+      setFilter('all');
+      setSearch('');
+      setTypeFilter('all');
+      setCurrencyFilter('all');
+    }
     setTourOpen(true);
   };
 
@@ -392,7 +397,6 @@ export function App() {
             className="btn btn--ghost"
             data-tour="tour"
             onClick={startTour}
-            disabled={!hasRows}
             title="Volver a ver la explicación de la app"
           >
             Guía
@@ -531,7 +535,7 @@ export function App() {
         />
       )}
       {promptEl}
-      {tourOpen && <Tour steps={TOUR_STEPS} onClose={closeTour} />}
+      {tourOpen && <Tour key={page} steps={onPortfolio ? CARTERA_TOUR_STEPS : TOUR_STEPS} onClose={closeTour} />}
       {showSettings && <SettingsDialog settings={settings} lists={lists} onClose={() => setShowSettings(false)} />}
       {showAlerts && (
         <AlertsDialog
