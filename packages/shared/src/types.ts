@@ -117,7 +117,7 @@ export const HISTORY_RANGES: { id: HistoryRange; label: string }[] = [
   { id: '5y', label: '5 años' },
 ];
 
-/** Cierre de un día (o semana, en 5 años). */
+/** Observación de precio fechada; la frecuencia depende de la fuente y el periodo. */
 export interface PricePoint {
   t: string;
   c: number;

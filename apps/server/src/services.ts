@@ -9,6 +9,7 @@ import { MarketService } from './modules/market/market.service.ts';
 import type { MarketDataProvider } from './modules/market/provider.ts';
 import { YahooProvider } from './modules/market/yahoo.provider.ts';
 import { BorsaProvider } from './modules/market/borsa.provider.ts';
+import { QuefondosProvider } from './modules/market/quefondos.provider.ts';
 import { FallbackProvider } from './modules/market/fallback.provider.ts';
 import { PortfolioService } from './modules/portfolio/portfolio.service.ts';
 import { InstrumentsRepository, OperationsRepository } from './modules/portfolio/cartera.repository.ts';
@@ -32,7 +33,7 @@ export function createServicesFromDb(
   const settings = new SettingsRepository(db);
   const state = new StateRepository(db);
   const market = opts.market ?? new MarketService(
-    opts.provider ?? new FallbackProvider([new YahooProvider(), new BorsaProvider()], log),
+    opts.provider ?? new FallbackProvider([new YahooProvider(), new BorsaProvider(), new QuefondosProvider()], log),
     db,
     { quoteTtlMs: config.quoteTtlMs, targetsTtlMs: config.targetsTtlMs },
     log,
