@@ -433,7 +433,6 @@ export function App() {
                   rows={rows}
                   listId={listId!}
                   baseCurrency={base}
-                  fx={view.fx}
                   blink={settings.blinkReached}
                   hiddenColumns={settings.hiddenColumns}
                   extraColumns={settings.extraColumns ?? []}

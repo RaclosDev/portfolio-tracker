@@ -224,7 +224,7 @@ const columns: Column[] = [
     label: 'Precio',
     align: 'right',
     sort: (r) => r.quote?.changePct ?? null,
-    title: 'Ordena por precio en la divisa base',
+    title: 'Ordena por variación de hoy (%)',
     cell: (r) => <PriceCell row={r} />,
   },
   {
@@ -437,7 +437,6 @@ interface Props {
   rows: WatchlistRow[];
   listId: number;
   baseCurrency: string;
-  fx: Record<string, number>;
   blink: boolean;
   hiddenColumns: string[];
   extraColumns: string[];
@@ -458,13 +457,7 @@ export const isColumnVisible = (c: { id: string; optional?: boolean }, hidden: s
 
 const DEFAULT_SORT = { id: 'map', dir: 'desc' as SortDir }; // lo más cercano a un nivel de compra, arriba
 const sortKey = (listId: number) => `watchlist.orden.${listId}`;
-const sortOptions = [
-  { id: 'map', label: 'Distancia al nivel' },
-  { id: 'price', label: 'Variación del día' },
-  { id: 'quotePrice', label: 'Precio' },
-  { id: 'name', label: 'Nombre' },
-];
-export function WatchlistTable({ rows, listId, baseCurrency, fx, blink, hiddenColumns, extraColumns, sparks, onEdit, onTag, onSaveLevel }: Props) {
+export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumns, extraColumns, sparks, onEdit, onTag, onSaveLevel }: Props) {
   const [wrapRef, wrapWidth] = useWidth<HTMLDivElement>();
   const statusNames = useSettings().data?.statusNames ?? DEFAULT_STATUS_NAMES;
   const visible = useMemo(
@@ -476,7 +469,8 @@ export function WatchlistTable({ rows, listId, baseCurrency, fx, blink, hiddenCo
   const [sort, setSort] = useState<{ id: string; dir: SortDir }>(DEFAULT_SORT);
   useEffect(() => {
     try {
-      setSort({ ...DEFAULT_SORT, ...JSON.parse(localStorage.getItem(sortKey(listId)) ?? '{}') });
+      const saved: { id?: string; dir?: SortDir } = JSON.parse(localStorage.getItem(sortKey(listId)) ?? '{}');
+      setSort({ ...DEFAULT_SORT, ...saved, id: saved.id === 'quotePrice' ? 'price' : saved.id ?? DEFAULT_SORT.id });
     } catch {
       setSort(DEFAULT_SORT);
     }
@@ -487,15 +481,10 @@ export function WatchlistTable({ rows, listId, baseCurrency, fx, blink, hiddenCo
   };
 
   const sorted = useMemo(() => {
-    const quotePrice = ({ quote }: WatchlistRow) => {
-      if (!quote?.currency || quote.price == null) return null;
-      const rate = quote.currency === baseCurrency ? 1 : fx[quote.currency];
-      return rate ? quote.price / rate : null;
-    };
-    const getValue = sort.id === 'quotePrice' ? quotePrice : columns.find((c) => c.id === sort.id)?.sort;
+    const getValue = columns.find((c) => c.id === sort.id)?.sort;
     if (!getValue) return rows;
     return [...rows].sort((a, b) => compare(getValue(a), getValue(b), sort.dir));
-  }, [rows, sort, baseCurrency, fx]);
+  }, [rows, sort]);
 
   const toggle = (id: string) =>
     changeSort(sort.id === id ? { id, dir: sort.dir === 'asc' ? 'desc' : 'asc' } : { id, dir: id === 'name' ? 'asc' : 'desc' });
@@ -530,27 +519,7 @@ export function WatchlistTable({ rows, listId, baseCurrency, fx, blink, hiddenCo
 
   const ctx: CellCtx = { base: baseCurrency, onTag, sparks, onToggle, isOpen, onSaveLevel };
 
-  const selectedSort = sortOptions.find((option) => option.id === sort.id);
-  const desktopSort = columns.find((column) => column.id === sort.id && column.sort);
-
   return (
-    <>
-    <div className="watchlist-sort">
-      <label htmlFor="watchlist-sort">Ordenar por</label>
-      <select id="watchlist-sort" className="select" value={selectedSort?.id ?? sort.id} onChange={(e) => {
-        const id = e.target.value;
-        changeSort({ id, dir: id === 'name' ? 'asc' : 'desc' });
-      }}>
-        {!selectedSort && <option value={sort.id}>{desktopSort ? fullLabel(desktopSort) : 'Orden guardado'}</option>}
-        {sortOptions.map((option) => <option key={option.id} value={option.id}>
-          {option.id === 'quotePrice' ? `Precio en ${baseCurrency}` : option.label}
-        </option>)}
-      </select>
-      <button type="button" className="btn" onClick={() => toggle(sort.id)}
-        aria-label={sort.dir === 'asc' ? 'Orden ascendente. Cambiar a descendente' : 'Orden descendente. Cambiar a ascendente'}>
-        {sort.dir === 'asc' ? '↑' : '↓'}
-      </button>
-    </div>
     <div className="table-wrap table-wrap--watchlist" ref={wrapRef}>
       <table className={`wl-table wl-table--watchlist${blink ? ' wl-table--blink' : ''}`}>
         <thead>
@@ -566,7 +535,7 @@ export function WatchlistTable({ rows, listId, baseCurrency, fx, blink, hiddenCo
           )}
           <tr>
             {visible.map((c) => {
-              const sortId = c.id === 'price' ? 'quotePrice' : c.id;
+              const sortId = c.id;
               return (
               <th
                 key={c.id}
@@ -587,8 +556,16 @@ export function WatchlistTable({ rows, listId, baseCurrency, fx, blink, hiddenCo
               </th>
               );
             })}
-            <th className="col-mobile-price al-right" aria-sort={sort.id === 'quotePrice' ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>Precio</th>
-            <th className="col-mobile-signal al-right" aria-sort={sort.id === 'map' ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>Compra</th>
+            <th className="col-mobile-price al-right" aria-sort={sort.id === 'price' ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
+              <button type="button" className="th-btn" onClick={() => toggle('price')} title="Ordena por variación de hoy (%)">
+                Precio<span className="sort-ind" aria-hidden>{sort.id === 'price' ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</span>
+              </button>
+            </th>
+            <th className="col-mobile-signal al-right" aria-sort={sort.id === 'map' ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
+              <button type="button" className="th-btn" onClick={() => toggle('map')} title="Ordena por cercanía al nivel de compra">
+                Compra<span className="sort-ind" aria-hidden>{sort.id === 'map' ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</span>
+              </button>
+            </th>
             <th className="col-actions">
               <span className="sr-only">Acciones</span>
             </th>
@@ -655,6 +632,5 @@ export function WatchlistTable({ rows, listId, baseCurrency, fx, blink, hiddenCo
         </tbody>
       </table>
     </div>
-    </>
   );
 }
