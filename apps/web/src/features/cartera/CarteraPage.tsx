@@ -260,6 +260,9 @@ export function CarteraPage({ model, isPending, error, draft, onDraftUsed }: Pro
             .join(' · ')}
         </div>
       )}
+      {model.ledger.inTransitEur > 0 && <p className="muted">
+        Hay {money(model.ledger.inTransitEur, 'EUR', 2)} en traspasos pendientes de entrada. Este importe está incluido en el valor de la cartera.
+      </p>}
 
       {empty ? (
         <div className="empty">

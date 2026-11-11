@@ -85,6 +85,7 @@ export function computePortfolioHistory(args: {
   let purchasesEur = 0;
   let salesEur = 0;
   let incomeEur = 0;
+  const transfers = new Map<string, number>();
   for (let date = shiftDate(from, -1); date <= to; date = shiftDate(date, 1)) {
     while (cursor < ops.length && ops[cursor]!.date <= date) {
       const op = ops[cursor++]!;
@@ -94,15 +95,17 @@ export function computePortfolioHistory(args: {
         else if (op.type === 'sell') salesEur += op.amountEur;
         else incomeEur += income.get(op.id) ?? 0;
       }
-      if (op.type === 'buy' || op.type === 'scrip') shares.set(op.ticker, held + (op.shares ?? 0));
-      else if (op.type === 'sell') shares.set(op.ticker, held - (op.shares ?? 0));
+      if (op.type === 'transfer_out' && op.transferRef) transfers.set(op.transferRef, op.amountEur);
+      if (op.type === 'transfer_in' && op.transferRef) transfers.delete(op.transferRef);
+      if (op.type === 'buy' || op.type === 'scrip' || op.type === 'transfer_in') shares.set(op.ticker, held + (op.shares ?? 0));
+      else if (op.type === 'sell' || op.type === 'transfer_out') shares.set(op.ticker, held - (op.shares ?? 0));
       else if (op.type === 'split') {
         shares.set(op.ticker, held * (op.splitRatio ?? 1));
         lastSplit.set(op.ticker, op.date);
       }
     }
-    let value = 0;
-    let constant = 0;
+    let value = [...transfers.values()].reduce((sum, amount) => sum + amount, 0);
+    let constant = value;
     let missingPrice = false;
     let missingFx = false;
     let missingFixedFx = false;

@@ -41,7 +41,7 @@ export class PortfolioService {
     const held = computeLedger(operations.filter((o) => o.date < from)).tickers.filter((t) => t.shares > 1e-6);
     const relevant = new Set(held.map((t) => t.ticker));
     for (const op of operations) {
-      if (op.date >= from && op.date <= to && (op.type === 'buy' || op.type === 'scrip')) relevant.add(op.ticker);
+      if (op.date >= from && op.date <= to && (op.type === 'buy' || op.type === 'scrip' || op.type === 'transfer_in')) relevant.add(op.ticker);
     }
     const selected = instruments.filter((i) => relevant.has(i.ticker));
     const prices: Record<string, DailyHistory> = {};
@@ -73,13 +73,24 @@ export class PortfolioService {
       return !hasPrices(history?.points) || (currency !== 'EUR' && !hasPrices(fx[currency]));
     });
     const excludedTickers = new Set(excluded.map(i => i.ticker));
-    const available = excluded.length > 0 && excluded.length < selected.length ? {
+    // Un histórico parcial debe excluir toda la cadena de fondos enlazados por traspasos.
+    let changed = true;
+    while (changed) {
+      changed = false;
+      const refs = new Set(operations.filter(o => excludedTickers.has(o.ticker) && o.transferRef).map(o => o.transferRef));
+      for (const o of operations) if (o.transferRef && refs.has(o.transferRef) && !excludedTickers.has(o.ticker)) {
+        excludedTickers.add(o.ticker);
+        changed = true;
+      }
+    }
+    const excludedLinked = selected.filter(i => excludedTickers.has(i.ticker));
+    const available = excludedLinked.length > 0 && excludedLinked.length < selected.length ? {
       points: computePortfolioHistory({
         operations: operations.filter(o => !excludedTickers.has(o.ticker)),
         instruments: instruments.filter(i => !excludedTickers.has(i.ticker)), prices, fx, from, to,
       }),
-      included: selected.length - excluded.length,
-      excluded: excluded.map(i => ({ ticker: i.ticker, name: i.name || i.ticker })),
+      included: selected.length - excludedLinked.length,
+      excluded: excludedLinked.map(i => ({ ticker: i.ticker, name: i.name || i.ticker })),
     } : undefined;
     return { from, to, points, stale, missing: [...new Set(points.flatMap((p) => p.missing))], available };
   }

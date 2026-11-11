@@ -36,6 +36,8 @@ En la vista previa puedes vincular un valor con uno existente, revisar su divisa
 
 Confirma la revisión para añadirlas. Si una venta supera las acciones disponibles u otra operación deja el registro inconsistente, se cancela toda la importación. Las operaciones previamente importadas, incluidas las del antiguo Excel, se conservan.
 
+Los traspasos entre fondos se registran con dos movimientos: **Traspaso de salida** y **Traspaso de entrada**, cada uno con su fecha, fondo y participaciones. Ambos deben compartir el importe en euros y una **Referencia del traspaso** única para esa pareja. Al introducirlos a mano, registra primero la salida. El coste y las fechas de adquisición de los lotes pasan al destino por FIFO; el traspaso no cuenta como nueva aportación ni como venta realizada. Hasta registrar la entrada, el importe aparece en tránsito y sigue incluido en el valor de la cartera. Usa estos tipos para traspasos de fondos con diferimiento, no para reembolsos con posterior reinversión.
+
 ### Evolución de la cartera
 
 En **Cartera → Resumen**, las cifras principales son la ganancia total desde el inicio, el valor de las acciones, la TIR anual y la variación de cotización de las posiciones actuales. El desglose muestra latente, ganancias realizadas en ventas y cobros. En escritorio, los resultados anuales quedan justo debajo de estas cifras, independientes de la altura del gráfico de la derecha. Solo se muestra un gráfico cada vez: **Resultado**, **Valor**, **Divisas**, **Valores**, **Sectores** o **Brókeres**.

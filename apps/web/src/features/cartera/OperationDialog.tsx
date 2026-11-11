@@ -69,6 +69,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
   const [broker, setBroker] = useState(op?.broker ?? draft?.broker ?? '');
   const [notes, setNotes] = useState(op?.notes ?? '');
   const [dayOrder, setDayOrder] = useState(op?.dayOrder != null ? String(op.dayOrder) : '');
+  const [transferRef, setTransferRef] = useState(op?.transferRef ?? '');
   const [review, setReview] = useState(op?.needsReview ?? false);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,12 +78,13 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
   const known = instruments.find((i) => i.ticker === t);
   const foreign = currency !== 'EUR';
   const income = isIncome(type);
-  const trade = type === 'buy' || type === 'sell';
+  const transfer = type === 'transfer_out' || type === 'transfer_in';
+  const trade = type === 'buy' || type === 'sell' || transfer;
 
   // Importe en euros propuesto a partir de acciones, precio, comisiones y cambio (se puede corregir).
   const n = (s: string) => parseDecimal(s);
   const fxN = foreign ? n(fx) : 1;
-  const suggested = trade ? tradeTotal(type, n(shares), n(priceRaw), n(fees) ?? 0, currency, fxN) : null;
+  const suggested = trade ? tradeTotal(type === 'buy' || type === 'transfer_in' ? 'buy' : 'sell', n(shares), n(priceRaw), n(fees) ?? 0, currency, fxN) : null;
   const amountShown = amountTouched ? amount : suggested != null ? str(suggested) : amount;
   const quoteVerified = !!quoteSymbol && verifiedSymbol === quoteSymbol.trim().toUpperCase();
   const acceptQuote = useCallback((quote: Quote | null) => {
@@ -120,6 +122,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
       sourceRef: op?.sourceRef ?? null,
       lotRef: type === 'scrip' ? (op?.lotRef ?? null) : null,
       dayOrder: dayOrder.trim() ? Number(dayOrder.trim()) : null,
+      transferRef: transfer ? transferRef.trim() || null : null,
     };
     try {
       await save.mutateAsync({
@@ -222,6 +225,11 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
           </div>
         </fieldset>
 
+        {transfer && <div className="field">
+          <label htmlFor="op-transfer-ref">Referencia del traspaso</label>
+          <input id="op-transfer-ref" value={transferRef} onChange={(e) => setTransferRef(e.target.value)} maxLength={100} />
+          <span className="field__help">Usa la misma referencia en la salida y la entrada. Solo para traspasos de fondos con diferimiento fiscal: conserva el coste y la fecha de adquisición. Registra primero la salida.</span>
+        </div>}
         {(trade || type === 'scrip') && (
           <fieldset className="form__section">
             <legend>Importe {foreign && <span className="muted">({currency} y cambio del día)</span>}</legend>
@@ -253,7 +261,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
                   </div>
                 )}
                 <div className="field">
-                  <label htmlFor="op-amount">{type === 'buy' ? 'Total pagado (€)' : 'Total recibido (€)'}</label>
+                  <label htmlFor="op-amount">{transfer ? 'Total traspasado (€)' : type === 'buy' ? 'Total pagado (€)' : 'Total recibido (€)'}</label>
                   <input
                     id="op-amount"
                     inputMode="decimal"
@@ -264,7 +272,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
                     }}
                   />
                   <span className="field__help">
-                    {type === 'buy' ? 'Con comisiones' : 'Ya sin comisiones'}, como en el extracto
+                    {transfer ? 'Importe que pasa al fondo de destino' : type === 'buy' ? 'Con comisiones' : 'Ya sin comisiones'}, como en el extracto
                     {amountTouched && suggested != null && n(amount) !== suggested && (
                       <>
                         {' · '}

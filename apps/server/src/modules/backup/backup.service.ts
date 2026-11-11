@@ -4,6 +4,7 @@ import { ItemsRepository } from '../items/items.repository.ts';
 import { ListsRepository } from '../lists/lists.repository.ts';
 import { InstrumentsRepository, OperationsRepository } from '../portfolio/cartera.repository.ts';
 import { SettingsRepository } from '../settings/settings.repository.ts';
+import { PortfolioService } from '../portfolio/portfolio.service.ts';
 
 /** Copias guardadas en la base de datos que se conservan (las más recientes). */
 const KEEP_SNAPSHOTS = 40;
@@ -68,6 +69,7 @@ export class BackupService {
         await instruments.deleteAll();
         for (const i of data.portfolio.instruments) await instruments.upsert(i);
         for (const o of data.portfolio.operations) await operations.create(o);
+        PortfolioService.assertValid(await operations.all());
       }
       return saved;
     });

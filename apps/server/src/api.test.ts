@@ -481,6 +481,23 @@ describe('cartera', () => {
     expect((await portfolio()).operations).toHaveLength(0);
   });
 
+  it('guarda el vínculo del traspaso y revierte importaciones o borrados que dejan entradas huérfanas', async () => {
+    const purchase = buy('AAA', 10, 100).operation;
+    const outgoing = { ...purchase, date: '2026-02-01', type: 'transfer_out', amountEur: 120, transferRef: 'pair' };
+    const incoming = { ...outgoing, date: '2026-02-02', ticker: 'BBB', type: 'transfer_in', shares: 6 };
+    const result = await send('POST', '/api/portfolio/import', { instruments: [], operations: [purchase, outgoing, incoming] });
+    expect(result.statusCode).toBe(200);
+    const view = await portfolio();
+    expect(view.operations.filter(o => o.transferRef === 'pair')).toHaveLength(2);
+    const out = view.operations.find(o => o.type === 'transfer_out')!;
+    expect((await send('DELETE', `/api/operations/${out.id}`)).statusCode).toBe(400);
+    const backup = (await get('/api/backup')).json();
+    expect((await send('POST', '/api/backup', backup)).statusCode).toBe(200);
+    const invalid = { ...backup, portfolio: { ...backup.portfolio, operations: [incoming] } };
+    expect((await send('POST', '/api/backup', invalid)).statusCode).toBe(400);
+    expect((await portfolio()).operations).toHaveLength(3);
+  });
+
   it('rellena el sector desde la ficha de la empresa', async () => {
     await send('POST', '/api/operations', { ...buy('BBB', 1, 40), instrument: { symbol: 'BBB' } });
     await portfolio();

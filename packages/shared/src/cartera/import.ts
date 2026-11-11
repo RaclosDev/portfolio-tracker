@@ -7,6 +7,7 @@ export const IMPORT_FIELDS = {
   shares: 'Cantidad / participaciones', price: 'Precio por unidad', amount: 'Importe', fees: 'Comisiones',
   currency: 'Divisa del valor', fxRate: 'Cambio: divisa por 1 €', broker: 'Bróker',
   withholdingEs: 'Retención España (€)', withholdingForeign: 'Retención origen (€)', splitRatio: 'Ratio del split', notes: 'Notas',
+  transferRef: 'Referencia del traspaso',
 } as const;
 export type ImportField = keyof typeof IMPORT_FIELDS;
 export type ColumnMap = Partial<Record<ImportField, number>>;
@@ -24,6 +25,7 @@ const aliases: Record<ImportField, string[]> = {
   currency: ['divisa', 'currency', 'moneda'], fxRate: ['cambio', 'fx', 'fx rate', 'exchange rate', 'tipo de cambio', 't/c'],
   broker: ['broker', 'intermediario', 'entidad'], withholdingEs: ['retencion espana', 'retencion espana eur', 'retencion es'],
   withholdingForeign: ['retencion origen', 'retencion origen eur', 'foreign tax'], splitRatio: ['ratio', 'split ratio', 'relacion'], notes: ['notas', 'notes', 'observaciones'],
+  transferRef: ['referencia del traspaso', 'referencia traspaso', 'transfer ref', 'transferref'],
 };
 const headerText = (v: Cell) => normalizeImportText(v).replace(/[()€]/g, '').trim();
 
@@ -64,6 +66,8 @@ export type ImportOptions = z.output<typeof importOptionsSchema>;
 const typeAliases: Record<string, OperationType> = {
   compra: 'buy', buy: 'buy', purchase: 'buy', suscripcion: 'buy', subscription: 'buy',
   venta: 'sell', sell: 'sell', sale: 'sell', reembolso: 'sell', redemption: 'sell',
+  'traspaso de salida': 'transfer_out', 'traspaso salida': 'transfer_out', 'transfer out': 'transfer_out',
+  'traspaso de entrada': 'transfer_in', 'traspaso entrada': 'transfer_in', 'transfer in': 'transfer_in',
   dividendo: 'dividend', dividend: 'dividend', dividends: 'dividend', dividendos: 'dividend',
   scrip: 'scrip', 'scrip dividend': 'scrip', 'venta de derechos': 'rights_sale', 'venta derechos': 'rights_sale',
   'prima de emision': 'issue_premium', 'prima de asistencia': 'attendance_premium', split: 'split',
@@ -195,7 +199,8 @@ export function previewImport(rows: Cell[][], headerIndex: number, options: Impo
     const fxRate = fx ?? (instrument?.currency === 'EUR' ? 1 : null);
     if (!fxRate || fxRate <= 0) result.errors.push('Falta un cambio histórico válido: unidades de la divisa del valor por 1 € (no el cambio actual).');
     if (instrument?.currency === 'EUR' && fxRate !== 1) result.errors.push('Para un valor en EUR, el tipo de cambio debe ser 1.');
-    if (type === 'buy' || type === 'sell') {
+    const transfer = type === 'transfer_out' || type === 'transfer_in';
+    if (type === 'buy' || type === 'sell' || transfer) {
       if (!shares) result.errors.push('Falta la cantidad de títulos o participaciones.');
       if (amount == null && price == null) result.errors.push('Falta el importe o el precio de la operación.');
     } else if (type && type !== 'scrip' && type !== 'split' && amount == null) result.errors.push('Falta el importe del cobro.');
@@ -204,6 +209,8 @@ export function previewImport(rows: Cell[][], headerIndex: number, options: Impo
       const signedFee = type === 'buy' ? fees : -fees;
       if (amount == null) amountEur = (Math.abs(shares ?? 0) * (price ?? 0) + signedFee) / (fxRate ?? 1);
       else if (!options.amountIncludesFees) amountEur += signedFee / (fxRate ?? 1);
+    } else if (transfer) {
+      if (amount == null) amountEur = Math.abs(shares ?? 0) * (price ?? 0) / (fxRate ?? 1);
     } else if (type === 'scrip' || type === 'split') amountEur = 0;
     else if (options.incomeIsNet) amountEur += Math.abs(withholdingEs ?? 0) + Math.abs(withholdingForeign ?? 0) + fees / (fxRate ?? 1);
     if (type && instrument && result.errors.length === 0) {
@@ -211,6 +218,7 @@ export function previewImport(rows: Cell[][], headerIndex: number, options: Impo
         date, ticker: instrument.ticker, type, shares: shares == null ? null : Math.abs(shares), price, fees, fxRate, amountEur,
         withholdingEs: withholdingEs == null ? null : Math.abs(withholdingEs), withholdingForeign: withholdingForeign == null ? null : Math.abs(withholdingForeign),
         splitRatio, broker: text(get('broker')) || options.defaultBroker || null, notes: text(get('notes')) || null, source: 'excel',
+        transferRef: text(get('transferRef')) || null,
       });
       if (parsed.success) result.operation = parsed.data;
       else result.errors.push(...parsed.error.issues.map((e) => e.message));
@@ -223,5 +231,5 @@ export function previewImport(rows: Cell[][], headerIndex: number, options: Impo
 export function operationFingerprint(o: OperationData): string {
   const n = (value: number | null) => value == null ? null : Number(value.toPrecision(12));
   return JSON.stringify([o.date, o.ticker.toUpperCase(), o.type, n(o.shares), n(o.price), n(o.amountEur), n(o.fees), n(o.fxRate),
-    n(o.withholdingEs ?? 0), n(o.withholdingForeign ?? 0), n(o.splitRatio), normalizeImportText(o.broker)]);
+    n(o.withholdingEs ?? 0), n(o.withholdingForeign ?? 0), n(o.splitRatio), normalizeImportText(o.broker), o.transferRef ?? null]);
 }
