@@ -3,7 +3,7 @@
  * proveedor de cotizaciones simulado: no dependen de internet, de Neon ni de Yahoo.
  */
 import { DEFAULT_COLORS, DEFAULT_SETTINGS, type CarteraView, type Settings, type WatchlistView } from '@watchlist/shared';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from './app.ts';
 import type { AuthOptions } from './modules/auth/auth.ts';
 import { migrate, openPGlite, type Db } from './db/database.ts';
@@ -20,6 +20,14 @@ class FakeProvider implements MarketDataProvider {
   readonly id = 'prueba';
   failWith: string | null = null;
   calls = 0;
+  dailyCalls: string[] = [];
+  async getDailyHistory(symbol: string) {
+    this.dailyCalls.push(symbol);
+    if (this.failWith) throw new Error(this.failWith);
+    const currency = symbol === 'BBB' ? 'USD' : symbol === 'PENCE' ? 'GBp' : 'EUR';
+    const values = symbol === 'EURUSD=X' ? [1.25, 2] : symbol === 'EURGBP=X' ? [0.8, 1] : [10, 12];
+    return { currency, points: values.map((c, i) => ({ t: `2026-10-0${i + 1}`, c })) };
+  }
   async getQuotes(symbols: string[]) {
     this.calls++;
     if (this.failWith) throw new Error(this.failWith);
@@ -62,6 +70,7 @@ beforeEach(async () => {
   await setup();
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await app.close();
   await db.close();
 });
@@ -77,6 +86,7 @@ describe('acceso', () => {
 
   it('sin entrar no se ven los datos; con la contraseña sí', async () => {
     expect((await get('/api/lists')).statusCode).toBe(401);
+    expect((await get('/api/portfolio/history?from=2026-10-01&to=2026-10-02')).statusCode).toBe(401);
     const health = await get('/api/health');
     expect(health.statusCode).toBe(200);
     // El lector de Excel usa workers blob:; si la CSP los bloquea, importar se cuelga sin error.
@@ -113,6 +123,46 @@ describe('acceso', () => {
       headers: { host: 'cartera.test', origin: 'https://malvada.example' },
     });
     expect(res.statusCode).toBe(403);
+  });
+});
+
+describe('histórico de cartera', () => {
+  it('incluye posiciones ya cerradas, separa divisas y reutiliza la caché entre peticiones', async () => {
+    for (const [ticker, symbol, currency] of [['AAA', 'AAA.MC', 'EUR'], ['BBB', 'BBB', 'USD']]) {
+      expect((await send('POST', '/api/operations', { operation: { type: 'buy', date: '2026-09-30', ticker, shares: 10, amountEur: 100 }, instrument: { symbol, currency } })).statusCode).toBe(201);
+    }
+    await send('POST', '/api/operations', { operation: { type: 'sell', date: '2026-10-02', ticker: 'AAA', shares: 10, amountEur: 120 } });
+    const url = '/api/portfolio/history?from=2026-10-01&to=2026-10-02';
+    const [a, b] = await Promise.all([get(url), get(url)]);
+    expect(a.statusCode, a.body).toBe(200);
+    expect(b.json()).toEqual(a.json());
+    expect(a.json()).toMatchObject({ stale: false, missing: [], points: [
+      { valueEur: 180, constantFxEur: 180, fxEffectEur: 0 },
+      { valueEur: 60, constantFxEur: 96, fxEffectEur: -36 },
+    ] });
+    expect(provider.dailyCalls.sort()).toEqual(['AAA.MC', 'BBB', 'EURUSD=X']);
+    const future = Date.now() + 2 * 60 * 60_000;
+    vi.spyOn(Date, 'now').mockReturnValue(future);
+    provider.failWith = 'offline';
+    const stale = (await get(url)).json();
+    expect(stale.stale).toBe(true);
+    expect(stale.points).toEqual(a.json().points);
+  });
+
+  it('convierte cotizaciones en peniques con la divisa del proveedor', async () => {
+    await send('POST', '/api/operations', { operation: { type: 'buy', date: '2026-09-30', ticker: 'PENCE', shares: 100, amountEur: 10 }, instrument: { symbol: 'PENCE', currency: 'GBP' } });
+    const res = (await get('/api/portfolio/history?from=2026-10-01&to=2026-10-02')).json();
+    expect(res.points[0]).toMatchObject({ valueEur: 12.5, constantFxEur: 12.5 });
+    expect(res.points[1]).toMatchObject({ valueEur: 12, constantFxEur: 15, fxEffectEur: -3 });
+    expect(provider.dailyCalls).toContain('EURGBP=X');
+  });
+
+  it('rechaza periodos inválidos y devuelve una cartera vacía sin consultar mercado', async () => {
+    for (const query of ['from=2026-02-30&to=2026-03-01', 'from=2026-10-02&to=2026-10-01', 'from=2026-01-01&to=2999-01-01', 'from=2026-01-01']) {
+      expect((await get(`/api/portfolio/history?${query}`)).statusCode).toBe(400);
+    }
+    expect((await get('/api/portfolio/history?from=2026-10-01&to=2026-10-01')).json().points[0].valueEur).toBe(0);
+    expect(provider.dailyCalls).toEqual([]);
   });
 });
 

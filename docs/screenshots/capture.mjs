@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_SETTINGS, itemInputSchema } from '../../packages/shared/src/schemas.ts';
 import { instrumentInputSchema, operationInputSchema } from '../../packages/shared/src/cartera/schemas.ts';
 import { computeMetrics } from '../../packages/shared/src/calc.ts';
+import { computePortfolioHistory, shiftDate } from '../../packages/shared/src/cartera/history.ts';
 
 const require = createRequire(process.env.PLAYWRIGHT_PACKAGE_JSON ?? new URL('../../package.json', import.meta.url));
 const { chromium, expect } = require('@playwright/test');
@@ -60,6 +61,17 @@ const responses = {
   '/api/alerts': [],
 };
 
+function historyFixture(from, to) {
+  const dates = [];
+  for (let date = shiftDate(from, -7); date <= to; date = shiftDate(date, 1)) dates.push(date);
+  const prices = Object.fromEntries(examples.map(([symbol, , price], index) => [symbol, {
+    currency: quotes[symbol].currency,
+    points: dates.map((t, i) => ({ t, c: price * (0.8 + i / dates.length * 0.2 + Math.sin(i / 12 + index) * 0.03) })),
+  }]));
+  const fx = { USD: dates.map((t, i) => ({ t, c: 1.15 - i / dates.length * 0.06 })) };
+  return { from, to, points: computePortfolioHistory({ from, to, operations, instruments, prices, fx }), stale: false, missing: [] };
+}
+
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch();
 try {
@@ -72,6 +84,9 @@ try {
     const url = new URL(route.request().url());
     if (url.origin !== origin) return route.abort();
     if (!url.pathname.startsWith('/api/')) return route.continue();
+    if (url.pathname === '/api/portfolio/history' && route.request().method() === 'GET') {
+      return route.fulfill({ json: historyFixture(url.searchParams.get('from'), url.searchParams.get('to')) });
+    }
     if (!(url.pathname in responses) || route.request().method() !== 'GET') {
       failures.push(`${route.request().method()} ${url.pathname}`);
       return route.fulfill({ status: 501, json: { error: 'Missing screenshot fixture' } });

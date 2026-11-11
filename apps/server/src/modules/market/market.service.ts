@@ -1,4 +1,4 @@
-import type { AnalystTargets, HistoryRange, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
+import { shiftDate, type AnalystTargets, type DailyHistory, type HistoryRange, type PricePoint, type Quote, type SymbolSearchResult } from '@watchlist/shared';
 import type { Db } from '../../db/database.ts';
 import { isinCandidates, isIsin } from './isin.ts';
 import type { CompanyProfile, MarketDataProvider } from './provider.ts';
@@ -18,7 +18,7 @@ interface Entry<T> {
 }
 
 /** Divisas que cotizan en centésimas (Londres en peniques, Tel Aviv en agorot…). */
-const MINOR_UNITS: Record<string, { major: string; factor: number }> = {
+export const MINOR_UNITS: Record<string, { major: string; factor: number }> = {
   GBp: { major: 'GBP', factor: 100 },
   GBX: { major: 'GBP', factor: 100 },
   ILA: { major: 'ILS', factor: 100 },
@@ -82,6 +82,39 @@ export class MarketService {
 
   get providerId() {
     return this.provider.id;
+  }
+
+  private dailyPending = new Map<string, Promise<DailyHistory & { stale: boolean }>>();
+
+  async getDailyHistory(symbol: string, from: string): Promise<DailyHistory & { stale: boolean }> {
+    const start = `${shiftDate(from, -7).slice(0, 4)}-01-01`;
+    const key = `${start}:${symbol}`;
+    const pending = this.dailyPending.get(key);
+    if (pending) return pending;
+    const request = this.loadDailyHistory(symbol, start);
+    this.dailyPending.set(key, request);
+    try { return await request; }
+    finally { this.dailyPending.delete(key); }
+  }
+
+  private async loadDailyHistory(symbol: string, start: string): Promise<DailyHistory & { stale: boolean }> {
+    const kind = `daily-v1-${start}`;
+    const key = `${kind}:${symbol}`;
+    const cached = (this.mem.get(key) as Entry<DailyHistory> | undefined) ?? await this.load<DailyHistory>(kind, symbol);
+    if (cached && Date.now() - cached.fetchedAt < HISTORY_TTL_MS) {
+      this.mem.set(key, cached);
+      return { ...cached.value, stale: false };
+    }
+    if (!this.throttled && this.provider.getDailyHistory) {
+      try {
+        const value = await this.provider.getDailyHistory(symbol, start);
+        if (!value.points.length) throw new Error('Sin cierres diarios');
+        this.mem.set(key, { value, fetchedAt: Date.now() });
+        await this.persist(kind, symbol, value);
+        return { ...value, stale: false };
+      } catch (err) { this.onProviderError(err, `Sin histórico diario de ${symbol}`); }
+    }
+    return { ...(cached?.value ?? { currency: null, points: [] }), stale: true };
   }
 
   invalidateQuotes() {

@@ -3,6 +3,7 @@ import type {
   Backup,
   CarteraImport,
   CarteraView,
+  PortfolioHistory,
   Instrument,
   InstrumentInput,
   InstrumentPatch,
@@ -107,6 +108,7 @@ export const api = {
   deleteItem: (id: number) => request<void>('DELETE', `/api/items/${id}`),
 
   portfolio: (force = false) => request<CarteraView>('GET', `/api/portfolio${force ? '?force=1' : ''}`),
+  portfolioHistory: (from: string, to: string) => request<PortfolioHistory>('GET', `/api/portfolio/history?${new URLSearchParams({ from, to })}`),
   createOperation: (operation: OperationInput, instrument?: Partial<InstrumentInput>) =>
     request<Operation>('POST', '/api/operations', { operation, instrument }),
   updateOperation: (id: number, data: OperationInput) => request<Operation>('PUT', `/api/operations/${id}`, data),

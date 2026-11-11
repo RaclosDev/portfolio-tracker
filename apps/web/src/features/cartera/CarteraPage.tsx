@@ -2,7 +2,7 @@ import type { Operation } from '@watchlist/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { money, pct } from '../../lib/format.ts';
 import { CarteraImportDialog } from './CarteraImportDialog.tsx';
-import { Donut } from './Donut.tsx';
+import { PortfolioCharts } from './PortfolioCharts.tsx';
 import { ClosedView, HoldingsView } from './HoldingsView.tsx';
 import { signed, type CarteraModel } from './model.ts';
 import { OperationDialog, type OperationDraft } from './OperationDialog.tsx';
@@ -34,12 +34,12 @@ function Figure({ label, value, sub, delta, title }: { label: string; value: str
 function Totals({ model }: { model: CarteraModel }) {
   const s = model.valuation.summary;
   return (
-    <>
+    <div className="portfolio-summary">
     <section className="highlights cartera-totals" aria-label="Resumen de la cartera">
       <Figure label="Valor actual" value={money(s.valueEur, 'EUR', 2)} />
       <Figure label="Hoy" value={money(s.dayChangeEur, 'EUR', 2)} sub={pct(s.dayChangePct, 2)} delta={s.dayChangeEur} />
       <Figure
-        label="Total"
+        label="Resultado total"
         value={money(s.totalEur, 'EUR', 2)}
         sub={s.xirr != null ? `TIR ${pct(s.xirr).replace('+', '')}` : undefined}
         delta={s.totalEur}
@@ -54,21 +54,21 @@ function Totals({ model }: { model: CarteraModel }) {
         </div>
       )}
     </section>
-    <details className="cartera-breakdown">
-      <summary>Desglose del resultado</summary>
+    <section className="cartera-breakdown" aria-label="Desglose del resultado">
+      <h3>Desglose del resultado</h3>
       <div className="highlights">
         <Figure label="Latente" value={money(s.unrealizedEur, 'EUR', 2)} sub={pct(s.costEur ? s.unrealizedEur / s.costEur : null)} delta={s.unrealizedEur} />
         <Figure label="Realizado" value={money(s.realizedEur, 'EUR', 2)} delta={s.realizedEur} title="Resultado de todas las ventas" />
         <Figure label="Cobros" value={money(s.incomeEur, 'EUR', 2)} title="Dividendos y primas (bruto − comisiones − retención en origen)" />
       </div>
-    </details>
-    </>
+    </section>
+    </div>
   );
 }
 
 /** Pestaña Resumen: reparto de la cartera y resultados por año. */
 function ResumenView({ model }: { model: CarteraModel }) {
-  const { open, bySector } = model.valuation;
+  const { open } = model.valuation;
   const byBroker = useMemo(() => {
     const m = new Map<string, number>();
     for (const r of open) {
@@ -93,10 +93,9 @@ function ResumenView({ model }: { model: CarteraModel }) {
 
   return (
     <>
-      <div className="donuts">
-        <Donut title="Por valor" slices={open.map((r) => ({ label: r.name, value: r.valueEur ?? 0 }))} />
-        <Donut title="Por sector" slices={bySector.map((x) => ({ label: x.sector, value: x.valueEur }))} />
-        <Donut title="Por bróker" slices={byBroker} />
+      <div className="portfolio-overview">
+        <Totals model={model} />
+        <PortfolioCharts model={model} byBroker={byBroker} />
       </div>
       <div className="resumen-grid">
         <div>
@@ -267,7 +266,7 @@ export function CarteraPage({ model, isPending, error, draft, onDraftUsed }: Pro
         </div>
       ) : (
         <>
-          {tab === 'resumen' && <><Totals model={model} /><ResumenView model={model} /></>}
+          {tab === 'resumen' && <ResumenView model={model} />}
           {tab === 'abiertas' && <HoldingsView model={model} onOpen={setTicker} />}
           {tab === 'cerradas' && <ClosedView model={model} onOpen={setTicker} />}
           {tab === 'registro' && <RegistroView model={model} onImport={() => setImporting(true)} onEdit={(op) => setEditing({ op })} />}

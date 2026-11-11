@@ -1,11 +1,15 @@
 import {
   computeLedger,
+  computePortfolioHistory,
+  type DailyHistory,
+  type PortfolioHistory,
+  type PricePoint,
   type CarteraView,
   type Instrument,
   type Operation,
   type Quote,
 } from '@watchlist/shared';
-import type { MarketService } from '../market/market.service.ts';
+import { MINOR_UNITS, type MarketService } from '../market/market.service.ts';
 import type { SettingsRepository } from '../settings/settings.repository.ts';
 import type { InstrumentsRepository, OperationsRepository } from './cartera.repository.ts';
 
@@ -30,6 +34,38 @@ export class PortfolioService {
     private settings: SettingsRepository,
     private market: MarketService,
   ) {}
+
+  async history(from: string, to: string): Promise<PortfolioHistory> {
+    const [operations, instruments] = await Promise.all([this.operations.all(), this.instruments.all()]);
+    const held = computeLedger(operations.filter((o) => o.date < from)).tickers.filter((t) => t.shares > 1e-6);
+    const relevant = new Set(held.map((t) => t.ticker));
+    for (const op of operations) {
+      if (op.date >= from && op.date <= to && (op.type === 'buy' || op.type === 'scrip')) relevant.add(op.ticker);
+    }
+    const selected = instruments.filter((i) => relevant.has(i.ticker));
+    const prices: Record<string, DailyHistory> = {};
+    const fx: Record<string, PricePoint[]> = {};
+    let stale = false;
+    const symbols = [...new Set(selected.flatMap((i) => i.symbol ? [i.symbol] : []))];
+    // Dos peticiones como máximo a la vez: una cartera importada puede tener cientos de valores.
+    for (let i = 0; i < symbols.length; i += 2) {
+      await Promise.all(symbols.slice(i, i + 2).map(async (symbol) => {
+        const history = await this.market.getDailyHistory(symbol, from);
+        prices[symbol] = history;
+        stale ||= history.stale;
+      }));
+    }
+    const currencies = [...new Set(selected.map((i) => (i.symbol ? prices[i.symbol]?.currency : null) ?? i.currency))];
+    for (const currency of currencies) {
+      if (currency === 'EUR') continue;
+      const { major, factor } = MINOR_UNITS[currency] ?? { major: currency, factor: 1 };
+      const history = await this.market.getDailyHistory(`EUR${major}=X`, from);
+      fx[currency] = history.points.map((p) => ({ ...p, c: p.c * factor }));
+      stale ||= history.stale;
+    }
+    const points = computePortfolioHistory({ operations, instruments, prices, fx, from, to });
+    return { from, to, points, stale, missing: [...new Set(points.flatMap((p) => p.missing))] };
+  }
 
   async view({ force = false } = {}): Promise<CarteraView> {
     const [operations, instruments, settings] = await Promise.all([

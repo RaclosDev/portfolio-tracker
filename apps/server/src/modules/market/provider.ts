@@ -1,4 +1,4 @@
-import type { AnalystTargets, HistoryRange, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
+import type { AnalystTargets, DailyHistory, HistoryRange, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
 
 /**
  * Contrato de cualquier fuente de datos de mercado.
@@ -14,6 +14,8 @@ export interface MarketDataProvider {
   search(query: string): Promise<SymbolSearchResult[]>;
   /** Cierres históricos del periodo, del más antiguo al más reciente. */
   getHistory(symbol: string, range: HistoryRange): Promise<PricePoint[]>;
+  /** Cierres diarios desde una fecha hasta hoy, sin ajuste retrospectivo por splits. */
+  getDailyHistory?(symbol: string, from: string): Promise<DailyHistory>;
   /** Ficha de la empresa (sector en español). Opcional: sin ella la cartera queda «Sin sector». */
   getProfile?(symbol: string): Promise<CompanyProfile | null>;
 }

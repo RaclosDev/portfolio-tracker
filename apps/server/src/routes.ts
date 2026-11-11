@@ -8,6 +8,7 @@ import {
   itemPatchSchema,
   listInputSchema,
   operationInputSchema,
+  portfolioHistoryQuerySchema,
   settingsSchema,
 } from '@watchlist/shared';
 import type { FastifyInstance } from 'fastify';
@@ -38,6 +39,12 @@ class HttpError extends Error {
 const notFound = (what: string) => new HttpError(404, `${what} no encontrado`);
 
 export async function registerRoutes(app: FastifyInstance) {
+  app.get('/api/portfolio/history', async (req) => {
+    const { from, to } = portfolioHistoryQuerySchema.parse(req.query);
+    const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Madrid' }).format(new Date());
+    if (to > today) throw new HttpError(400, 'El histórico no admite fechas futuras');
+    return req.services.portfolio.history(from, to);
+  });
   app.get('/api/health', async (req) => ({ ok: true, provider: req.services.market.providerId, version: config.version }));
 
   // Ajustes

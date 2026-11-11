@@ -1,0 +1,112 @@
+import { z } from 'zod';
+import type { PricePoint } from '../types.ts';
+import { sortOperations } from './ledger.ts';
+import type { Instrument, Operation } from './schemas.ts';
+
+const DAY = 86_400_000;
+export const portfolioHistoryQuerySchema = z.object({
+  from: z.iso.date().refine((s) => s >= '1900-01-01', 'La fecha debe ser posterior a 1900'),
+  to: z.iso.date(),
+}).refine(({ from, to }) => from <= to, 'La fecha inicial debe ser anterior a la final')
+  .refine(({ from, to }) => Date.parse(to) - Date.parse(from) <= 100 * 366 * DAY, 'El periodo máximo es de 100 años');
+
+/** Cierres en las unidades y número de acciones que existían en cada fecha. */
+export interface DailyHistory {
+  currency: string | null;
+  points: PricePoint[];
+}
+
+export interface PortfolioHistoryPoint {
+  date: string;
+  valueEur: number | null;
+  constantFxEur: number | null;
+  fxEffectEur: number | null;
+  missing: string[];
+}
+
+export interface PortfolioHistory {
+  from: string;
+  to: string;
+  points: PortfolioHistoryPoint[];
+  stale: boolean;
+  missing: string[];
+}
+
+export function shiftDate(date: string, days: number): string {
+  return new Date(Date.parse(date) + days * DAY).toISOString().slice(0, 10);
+}
+
+/** No usa precios futuros ni arrastra indefinidamente cotizaciones de valores suspendidos. */
+function reader(points: PricePoint[]) {
+  const sorted = points.filter((p) => Number.isFinite(p.c) && p.c > 0)
+    .map((p) => ({ date: p.t.slice(0, 10), c: p.c })).sort((a, b) => a.date.localeCompare(b.date));
+  let cursor = -1;
+  return (date: string, notBefore?: string): number | null => {
+    while (cursor + 1 < sorted.length && sorted[cursor + 1]!.date <= date) cursor++;
+    const point = sorted[cursor];
+    return point && (!notBefore || point.date >= notBefore) && Date.parse(date) - Date.parse(point.date) <= 7 * DAY ? point.c : null;
+  };
+}
+
+export function computePortfolioHistory(args: {
+  operations: Operation[];
+  instruments: Instrument[];
+  prices: Record<string, DailyHistory>;
+  fx: Record<string, PricePoint[]>;
+  from: string;
+  to: string;
+}): PortfolioHistoryPoint[] {
+  const { from, to, prices } = args;
+  const instruments = new Map(args.instruments.map((i) => [i.ticker, i]));
+  const ops = sortOperations(args.operations);
+  const priceReaders = new Map(Object.entries(prices).map(([symbol, series]) => [symbol, reader(series.points)]));
+  const fxReaders = new Map(Object.entries(args.fx).map(([currency, series]) => [currency, reader(series)]));
+  const fixedFx = new Map([...fxReaders].map(([currency, read]) => [currency, read(from)]));
+  const shares = new Map<string, number>();
+  const lastSplit = new Map<string, string>();
+  const points: PortfolioHistoryPoint[] = [];
+  let cursor = 0;
+  for (let date = from; date <= to; date = shiftDate(date, 1)) {
+    while (cursor < ops.length && ops[cursor]!.date <= date) {
+      const op = ops[cursor++]!;
+      const held = shares.get(op.ticker) ?? 0;
+      if (op.type === 'buy' || op.type === 'scrip') shares.set(op.ticker, held + (op.shares ?? 0));
+      else if (op.type === 'sell') shares.set(op.ticker, held - (op.shares ?? 0));
+      else if (op.type === 'split') {
+        shares.set(op.ticker, held * (op.splitRatio ?? 1));
+        lastSplit.set(op.ticker, op.date);
+      }
+    }
+    let value = 0;
+    let constant = 0;
+    let missingPrice = false;
+    let missingFx = false;
+    let missingFixedFx = false;
+    const missing = new Set<string>();
+    for (const [ticker, held] of shares) {
+      if (held <= 1e-6) continue;
+      const instrument = instruments.get(ticker);
+      const symbol = instrument?.symbol;
+      const price = symbol ? priceReaders.get(symbol)?.(date, lastSplit.get(ticker)) : null;
+      const currency = (symbol ? prices[symbol]?.currency : null) ?? instrument?.currency;
+      if (price == null || !currency) {
+        missingPrice = true;
+        missing.add(ticker);
+        continue;
+      }
+      const fx = currency === 'EUR' ? 1 : fxReaders.get(currency)?.(date);
+      const fixed = currency === 'EUR' ? 1 : fixedFx.get(currency);
+      if (fx == null) { missingFx = true; missing.add(`EUR/${currency}`); }
+      else value += held * price / fx;
+      if (fixed == null) { missingFixedFx = true; missing.add(`EUR/${currency} al inicio`); }
+      else constant += held * price / fixed;
+    }
+    const valueEur = missingPrice || missingFx ? null : value;
+    const constantFxEur = missingPrice || missingFixedFx ? null : constant;
+    points.push({ date, valueEur, constantFxEur,
+      fxEffectEur: valueEur != null && constantFxEur != null ? valueEur - constantFxEur : null,
+      missing: [...missing],
+    });
+  }
+  return points;
+}

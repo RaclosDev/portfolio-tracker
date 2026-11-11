@@ -1,4 +1,4 @@
-import type { HistoryRange, PricePoint } from '@watchlist/shared';
+import type { DailyHistory, HistoryRange, PricePoint } from '@watchlist/shared';
 import YahooFinance from 'yahoo-finance2';
 import type { MarketDataProvider } from './provider.ts';
 
@@ -7,6 +7,29 @@ const s = (v: unknown): string | null => (typeof v === 'string' && v.length ? v 
 
 // Sin validación estricta: Yahoo cambia campos con frecuencia y no queremos romper por eso.
 const LOOSE = { validateResult: false } as const;
+
+interface DailyChart {
+  meta?: { currency?: string; exchangeTimezoneName?: string };
+  quotes?: { date: Date | string; close?: number | null }[];
+  events?: { splits?: { date: Date | string; numerator: number; denominator: number }[] };
+}
+
+export function dailyHistoryFromChart(chart: DailyChart): DailyHistory {
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: chart.meta?.exchangeTimezoneName ?? 'UTC',
+    year: 'numeric', month: '2-digit', day: '2-digit' });
+  const dateOf = (date: Date | string) => day.format(new Date(date));
+  const splits = (chart.events?.splits ?? []).filter((s) => s.numerator > 0 && s.denominator > 0)
+    .map((s) => ({ date: dateOf(s.date), ratio: s.numerator / s.denominator }));
+  return {
+    currency: chart.meta?.currency ?? null,
+    points: (chart.quotes ?? []).filter((q) => n(q.close) != null && q.close! > 0).map((q) => {
+      const t = dateOf(q.date);
+      // Yahoo ajusta close por splits posteriores; el registro conserva las acciones de cada día.
+      const factor = splits.reduce((v, s) => s.date > t ? v * s.ratio : v, 1);
+      return { t, c: q.close! * factor };
+    }),
+  };
+}
 
 /** Días hacia atrás e intervalo de cada periodo del gráfico. */
 const RANGES: Record<HistoryRange, { days: number; interval: '1d' | '1wk' }> = {
@@ -50,6 +73,11 @@ export const SECTOR_OVERRIDES: Record<string, string> = {
 export class YahooProvider implements MarketDataProvider {
   readonly id = 'yahoo';
   private yf = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
+
+  async getDailyHistory(symbol: string, from: string): Promise<DailyHistory> {
+    const chart = await this.yf.chart(symbol, { period1: from, interval: '1d', events: 'split' }, LOOSE) as DailyChart;
+    return dailyHistoryFromChart(chart);
+  }
 
   async getHistory(symbol: string, range: HistoryRange): Promise<PricePoint[]> {
     const { days, interval } = RANGES[range];

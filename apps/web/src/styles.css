@@ -1069,9 +1069,69 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .optype--dividend, .optype--attendance_premium, .optype--issue_premium, .optype--rights_sale { color: var(--up); }
 .registro-table .notes { max-width: 260px; }
 .cartera-tab-select, .registro-mobile { display: none; }
-.cartera-breakdown { margin-bottom: 12px; }
-.cartera-breakdown summary { width: fit-content; padding: 10px 0; cursor: pointer; }
-.cartera-breakdown .highlights { margin-bottom: 0; }
+.portfolio-overview { display: grid; grid-template-columns: minmax(285px, 0.75fr) minmax(0, 1.8fr); gap: 20px; align-items: start; margin-bottom: 24px; }
+.portfolio-summary, .portfolio-charts { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+.portfolio-summary .highlights { display: block; background: transparent; border: 0; margin: 0; }
+.portfolio-summary .hl-cell { padding: 12px 0; }
+.portfolio-summary .cartera-totals .hl-cell + .hl-cell { border-top: 1px solid var(--border); }
+.portfolio-summary .cartera-totals .hl-cell:first-child { padding-top: 0; padding-bottom: 20px; }
+.portfolio-summary .cartera-totals .hl-cell:first-child .hl-figure { font-size: 32px; letter-spacing: -0.03em; }
+.cartera-breakdown { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 14px; }
+.cartera-breakdown h3 { font-size: 13px; margin: 0 0 8px; font-weight: 600; }
+.cartera-breakdown .hl-cell { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; padding: 6px 0; }
+.cartera-breakdown .hl-figure, .cartera-breakdown .hl-figure.delta { font-size: 15px; }
+.portfolio-charts { --history-fixed: #a76808; }
+[data-theme='dark'] .portfolio-charts { --history-fixed: #e9ac49; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .portfolio-charts { --history-fixed: #e9ac49; } }
+.portfolio-charts__heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.portfolio-charts__heading h3 { margin: 0; font-size: 17px; }
+.portfolio-charts__arrows { display: flex; align-items: center; gap: 8px; }
+.portfolio-charts__arrows .btn { min-height: 36px; min-width: 36px; padding: 4px 8px; font-size: 18px; }
+.portfolio-chart-tabs, .portfolio-periods { display: flex; flex-wrap: wrap; gap: 4px; }
+.portfolio-chart-tabs { border-bottom: 1px solid var(--border); margin: 12px 0 16px; padding-bottom: 8px; }
+.portfolio-chart-tabs button, .portfolio-periods button { border: 0; background: transparent; color: var(--text-2); font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 4px; cursor: pointer; min-height: 36px; }
+.portfolio-chart-tabs button[aria-pressed='true'], .portfolio-periods button[aria-pressed='true'] { color: var(--text); background: var(--surface-2); font-weight: 650; }
+.portfolio-chart-tabs button:hover, .portfolio-periods button:hover { color: var(--text); background: var(--surface-2); }
+.portfolio-periods { margin-bottom: 10px; }
+.portfolio-dates { display: flex; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.portfolio-dates label, .portfolio-history__cursor label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
+.portfolio-dates .input, .portfolio-history__cursor .input { width: auto; min-width: 0; padding: 6px 8px; font-size: 12px; }
+.portfolio-history__readout { display: flex; flex-wrap: wrap; gap: 12px 28px; margin-bottom: 8px; }
+.portfolio-history__readout > div { display: grid; gap: 3px; }
+.portfolio-history__readout strong { font-size: 20px; font-weight: 600; }
+.portfolio-history__readout strong small { font-size: 12px; font-weight: 500; }
+.portfolio-history__svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.portfolio-history__svg text { fill: var(--text-2); font: 12px system-ui; }
+.portfolio-history__line { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.portfolio-history__line--fixed { stroke: var(--history-fixed); stroke-dasharray: 6 4; }
+.portfolio-history__legend { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 8px 0; font-size: 12px; }
+.portfolio-history__legend span { display: flex; align-items: center; gap: 6px; }
+.portfolio-history__legend span::before { content: ''; width: 20px; border-top: 3px solid var(--accent); }
+.portfolio-history__legend span + span::before { border-color: var(--history-fixed); border-top-style: dashed; }
+.portfolio-history__cursor { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; margin-top: 14px; }
+.portfolio-history__cursor input[type='range'] { flex: 1; min-width: 100px; accent-color: var(--accent); }
+.portfolio-chart-note { color: var(--text-2); font-size: 12px; line-height: 1.5; margin: 14px 0 0; }
+.portfolio-charts .donut { border: 0; padding: 16px 0; }
+.portfolio-charts .donut__body { gap: 24px; }
+.portfolio-charts .donut__body svg { width: 180px; height: 180px; }
+.portfolio-charts .donut__legend { gap: 10px; font-size: 13px; }
+.portfolio-charts .donut__label { white-space: normal; }
+.portfolio-charts .donut__legend .num { text-align: right; }
+.portfolio-charts .donut__legend small { display: block; font-size: 11px; margin-top: 2px; }
+@media (max-width: 1000px) { .portfolio-overview { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) {
+  .portfolio-overview { gap: 14px; }
+  .portfolio-summary, .portfolio-charts { padding: 14px; }
+  .portfolio-charts__arrows .btn, .portfolio-chart-tabs button, .portfolio-periods button { min-height: 42px; }
+  .portfolio-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .portfolio-dates label { display: grid; gap: 4px; min-width: 0; }
+  .portfolio-dates .input { width: 100%; }
+  .portfolio-history__readout { gap: 10px 18px; }
+  .portfolio-history__readout strong { font-size: 17px; }
+  .portfolio-charts .donut__body { flex-direction: column; align-items: stretch; }
+  .portfolio-charts .donut__body svg { align-self: center; }
+  .portfolio-charts .donut__legend { width: 100%; }
+}
 
 @media (max-width: 700px) {
   .cartera-toolbar .cartera-tabs, .registro-desktop { display: none; }
