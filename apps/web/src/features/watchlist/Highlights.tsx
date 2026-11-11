@@ -24,9 +24,9 @@ export function goToRow(id: number) {
   el.classList.add('row--located');
 }
 
-function RowLink({ row, children, full }: { row: WatchlistRow; children: ReactNode; full?: boolean }) {
+function RowLink({ row, children, full, onLocate }: { row: WatchlistRow; children: ReactNode; full?: boolean; onLocate: (id: number) => void }) {
   return (
-    <button type="button" className="link-btn" onClick={() => goToRow(row.item.id)} title={full ? 'Ir a la fila' : `${name(row)} · ir a la fila`}>
+    <button type="button" className="link-btn" onClick={() => onLocate(row.item.id)} title={full ? 'Ir a la fila' : `${name(row)} · ir a la fila`}>
       {children}
     </button>
   );
@@ -46,7 +46,12 @@ function Cell({ label, children, wide }: { label: ReactNode; children: ReactNode
  * precio o, si nada, qué es lo que más cerca está? Al lado, las órdenes puestas y los resultados de
  * la semana (días en que el precio suele moverse mucho).
  */
-export function Highlights({ rows, base }: { rows: WatchlistRow[]; base: string }) {
+export function Highlights({ rows, base, onLocate, quoteInfo }: {
+  rows: WatchlistRow[];
+  base: string;
+  onLocate: (id: number) => void;
+  quoteInfo: ReactNode;
+}) {
   const [expanded, setExpanded] = useState(false);
   if (!rows.length) return null;
   const reached = rows.filter((r) => r.metrics.status === 'reached');
@@ -70,7 +75,7 @@ export function Highlights({ rows, base }: { rows: WatchlistRow[]; base: string 
             const lvl = r.metrics.levels.find((l) => l.status === 'reached');
             return (
               <li key={r.item.id}>
-                <RowLink row={r} full>
+                <RowLink row={r} onLocate={onLocate} full>
                   {name(r)}
                 </RowLink>
                 {lvl && (
@@ -96,7 +101,7 @@ export function Highlights({ rows, base }: { rows: WatchlistRow[]; base: string 
             {pct(Math.abs(nearest.metrics.nearestDistancePct!)).replace('+', '−')}
           </span>
           <span className="hl-nearest__what">
-            <RowLink row={nearest} full>
+            <RowLink row={nearest} onLocate={onLocate} full>
               {name(nearest)}
             </RowLink>
             <span className="muted">
@@ -111,7 +116,7 @@ export function Highlights({ rows, base }: { rows: WatchlistRow[]; base: string 
   } else {
     main = (
       <Cell wide label="Precios de compra">
-        <p className="hl-value">Ningún valor tiene todavía. Añádelos con el lápiz de cada fila.</p>
+        <p className="hl-value">Abre un valor para añadir sus precios de compra.</p>
       </Cell>
     );
   }
@@ -131,7 +136,7 @@ export function Highlights({ rows, base }: { rows: WatchlistRow[]; base: string 
         aria-controls="watchlist-highlights"
         onClick={() => setExpanded((open) => !open)}
       >
-        <span><strong>Resumen</strong> · {summary}</span>
+        <span><strong>Resumen</strong>{orders.length > 0 && ` · ${orders.length} ${orders.length === 1 ? 'orden' : 'órdenes'}`} · {summary}</span>
         <span aria-hidden="true">{expanded ? '▲' : '▼'}</span>
       </button>
       <section id="watchlist-highlights" className={`highlights${expanded ? ' highlights--open' : ''}`} aria-label="Resumen">
@@ -145,7 +150,7 @@ export function Highlights({ rows, base }: { rows: WatchlistRow[]; base: string 
             {/* Se nombran todas: así se ve cuál es aunque la tabla esté filtrada y no la muestre. */}
             {[...expiring, ...orders.filter((r) => !expiring.includes(r))].slice(0, 4).map((r) => (
               <p key={r.item.id} className={expiring.includes(r) ? 'hl-warn' : 'small'}>
-                <RowLink row={r}>{shortName(r)}</RowLink>
+                <RowLink row={r} onLocate={onLocate}>{shortName(r)}</RowLink>
                 {expiring.includes(r) &&
                   ` ${r.metrics.orderExpired ? 'caducada' : r.metrics.orderDaysLeft === 0 ? 'caduca hoy' : `caduca en ${r.metrics.orderDaysLeft} d`}`}
               </p>
@@ -158,13 +163,17 @@ export function Highlights({ rows, base }: { rows: WatchlistRow[]; base: string 
             <ul className="hl-inline">
               {earnings.slice(0, 5).map(({ r, d }) => (
                 <li key={r.item.id}>
-                  <RowLink row={r}>{shortName(r)}</RowLink> <span className="muted">{when(d!.days)}</span>
+                  <RowLink row={r} onLocate={onLocate}>{shortName(r)}</RowLink> <span className="muted">{when(d!.days)}</span>
                 </li>
               ))}
               {earnings.length > 5 && <li className="muted">y {earnings.length - 5} más</li>}
             </ul>
           </Cell>
         )}
+        <div className="highlights-quotes hl-cell hl-cell--full">
+          <p className="hl-label">Cotizaciones</p>
+          <div className="highlights-quotes__data">{quoteInfo}</div>
+        </div>
       </section>
     </>
   );

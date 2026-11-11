@@ -26,17 +26,22 @@ export function ValueExpanded({ row, base, width, onEdit, onClose }: Props) {
   const names = useSettings().data?.statusNames ?? DEFAULT_STATUS_NAMES;
   const [view, setView] = useState<View>(() => (localStorage.getItem(VIEW_KEY) as View) || 'mapa');
   const { item, quote, metrics } = row;
-  const idx = metrics.levels.findIndex((l) => l.distancePct === metrics.nearestDistancePct);
+  const idx = metrics.levels.findIndex((l) => metrics.status === 'reached'
+    ? l.status === 'reached'
+    : l.distancePct != null && l.distancePct === metrics.nearestDistancePct);
   const lvl = metrics.levels[idx];
   const choose = (v: View) => {
     setView(v);
     localStorage.setItem(VIEW_KEY, v);
   };
 
-  let headline = 'Sin precios de compra';
-  if (metrics.status === 'reached') headline = 'El precio ya está en tu zona de compra';
-  else if (lvl && metrics.nearestDistancePct != null)
-    headline = `Le falta caer un ${pct(Math.abs(metrics.nearestDistancePct)).replace('+', '')} hasta tu compra ${idx + 1} (${price(lvl.price, quote?.currency)})`;
+  let headline = metrics.levels.length ? 'Distancia pendiente de cotización' : 'Sin niveles de compra';
+  if (lvl && metrics.nearestDistancePct != null) {
+    const distance = metrics.status === 'reached'
+      ? 'precio en zona'
+      : `falta un ${pct(Math.abs(metrics.nearestDistancePct)).replace('+', '')}`;
+    headline = `Nivel ${idx + 1} · ${price(lvl.price, quote?.currency)} · ${distance}`;
+  }
 
   return (
     <div className="xp" style={width ? { width } : undefined} role="region" aria-label={`Detalle de ${item.name ?? item.symbol}`}>
@@ -49,6 +54,7 @@ export function ValueExpanded({ row, base, width, onEdit, onClose }: Props) {
         </div>
         <p className="xp__status">
           {metrics.status !== 'unknown' && <span className={`pill pill--${metrics.status}`}>{names[metrics.status]}</span>}
+          {item.orderActive && <span className="pill watchlist-order-pill">Con orden</span>}
           <span>{headline}</span>
         </p>
         <div className="xp__tools">
