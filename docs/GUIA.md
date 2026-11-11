@@ -20,6 +20,8 @@ La primera vez se abre una **guía** que explica cada parte (botón **Guía** pa
 
 Símbolos: los de Yahoo Finance (el buscador acepta nombre, ticker o ISIN). Sufijos: `.MC` Madrid, `.PA` París, `.AS` Ámsterdam, `.DE` Xetra, `.MI` Milán, `.L` Londres, sin sufijo para EE. UU.
 
+**Fondos de inversión:** se pueden registrar participaciones con decimales. Para actualizar el precio, selecciona en Yahoo la misma clase y divisa del fondo; conserva su símbolo completo, por ejemplo `0P0001OJNQ.F`, sin añadir `.MC`. En la ficha del valor y al añadir una operación puedes buscar por nombre y comprobar el símbolo. Si solo tienes un ISIN o Yahoo no ofrece esa clase, deja la cotización vacía: las operaciones se conservan, pero el valor queda sin precio actualizado y no suma en la valoración. Los precios de los fondos dependen de las actualizaciones que publique Yahoo.
+
 ### Evolución de la cartera
 
 En **Cartera → Resumen**, el desglose del resultado permanece visible junto a un gráfico que puedes cambiar con las flechas o sus botones: **Evolución**, **Divisas**, **Por valor**, **Por sector** y **Por bróker**. Debajo siguen los resultados por año y las cifras desde el principio.

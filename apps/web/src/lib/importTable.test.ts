@@ -68,6 +68,9 @@ describe('symbolCandidates', () => {
     expect(symbolCandidates('GRF.P', '.MC')).toEqual(['GRF-P.MC', 'GRF-P', 'GRF.P']);
     expect(symbolCandidates('ALM', '.MC')).toEqual(['ALM.MC', 'ALM']);
     expect(symbolCandidates('BP.L', '.MC')).toEqual(['BP.L']);
+    expect(symbolCandidates('0P0001OJNQ.F', '.MC')).toEqual(['0P0001OJNQ.F']);
+    expect(symbolCandidates('0P0001OJNQ', '.MC')).toEqual(['0P0001OJNQ']);
+    expect(symbolCandidates('IE00B3VXGD32', '.MC')).toEqual(['IE00B3VXGD32']);
     expect(symbolCandidates('MCD', '')).toEqual(['MCD']);
   });
 });

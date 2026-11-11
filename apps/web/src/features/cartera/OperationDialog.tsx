@@ -14,6 +14,7 @@ import { ApiError } from '../../api/client.ts';
 import { useOperationMutations } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
 import { money, parseDecimal } from '../../lib/format.ts';
+import { QuoteSymbolField } from './QuoteSymbolField.tsx';
 
 /** Datos con los que abrir el alta (p. ej. «Lo he comprado» desde la lista de vigilancia). */
 export interface OperationDraft {
@@ -48,6 +49,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
   const [date, setDate] = useState(op?.date ?? draft?.date ?? localToday());
   const [ticker, setTicker] = useState(op?.ticker ?? draft?.ticker ?? '');
   const [symbol, setSymbol] = useState(draft?.symbol ?? '');
+  const [name, setName] = useState(draft?.name ?? null);
   const [shares, setShares] = useState(str(op?.shares ?? draft?.shares));
   const [priceRaw, setPrice] = useState(str(op?.price ?? draft?.price));
   const [fees, setFees] = useState(str(op?.fees || null));
@@ -108,7 +110,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
       await save.mutateAsync({
         id: op?.id,
         data,
-        instrument: known ? undefined : { symbol: symbol.trim() || null, name: draft?.name ?? null, currency: fx ? 'USD' : 'EUR' },
+        instrument: known ? undefined : { symbol: symbol.trim() || null, name, currency: fx ? 'USD' : 'EUR' },
       });
       onClose();
     } catch (err) {
@@ -181,8 +183,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
           </div>
           {!known && t && (
             <div className="field field--wide">
-              <label htmlFor="op-symbol">Símbolo en Yahoo Finance (para el precio)</label>
-              <input id="op-symbol" value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder={`${t}.MC`} />
+              <QuoteSymbolField inputId="op-symbol" value={symbol} onChange={(value) => { setSymbol(value); setName(null); }} onPick={(r) => setName(r.name)} />
             </div>
           )}
         </fieldset>
