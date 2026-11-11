@@ -72,7 +72,11 @@ export const SECTOR_OVERRIDES: Record<string, string> = {
 
 export class YahooProvider implements MarketDataProvider {
   readonly id = 'yahoo';
-  private yf = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
+  private yf = new YahooFinance({ suppressNotices: ['yahooSurvey'],
+    fetch: (input, init) => fetch(input, { ...init,
+      signal: AbortSignal.any([AbortSignal.timeout(8_000), ...(init?.signal ? [init.signal] : [])]),
+    }),
+  });
 
   async getDailyHistory(symbol: string, from: string): Promise<DailyHistory> {
     const chart = await this.yf.chart(symbol, { period1: from, interval: '1d', events: 'split' }, LOOSE) as DailyChart;
@@ -119,6 +123,7 @@ export class YahooProvider implements MarketDataProvider {
       exchange: s(q.fullExchangeName) ?? s(q.exchange),
       marketState: s(q.marketState),
       fetchedAt: now,
+      source: 'Yahoo Finance',
     }));
   }
 

@@ -66,7 +66,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
   const [error, setError] = useState<string | null>(null);
 
   const t = ticker.trim().toUpperCase();
-  const quoteSymbol = symbol ?? (/^0P[A-Z0-9]{8}(?:\.[A-Z]{1,3})?$/.test(t) ? t : '');
+  const quoteSymbol = symbol ?? (/^0P[A-Z0-9]{8}(?:\.[A-Z]{1,3})?$|^[A-Z]{2}[A-Z0-9]{9}\d$|^BORSA:2FADB\d+$/.test(t) ? t : '');
   const known = instruments.find((i) => i.ticker === t);
   const currency = known?.currency ?? 'EUR';
   const foreign = currency !== 'EUR' || !!fx;
