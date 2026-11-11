@@ -22,6 +22,8 @@ Símbolos: los de Yahoo Finance (el buscador acepta nombre, ticker o ISIN). Sufi
 
 **Fondos de inversión:** se pueden registrar participaciones con decimales. Para actualizar el precio, selecciona en Yahoo la misma clase y divisa del fondo; conserva su símbolo completo, por ejemplo `0P0001OJNQ.F`, sin añadir `.MC`. En la ficha del valor y al añadir una operación puedes buscar por nombre y comprobar el símbolo. Si solo tienes un ISIN o Yahoo no ofrece esa clase, deja la cotización vacía: las operaciones se conservan, pero el valor queda sin precio actualizado y no suma en la valoración. Los precios de los fondos dependen de las actualizaciones que publique Yahoo.
 
+Al importar un fondo nuevo, si la columna de ticker ya contiene su código Yahoo completo (`0P…`), se propone ese mismo código como cotización. Las fichas existentes mantienen su vinculación. Al actualizar la aplicación se reparan los fondos importados que conservaron el `.MC` añadido por error o que quedaron sin vincular y no se editaron después del alta; las operaciones y los importes se mantienen.
+
 ### Importar operaciones de un bróker
 
 Exporta el **historial de operaciones ejecutadas**, con una fila por movimiento. Un resumen de posiciones actuales no contiene el historial necesario para reconstruir los lotes. Se admiten hasta 10 MB por archivo, 20.000 operaciones y 500 valores por importación. Los Excel antiguos `.xls` deben guardarse como `.xlsx`.
