@@ -787,6 +787,15 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   height: 40px; padding: 0 12px; border: 1px solid var(--text-2); border-radius: 8px; background: var(--bg);
 }
 .login__card label { font-weight: 600; font-size: 13px; }
+.login__google {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  min-height: 40px; padding: 0 12px; border: 1px solid #747775; border-radius: 4px;
+  background: #fff; color: #1f1f1f; font-family: Arial, sans-serif;
+  font-size: 14px; font-weight: 500; text-decoration: none;
+}
+.login__google:hover { background: #f2f2f2; }
+.login__google:active { background: #e8e8e8; }
+.login__google svg { flex-shrink: 0; }
 .login-loading { margin-top: 30vh; }
 .snapshot-list li { flex-wrap: wrap; gap: 6px 12px; }
 
