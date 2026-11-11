@@ -140,6 +140,14 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 .tab:hover { background: var(--surface-2); color: var(--text); }
 .tab--active { background: var(--surface-2); color: var(--text); font-weight: 600; }
+.tab--list { min-width: 0; max-width: 260px; }
+.tab__name { overflow: hidden; text-overflow: ellipsis; }
+.tabs__select {
+  min-width: 120px; max-width: 260px; width: auto; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
+  background-color: var(--surface); color: var(--text-2); text-overflow: ellipsis;
+}
+.tabs__select.tab--active { background-color: var(--surface-2); color: var(--text); border-color: var(--accent); }
 .tab__count { font-size: 11px; padding: 0 6px; border-radius: 99px; background: var(--border); }
 .tab--add { color: var(--accent); }
 .tabs__sep { flex: 0 0 1px; align-self: stretch; margin: 6px 6px; background: var(--border); }
