@@ -68,7 +68,7 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
       sort: (r) => r.changePct,
       cell: (r) => (
         <div className="stack stack--right">
-          <span className="num">
+          <span className="num" title={r.quote?.source}>
             {price(r.price, r.currency)}
             {r.quote?.stale && (
               <span className="stale" title="Sin conexión: último precio guardado">
@@ -81,6 +81,7 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
             onOpen(r.ticker);
           }}>{r.instrument?.symbol ? 'Revisar cotización' : 'Vincular cotización'}</button>
             : <span className={`sub num delta ${signed(r.changePct)}`}>{pct(r.changePct, 2)}</span>}
+          {r.quote?.asOf && <span className="sub" title={`Valor liquidativo · ${r.quote.source ?? ''}`}>VL {shortDate(r.quote.asOf)}</span>}
         </div>
       ),
     },

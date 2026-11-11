@@ -210,6 +210,8 @@ export class MarketService {
   /** Búsqueda por nombre o ticker; si es un ISIN, se traduce con OpenFIGI y se comprueba en el proveedor. */
   async search(query: string): Promise<SymbolSearchResult[]> {
     if (!isIsin(query)) return this.provider.search(query);
+    const direct = await this.provider.search(query).catch(() => []);
+    if (direct.length) return direct;
     let candidates: string[] = [];
     try {
       candidates = await isinCandidates(query);
@@ -239,6 +241,7 @@ export class MarketService {
     if (!this.throttled) {
       try {
         const points = await this.provider.getHistory(symbol, range);
+        if (!points.length && hit?.value.length) throw new Error('Sin cierres históricos');
         this.mem.set(key, { value: points, fetchedAt: Date.now() });
         await this.persist(kind, symbol, points);
         return { points, stale: false };

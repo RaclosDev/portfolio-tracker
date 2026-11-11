@@ -9,6 +9,8 @@ import type { AuthOptions } from './modules/auth/auth.ts';
 import { migrate, openPGlite, type Db } from './db/database.ts';
 import type { MarketDataProvider } from './modules/market/provider.ts';
 import { createServicesFromDb } from './services.ts';
+import { FallbackProvider } from './modules/market/fallback.provider.ts';
+import { MarketService } from './modules/market/market.service.ts';
 
 const now = () => new Date().toISOString();
 const quote = (symbol: string, price: number, currency: string) => ({
@@ -248,6 +250,21 @@ describe('copias', () => {
 });
 
 describe('límite de Yahoo', () => {
+  it('conserva en la base de datos el NAV y su fecha si fallan todas las fuentes', async () => {
+    const nav = { ...quote('IE00B3VXGD32', 65.5, 'EUR'), source: 'Borsa Italiana / FIDA', asOf: '2025-11-10' };
+    const alternative: MarketDataProvider = { id: 'borsa',
+      getQuotes: vi.fn().mockResolvedValue([nav]), getTargets: async () => null,
+      search: async () => [], getHistory: async () => [] };
+    const chain = new FallbackProvider([provider, alternative]);
+    const options = { quoteTtlMs: 45_000, targetsTtlMs: 60_000 };
+    const market = new MarketService(chain, db, options);
+    expect((await market.getQuotes([nav.symbol])).get(nav.symbol)).toMatchObject({ ...nav, stale: false });
+    provider.failWith = 'HTTP 429';
+    vi.mocked(alternative.getQuotes).mockRejectedValue(new Error('HTTP 503'));
+    const restarted = new MarketService(chain, db, options);
+    expect((await restarted.getQuotes([nav.symbol])).get(nav.symbol)).toMatchObject({ ...nav, stale: true });
+  });
+
   it('ante un 429 pausa las consultas y sirve los últimos precios guardados', async () => {
     await send('POST', '/api/items', { listId: 1, symbol: 'AAA.MC' });
     await get('/api/lists/1/watchlist'); // primera consulta: queda guardada
