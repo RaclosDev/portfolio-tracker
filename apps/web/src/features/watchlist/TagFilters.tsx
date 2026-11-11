@@ -25,6 +25,7 @@ export function TagFilters({ type, onType, currency, currencies, onCurrency, nam
   return (
     <div className="tag-filters">
       <div className="segmented" role="group" aria-label="Filtrar por tipo">
+        <span className="watchlist-filter-label" aria-hidden>Tipo</span>
         {TYPES.map((t) => (
           <button
             key={t.id}
@@ -38,8 +39,9 @@ export function TagFilters({ type, onType, currency, currencies, onCurrency, nam
           </button>
         ))}
       </div>
-      {currencies.length > 1 && (
+      {(currencies.length > 1 || currency !== 'all') && (
         <div className="segmented" role="group" aria-label="Filtrar por divisa">
+          <span className="watchlist-filter-label" aria-hidden>Divisa</span>
           {['all', ...currencies].map((c) => (
             <button
               key={c}

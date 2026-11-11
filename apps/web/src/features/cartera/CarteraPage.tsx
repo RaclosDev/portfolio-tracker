@@ -31,22 +31,13 @@ function Figure({ label, value, sub, delta, title }: { label: string; value: str
   );
 }
 
-/** Cifras grandes de arriba (se ven en todas las pestañas). */
 function Totals({ model }: { model: CarteraModel }) {
   const s = model.valuation.summary;
   return (
-    <section className="highlights" aria-label="Resumen de la cartera">
+    <>
+    <section className="highlights cartera-totals" aria-label="Resumen de la cartera">
       <Figure label="Valor actual" value={money(s.valueEur, 'EUR', 2)} />
       <Figure label="Hoy" value={money(s.dayChangeEur, 'EUR', 2)} sub={pct(s.dayChangePct, 2)} delta={s.dayChangeEur} />
-      <Figure
-        label="Latente"
-        value={money(s.unrealizedEur, 'EUR', 2)}
-        sub={pct(s.costEur ? s.unrealizedEur / s.costEur : null)}
-        delta={s.unrealizedEur}
-        title="Plusvalía de lo que tienes si vendieras hoy"
-      />
-      <Figure label="Realizado" value={money(s.realizedEur, 'EUR', 2)} delta={s.realizedEur} title="Resultado de todas las ventas" />
-      <Figure label="Cobros" value={money(s.incomeEur, 'EUR', 2)} title="Dividendos y primas (bruto − comisiones − retención en origen)" />
       <Figure
         label="Total"
         value={money(s.totalEur, 'EUR', 2)}
@@ -63,6 +54,15 @@ function Totals({ model }: { model: CarteraModel }) {
         </div>
       )}
     </section>
+    <details className="cartera-breakdown">
+      <summary>Desglose del resultado</summary>
+      <div className="highlights">
+        <Figure label="Latente" value={money(s.unrealizedEur, 'EUR', 2)} sub={pct(s.costEur ? s.unrealizedEur / s.costEur : null)} delta={s.unrealizedEur} />
+        <Figure label="Realizado" value={money(s.realizedEur, 'EUR', 2)} delta={s.realizedEur} title="Resultado de todas las ventas" />
+        <Figure label="Cobros" value={money(s.incomeEur, 'EUR', 2)} title="Dividendos y primas (bruto − comisiones − retención en origen)" />
+      </div>
+    </details>
+    </>
   );
 }
 
@@ -187,7 +187,7 @@ interface Props {
 
 /** Cartera real a partir del registro de operaciones (FIFO), con resumen, cerradas, registro y Renta. */
 export function CarteraPage({ model, isPending, error, draft, onDraftUsed }: Props) {
-  const [tab, setTab] = useState<Tab>(() => (localStorage.getItem(TAB_KEY) as Tab) || 'resumen');
+  const [tab, setTab] = useState<Tab>(() => TABS.find((item) => item.id === localStorage.getItem(TAB_KEY))?.id ?? 'resumen');
   useEffect(() => localStorage.setItem(TAB_KEY, tab), [tab]);
   const [ticker, setTicker] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ op: Operation | null; draft?: OperationDraft } | null>(null);
@@ -207,9 +207,8 @@ export function CarteraPage({ model, isPending, error, draft, onDraftUsed }: Pro
 
   return (
     <div className="cartera">
-      {!empty && <Totals model={model} />}
-      <div className="toolbar no-print">
-        <div className="segmented" role="tablist" aria-label="Secciones de la cartera">
+      <div className="toolbar cartera-toolbar no-print">
+        <div className="segmented cartera-tabs" role="tablist" aria-label="Secciones de la cartera">
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -230,13 +229,18 @@ export function CarteraPage({ model, isPending, error, draft, onDraftUsed }: Pro
             </button>
           ))}
         </div>
+        <select className="select cartera-tab-select" aria-label="Sección de Cartera" value={tab} onChange={(e) => {
+          const next = TABS.find((item) => item.id === e.target.value);
+          if (next) setTab(next.id);
+        }}>
+          {TABS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+        </select>
         <span className="spacer" />
-        <button type="button" className="btn" onClick={() => setImporting(true)}>
-          Importar Excel
-        </button>
-        <button type="button" className="btn btn--primary" onClick={() => setEditing({ op: null })}>
-          Añadir operación
-        </button>
+        {!empty && tab !== 'renta' && (
+          <button type="button" className="btn btn--primary" onClick={() => setEditing({ op: null })}>
+            Añadir operación
+          </button>
+        )}
       </div>
 
       {model.ledger.issues.length > 0 && (
@@ -263,10 +267,10 @@ export function CarteraPage({ model, isPending, error, draft, onDraftUsed }: Pro
         </div>
       ) : (
         <>
-          {tab === 'resumen' && <ResumenView model={model} />}
+          {tab === 'resumen' && <><Totals model={model} /><ResumenView model={model} /></>}
           {tab === 'abiertas' && <HoldingsView model={model} onOpen={setTicker} />}
           {tab === 'cerradas' && <ClosedView model={model} onOpen={setTicker} />}
-          {tab === 'registro' && <RegistroView model={model} onEdit={(op) => setEditing({ op })} />}
+          {tab === 'registro' && <RegistroView model={model} onImport={() => setImporting(true)} onEdit={(op) => setEditing({ op })} />}
           {tab === 'renta' && <RentaView model={model} />}
         </>
       )}

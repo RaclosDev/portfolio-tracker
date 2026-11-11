@@ -9,7 +9,8 @@ import { useCarteraModel } from './features/cartera/model.ts';
 import { ItemDialog } from './features/items/ItemDialog.tsx';
 import { SettingsDialog } from './features/settings/SettingsDialog.tsx';
 import { PriceMapLegend } from './features/watchlist/PriceMap.tsx';
-import { Highlights } from './features/watchlist/Highlights.tsx';
+import { Highlights, goToRow } from './features/watchlist/Highlights.tsx';
+import { Dialog } from './components/Dialog.tsx';
 import { StatusFilter, filterRow, type Filter } from './features/watchlist/StatusFilter.tsx';
 import { WatchlistTable, type Tag } from './features/watchlist/WatchlistTable.tsx';
 import { TagFilters, rowType, type TypeFilter } from './features/watchlist/TagFilters.tsx';
@@ -81,6 +82,8 @@ export function App() {
 
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [locateId, setLocateId] = useState<number | null>(null);
   const [editing, setEditing] = useState<WatchlistRow | 'new' | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
@@ -150,6 +153,34 @@ export function App() {
       ? setCurrencyFilter((c) => (c === tag.value ? 'all' : tag.value))
       : setTypeFilter((t) => (t === tag.value ? 'all' : tag.value));
 
+  const activeFilters = [filter, typeFilter, currencyFilter].filter((value) => value !== 'all').length;
+  const clearFilters = () => {
+    setFilter('all');
+    setTypeFilter('all');
+    setCurrencyFilter('all');
+  };
+  const locateRow = (id: number) => {
+    if (rows.some((row) => row.item.id === id)) {
+      goToRow(id);
+    } else {
+      clearFilters();
+      setSearch('');
+      setLocateId(id);
+    }
+  };
+  useEffect(() => {
+    if (locateId === null || !rows.some((row) => row.item.id === locateId)) return;
+    goToRow(locateId);
+    setLocateId(null);
+  }, [locateId, rows]);
+
+  const filterControls = (
+    <>
+      {view && <StatusFilter rows={tagged} bands={settings.bands} names={settings.statusNames} value={filter} onChange={setFilter} />}
+      <TagFilters type={typeFilter} onType={setTypeFilter} currency={currencyFilter} currencies={currencies} onCurrency={setCurrencyFilter} names={settings.tagNames} />
+    </>
+  );
+
   // El tour se abre solo la primera vez, cuando ya hay datos que enseñar.
   const hasRows = (view?.rows.length ?? 0) > 0;
   useEffect(() => {
@@ -175,6 +206,15 @@ export function App() {
   const fetching = onPortfolio ? pf.isFetching || pfRefreshing : wl.isFetching || refresh.isPending;
   const generatedAt = onPortfolio ? pf.data?.generatedAt : view?.generatedAt;
   const refetchFailed = onPortfolio ? pf.isRefetchError : wl.isRefetchError;
+  const updateLabel = fetching ? 'Actualizando…'
+    : refetchFailed ? `Sin conexión con el servidor · precios de ${timeAgo(generatedAt, now)}`
+    : anyStale ? 'Sin conexión: datos guardados'
+    : `Actualizado ${timeAgo(generatedAt, now)}`;
+  const fxBadges = fxChips.map(([currency, rate]) => (
+    <span key={currency} className="chip" title={`1 ${base} = ${rate} ${currency}`}>
+      {base}/{currency} <strong>{num(rate, 4)}</strong>
+    </span>
+  ));
 
   // Con la app en segundo plano (pantalla apagada, ventana minimizada) el navegador para los
   // temporizadores. Si al volver los precios llevan más de dos ciclos sin renovarse, se piden ya.
@@ -240,48 +280,46 @@ export function App() {
           </button>
         </nav>
 
-        {/* Móvil: un selector con las listas y la cartera, y un botón para crear lista. */}
         <div className="list-picker">
-          <select
-            className="list-picker__select"
-            aria-label="Lista"
-            value={onPortfolio ? 'cartera' : String(listId ?? '')}
-            onChange={(e) => {
-              if (e.target.value === 'cartera') setPage('cartera');
-              else {
-                setListId(Number(e.target.value));
-                setPage('lista');
-              }
-            }}
-          >
-            <optgroup label="Listas">
-              {lists.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </optgroup>
-            <option value="cartera">Cartera</option>
-          </select>
-          <button type="button" className="icon-btn" aria-label="Nueva lista" title="Nueva lista" onClick={newList}>
-            <Icon name="plus" size={20} />
-          </button>
+          {onPortfolio ? <strong className="list-picker__title">Cartera</strong> : (
+            <>
+              <select
+                className="list-picker__select"
+                aria-label="Seleccionar lista"
+                value={String(listId ?? '')}
+                onChange={(e) => {
+                  setListId(Number(e.target.value));
+                  setPage('lista');
+                }}
+              >
+                <optgroup label="Listas">
+                  {lists.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+              <button type="button" className="icon-btn" aria-label="Nueva lista" title="Nueva lista" onClick={newList}>
+                <Icon name="plus" size={20} />
+              </button>
+            </>
+          )}
         </div>
 
+        <nav className="mobile-primary-nav" aria-label="Secciones">
+          <button type="button" aria-current={!onPortfolio ? 'page' : undefined} onClick={() => setPage('lista')}>
+            Lista
+          </button>
+          <button type="button" aria-current={onPortfolio ? 'page' : undefined} onClick={() => setPage('cartera')}>
+            Cartera
+          </button>
+        </nav>
+
         <div className="topbar__right">
-          {fxChips.map(([c, r]) => (
-            <span key={c} className="chip" title={`1 ${base} = ${r} ${c}`}>
-              {base}/{c} <strong>{num(r, 4)}</strong>
-            </span>
-          ))}
+          {fxBadges}
           <span className={`updated${anyStale || refetchFailed ? ' updated--stale' : ''}`} aria-live="polite">
-            {fetching
-              ? 'Actualizando…'
-              : refetchFailed
-                ? `Sin conexión con el servidor · precios de ${timeAgo(generatedAt, now)}`
-                : anyStale
-                ? 'Sin conexión: datos guardados'
-                : `Actualizado ${timeAgo(generatedAt, now)}`}
+            {updateLabel}
           </span>
           <button
             type="button"
@@ -341,45 +379,43 @@ export function App() {
           />
         ) : (
           <>
-            {view && <Highlights rows={view.rows} base={base} />}
+            {view && <Highlights rows={view.rows} base={base} onLocate={locateRow} quoteInfo={<>{updateLabel} {fxBadges}</>} />}
 
-            <div className="toolbar">
-              {view && (
-                <StatusFilter
-                  rows={tagged}
-                  bands={settings.bands}
-                  names={settings.statusNames}
-                  value={filter}
-                  onChange={setFilter}
-                />
-              )}
-              <TagFilters
-                type={typeFilter}
-                onType={setTypeFilter}
-                currency={currencyFilter}
-                currencies={currencies}
-                onCurrency={setCurrencyFilter}
-                names={settings.tagNames}
-              />
+            <div className="toolbar watchlist-toolbar">
+              <div className="watchlist-desktop-filters">{filterControls}</div>
               <span className="spacer" />
               <input
                 type="search"
                 className="search"
-                placeholder="Buscar por nombre, ticker o nota"
+                placeholder="Buscar valor"
                 aria-label="Buscar en la lista"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
+              <button type="button" className="btn watchlist-filter-trigger" onClick={() => setShowFilters(true)}>
+                Filtros{activeFilters > 0 ? ` (${activeFilters})` : ''}
+              </button>
               <button
                 type="button"
                 className="btn btn--primary"
                 data-tour="add"
+                aria-label="Añadir valor"
                 onClick={() => setEditing('new')}
                 disabled={!listId}
               >
-                Añadir valor
+                Añadir<span className="watchlist-desktop-hint"> valor</span>
               </button>
             </div>
+            {showFilters && (
+              <Dialog title="Filtros" className="watchlist-filter-dialog" onClose={() => setShowFilters(false)} footer={(
+                <>
+                  <button type="button" className="btn" onClick={clearFilters} disabled={!activeFilters}>Limpiar</button>
+                  <button type="button" className="btn btn--primary" onClick={() => setShowFilters(false)}>Listo</button>
+                </>
+              )}>
+                {filterControls}
+              </Dialog>
+            )}
 
             {wl.isError && <p className="error-box">No se pudo cargar la lista: {(wl.error as Error).message}</p>}
             {wl.isPending && listId && <p className="muted center">Cargando cotizaciones…</p>}
@@ -428,7 +464,8 @@ export function App() {
           </>
         )}
         <p className="footnote">
-          Cotizaciones y consenso de analistas: Yahoo Finance (pueden tener retraso). Doble clic en una fila para editarla.
+          Cotizaciones y consenso de analistas: Yahoo Finance (pueden tener retraso).
+          {!onPortfolio && <span className="watchlist-desktop-hint"> Doble clic en una fila para editarla.</span>}
         </p>
       </main>
 
