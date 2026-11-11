@@ -319,6 +319,39 @@ describe('cartera', () => {
     expect((await portfolio()).operations).toHaveLength(2);
   });
 
+  it('vincula un valor existente al añadir una compra sin perder sus datos personales', async () => {
+    await send('POST', '/api/operations', { ...buy('BBB', 1, 2), instrument: { name: 'Mi valor', sector: 'Salud', notes: 'Conservar' } });
+    const res = await send('POST', '/api/operations', {
+      ...buy('BBB', 2, 90), instrument: { symbol: 'BBB', currency: 'USD' },
+    });
+    expect(res.statusCode).toBe(201);
+    const view = await portfolio();
+    expect(view.instruments[0]).toMatchObject({ symbol: 'BBB', currency: 'USD', name: 'Mi valor', sector: 'Salud', notes: 'Conservar' });
+    expect(view.quotes.BBB?.price).toBe(50);
+  });
+
+  it('guarda la cotización y la divisa al editar una operación y revierte todo si el registro no cuadra', async () => {
+    const first = (await send('POST', '/api/operations', {
+      ...buy('BBB', 1, 2), instrument: { notes: 'Conservar' },
+    })).json() as { id: number };
+    const res = await send('PUT', `/api/operations/${first.id}`, {
+      operation: { ...buy('BBB', 1, 45).operation, price: 50, fxRate: 1.1 },
+      instrument: { symbol: 'BBB', name: 'Valor vinculado', currency: 'USD' },
+    });
+    expect(res.statusCode).toBe(200);
+    const view = await portfolio();
+    expect(view.operations[0]).toMatchObject({ amountEur: 45, price: 50, fxRate: 1.1 });
+    expect(view.instruments[0]).toMatchObject({ symbol: 'BBB', name: 'Valor vinculado', currency: 'USD', notes: 'Conservar' });
+    const invalid = await send('PUT', `/api/operations/${first.id}`, {
+      operation: { date: '2025-01-10', ticker: 'BBB', type: 'sell', shares: 2, amountEur: 90 },
+      instrument: { symbol: 'WRONG', currency: 'EUR' },
+    });
+    expect(invalid.statusCode).toBe(400);
+    const unchanged = await portfolio();
+    expect(unchanged.operations[0]).toMatchObject({ type: 'buy', amountEur: 45 });
+    expect(unchanged.instruments[0]).toMatchObject({ symbol: 'BBB', currency: 'USD' });
+  });
+
   it('edita, cambia el bróker de varias y borra', async () => {
     const a = (await send('POST', '/api/operations', buy('AAA', 10, 100))).json() as { id: number };
     const c = (await send('POST', '/api/operations', buy('AAA', 5, 60, '2025-02-01'))).json() as { id: number };

@@ -87,7 +87,7 @@ export function useOperationMutations() {
   return {
     save: useMutation({
       mutationFn: ({ id, data, instrument }: { id?: number; data: OperationInput; instrument?: Partial<InstrumentInput> }) =>
-        id ? api.updateOperation(id, data) : api.createOperation(data, instrument),
+        id ? api.updateOperation(id, data, instrument) : api.createOperation(data, instrument),
       onSuccess: invalidate,
     }),
     remove: useMutation({ mutationFn: api.deleteOperation, onSuccess: invalidate }),

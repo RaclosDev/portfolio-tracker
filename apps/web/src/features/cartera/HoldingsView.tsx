@@ -76,7 +76,11 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
               </span>
             )}
           </span>
-          <span className={`sub num delta ${signed(r.changePct)}`}>{pct(r.changePct, 2)}</span>
+          {r.price == null ? <button type="button" className="link sub" onClick={(event) => {
+            event.stopPropagation();
+            onOpen(r.ticker);
+          }}>{r.instrument?.symbol ? 'Revisar cotización' : 'Vincular cotización'}</button>
+            : <span className={`sub num delta ${signed(r.changePct)}`}>{pct(r.changePct, 2)}</span>}
           {r.quote?.asOf && <span className="sub" title={`Valor liquidativo · ${r.quote.source ?? ''}`}>VL {shortDate(r.quote.asOf)}</span>}
         </div>
       ),

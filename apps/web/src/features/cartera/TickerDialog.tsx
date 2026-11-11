@@ -1,6 +1,6 @@
-import { OPERATION_LABELS, sortOperations, type HistoryRange, type Operation } from '@watchlist/shared';
+import { OPERATION_LABELS, sortOperations, type HistoryRange, type Operation, type Quote } from '@watchlist/shared';
 import { useQuery } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useCallback, useState, type FormEvent } from 'react';
 import { api } from '../../api/client.ts';
 import { useOperationMutations } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
@@ -33,6 +33,11 @@ export function TickerDialog({
   const [currency, setCurrency] = useState(inst?.currency ?? 'EUR');
   const [notes, setNotes] = useState(inst?.notes ?? '');
   const [msg, setMsg] = useState<string | null>(null);
+  const acceptQuote = useCallback((quote: Quote | null) => {
+    if (!quote) return;
+    setName((current) => current || quote.name || '');
+    if (quote.currency) setCurrency(quote.currency);
+  }, []);
   const range: HistoryRange = '5y';
   const sym = inst?.symbol;
   const history = useQuery({
@@ -191,7 +196,7 @@ export function TickerDialog({
               <input id="tk-name" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="field">
-              <QuoteSymbolField inputId="tk-symbol" value={symbol} onChange={setSymbol} onPick={(r) => { if (!name) setName(r.name); }} />
+              <QuoteSymbolField inputId="tk-symbol" value={symbol} onChange={setSymbol} onPick={(r) => { if (!name) setName(r.name); }} onQuote={acceptQuote} />
             </div>
             <div className="field">
               <label htmlFor="tk-sector">Sector</label>

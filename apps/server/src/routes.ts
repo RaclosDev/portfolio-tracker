@@ -3,7 +3,6 @@ import {
   carteraImportSchema,
   operationFingerprint,
   importRequestSchema,
-  instrumentInputSchema,
   instrumentPatchSchema,
   itemInputSchema,
   itemPatchSchema,
@@ -134,14 +133,16 @@ export async function registerRoutes(app: FastifyInstance) {
   /** Alta de una operación. Crea el valor si es nuevo; falla si el registro deja de cuadrar. */
   app.post('/api/operations', async (req, reply) => {
     const body = z
-      .object({ operation: z.unknown(), instrument: instrumentInputSchema.partial().optional() })
+      .object({ operation: z.unknown(), instrument: instrumentPatchSchema.optional() })
       .parse(req.body);
     const data = operationInputSchema.parse(body.operation);
     const created = await req.services.db.tx(async (t) => {
       const ops = new OperationsRepository(t);
       const op = await ops.create(data);
       PortfolioService.assertValid(await ops.all());
-      await new InstrumentsRepository(t).ensure({ ...body.instrument, ticker: data.ticker });
+      const instruments = new InstrumentsRepository(t);
+      await instruments.ensure({ ticker: data.ticker });
+      if (body.instrument) await instruments.upsert({ ...await instruments.byTicker(data.ticker), ...body.instrument, ticker: data.ticker });
       return op;
     });
     reply.code(201);
@@ -149,13 +150,19 @@ export async function registerRoutes(app: FastifyInstance) {
   });
   app.put('/api/operations/:id', async (req) => {
     const { id } = idParam.parse(req.params);
-    const data = operationInputSchema.parse(req.body);
+    const body = z.union([
+      z.object({ operation: operationInputSchema, instrument: instrumentPatchSchema.optional() }),
+      operationInputSchema.transform((operation) => ({ operation, instrument: undefined })),
+    ]).parse(req.body);
+    const data = body.operation;
     return req.services.db.tx(async (t) => {
       const ops = new OperationsRepository(t);
       const op = await ops.update(id, data);
       if (!op) throw notFound('Operación');
       PortfolioService.assertValid(await ops.all());
-      await new InstrumentsRepository(t).ensure({ ticker: data.ticker });
+      const instruments = new InstrumentsRepository(t);
+      await instruments.ensure({ ticker: data.ticker });
+      if (body.instrument) await instruments.upsert({ ...await instruments.byTicker(data.ticker), ...body.instrument, ticker: data.ticker });
       return op;
     });
   });
