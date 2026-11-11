@@ -118,7 +118,7 @@ export const api = {
   updateInstrument: (ticker: string, patch: InstrumentPatch) =>
     request<Instrument>('PUT', `/api/instruments/${encodeURIComponent(ticker)}`, patch),
   importCartera: (data: CarteraImport) =>
-    request<{ imported: number; replaced: number; savedTo: number | null }>('POST', '/api/portfolio/import', data),
+    request<{ imported: number; skipped: number; savedTo: number | null }>('POST', '/api/portfolio/import', data),
 
   search: (q: string) => request<SymbolSearchResult[]>('GET', `/api/market/search?q=${encodeURIComponent(q)}`),
   fx: (currencies: string[]) =>

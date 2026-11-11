@@ -10,7 +10,7 @@
 
 - **Vigilar acciones y ETF:** listas, búsqueda por nombre, ticker o ISIN, hasta tres niveles de compra y distancia al precio actual. Los importes contemplan la conversión de divisa.
 - **Entender la cartera:** posiciones, reparto por valor, sector y bróker, rentabilidad y posiciones cerradas, calculados a partir de compras, ventas y otras operaciones.
-- **Mantener un registro:** dividendos, scrip, derechos y splits; importación desde Excel y exportación de informes. El cálculo de lotes utiliza FIFO.
+- **Mantener un registro:** dividendos, scrip, derechos y splits; importación de Excel/CSV con revisión de columnas, vista previa y detección de posibles duplicados. El cálculo de lotes utiliza FIFO y permite exportar informes.
 - **Recibir avisos:** notificaciones push de niveles y órdenes registradas, con un resumen diario. La aplicación hace seguimiento; no envía operaciones a un bróker.
 - **Conservar los datos:** copias diarias y una copia antes de importar, con exportación y restauración desde la interfaz.
 
