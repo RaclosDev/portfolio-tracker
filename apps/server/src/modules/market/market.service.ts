@@ -1,6 +1,7 @@
 import { shiftDate, type AnalystTargets, type DailyHistory, type HistoryRange, type PricePoint, type Quote, type SymbolSearchResult } from '@watchlist/shared';
 import type { Db } from '../../db/database.ts';
 import { isinCandidates, isIsin } from './isin.ts';
+import { isVenueSymbol } from './onvista.provider.ts';
 import type { CompanyProfile, MarketDataProvider } from './provider.ts';
 
 type Kind = string; // 'quote' | TARGETS_KIND | 'history-<periodo>'
@@ -208,11 +209,21 @@ export class MarketService {
     return rates;
   }
 
-  /** Búsqueda por nombre o ticker; si es un ISIN, se traduce con OpenFIGI y se comprueba en el proveedor. */
+  /**
+   * Búsqueda por nombre o ticker; si es un ISIN, se traduce con OpenFIGI a tickers de Yahoo y se comprueban.
+   * Con ISIN se juntan los resultados de las fuentes directas (fondos, bolsas alemanas de onvista) y los de Yahoo.
+   */
   async search(query: string): Promise<SymbolSearchResult[]> {
     if (!isIsin(query)) return this.provider.search(query);
-    const direct = await this.provider.search(query).catch(() => []);
-    if (direct.length) return direct;
+    const direct = await this.provider.search(query).catch(() => [] as SymbolSearchResult[]);
+    // Las bolsas de onvista van al final: Yahoo da además gráficos e históricos.
+    const venues = direct.filter((r) => isVenueSymbol(r.symbol));
+    const own = direct.filter((r) => !isVenueSymbol(r.symbol));
+    if (own.length) return [...own, ...venues];
+    return [...(await this.isinYahoo(query)), ...venues];
+  }
+
+  private async isinYahoo(query: string): Promise<SymbolSearchResult[]> {
     let candidates: string[] = [];
     try {
       candidates = await isinCandidates(query);
