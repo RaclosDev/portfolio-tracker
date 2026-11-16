@@ -19,6 +19,7 @@ import { api, reloadSession } from '../../api/client.ts';
 import { buildModel } from '../cartera/model.ts';
 import { useImportBackup, useListMutations, useUpdateSettings } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
+import { confirmAction, toast, toastError } from '../../components/feedback.tsx';
 import { usePrompt } from '../../components/usePrompt.tsx';
 import { exportExcel, readSpreadsheet, type ReadSheet } from '../../lib/excel.ts';
 import { parseDecimal } from '../../lib/format.ts';
@@ -244,13 +245,15 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
   };
 
   const onImport = async (file: File) => {
-    if (
-      !confirm(
-        'Importar REEMPLAZA todas las listas y valores de este PC por los del fichero.\n\n' +
-          'Antes se guarda automáticamente una copia de lo actual en la carpeta "copias".\n\n¿Continuar?',
-      )
-    )
-      return;
+    const ok = await confirmAction({
+      title: 'Importar copia completa',
+      message:
+        'Importar REEMPLAZA todas las listas y valores actuales por los del fichero.\n\n' +
+        'Antes se guarda automáticamente una copia de lo actual en «Copias».',
+      confirmLabel: 'Importar y reemplazar',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       const res = await importM.mutateAsync(JSON.parse(await file.text()));
       setMsg(
@@ -504,7 +507,7 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
                   className="btn btn--small"
                   onClick={async () => {
                     const name = await ask('Renombrar lista', 'Nuevo nombre', l.name);
-                    if (name) listsM.rename.mutate({ id: l.id, name });
+                    if (name) listsM.rename.mutate({ id: l.id, name }, { onError: toastError('No se pudo renombrar la lista.') });
                   }}
                 >
                   Renombrar
@@ -513,8 +516,18 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
                   type="button"
                   className="btn btn--small btn--danger-ghost"
                   disabled={lists.length <= 1}
-                  onClick={() => {
-                    if (confirm(`¿Borrar la lista "${l.name}" y sus ${l.itemCount} valores?`)) listsM.remove.mutate(l.id);
+                  onClick={async () => {
+                    const ok = await confirmAction({
+                      title: 'Borrar lista',
+                      message: `Se borrará la lista «${l.name}» con sus ${l.itemCount} valores. Si te equivocas, puedes recuperarla desde una copia automática.`,
+                      confirmLabel: 'Borrar lista',
+                      danger: true,
+                    });
+                    if (!ok) return;
+                    listsM.remove.mutate(l.id, {
+                      onSuccess: () => toast(`Lista «${l.name}» borrada.`),
+                      onError: toastError('No se pudo borrar la lista.'),
+                    });
                   }}
                 >
                   Borrar
@@ -578,10 +591,20 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
                     type="button"
                     className="btn btn--small"
                     onClick={async () => {
-                      if (!confirm('Restaurar esta copia REEMPLAZA las listas, valores y cartera actuales (antes se guarda una copia de lo actual). ¿Continuar?')) return;
-                      const r = await api.restoreSnapshot(c.id);
-                      await qc.invalidateQueries();
-                      setMsg(`Restaurada: ${r.lists} listas, ${r.items} valores y ${r.operations} operaciones de cartera.`);
+                      const ok = await confirmAction({
+                        title: 'Restaurar copia',
+                        message: 'Restaurar esta copia REEMPLAZA las listas, valores y cartera actuales. Antes se guarda una copia de lo actual.',
+                        confirmLabel: 'Restaurar',
+                        danger: true,
+                      });
+                      if (!ok) return;
+                      try {
+                        const r = await api.restoreSnapshot(c.id);
+                        await qc.invalidateQueries();
+                        setMsg(`Restaurada: ${r.lists} listas, ${r.items} valores y ${r.operations} operaciones de cartera.`);
+                      } catch (e) {
+                        toastError('No se pudo restaurar la copia.')(e);
+                      }
                     }}
                   >
                     Restaurar

@@ -11,6 +11,7 @@ import { SettingsDialog } from './features/settings/SettingsDialog.tsx';
 import { PriceMapLegend } from './features/watchlist/PriceMap.tsx';
 import { Highlights, goToRow } from './features/watchlist/Highlights.tsx';
 import { Dialog } from './components/Dialog.tsx';
+import { toastError } from './components/feedback.tsx';
 import { StatusFilter, filterRow, type Filter } from './features/watchlist/StatusFilter.tsx';
 import { WatchlistTable, type Tag } from './features/watchlist/WatchlistTable.tsx';
 import { TagFilters, rowType, type TypeFilter } from './features/watchlist/TagFilters.tsx';
@@ -73,6 +74,8 @@ export function App() {
     setPfRefreshing(true);
     try {
       qc.setQueryData(keys.portfolio, await api.portfolio(true));
+    } catch (e) {
+      toastError('No se pudieron actualizar las cotizaciones.')(e);
     } finally {
       setPfRefreshing(false);
     }
@@ -119,7 +122,7 @@ export function App() {
     const next = [...row.item.buyPrices];
     if (value == null) next.splice(index, 1);
     else next[index] = value;
-    saveItem.mutate({ id: row.item.id, data: { buyPrices: next } });
+    saveItem.mutate({ id: row.item.id, data: { buyPrices: next } }, { onError: toastError('No se pudo guardar el precio de compra.') });
   };
 
   const view = wl.data;
@@ -376,7 +379,7 @@ export function App() {
             type="button"
             className="btn"
             data-tour="refresh"
-            onClick={() => (onPortfolio ? void refreshPortfolio() : listId && refresh.mutate(listId))}
+            onClick={() => (onPortfolio ? void refreshPortfolio() : listId && refresh.mutate(listId, { onError: toastError('No se pudieron actualizar las cotizaciones.') }))}
             disabled={onPortfolio ? pfRefreshing : !listId || refresh.isPending}
             title="Forzar actualización de cotizaciones"
             aria-label="Actualizar"

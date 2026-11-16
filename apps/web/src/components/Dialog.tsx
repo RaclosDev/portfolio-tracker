@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { confirmAction } from './feedback.tsx';
 
 interface Props {
   title: string;
@@ -7,11 +8,27 @@ interface Props {
   footer?: ReactNode;
   wide?: boolean;
   className?: string;
+  /** Hay cambios sin guardar: pulsar fuera no cierra, y Escape o ✕ piden confirmación antes de descartarlos. */
+  dirty?: boolean;
 }
 
 /** Modal accesible basado en <dialog> nativo (foco, Escape y fondo gestionados por el navegador). */
-export function Dialog({ title, onClose, children, footer, wide, className }: Props) {
+export function Dialog({ title, onClose, children, footer, wide, className, dirty }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
+
+  const requestClose = async () => {
+    if (
+      dirty &&
+      !(await confirmAction({
+        title: '¿Descartar los cambios?',
+        message: 'Has hecho cambios que todavía no se han guardado.',
+        confirmLabel: 'Descartar',
+        danger: true,
+      }))
+    )
+      return;
+    onClose();
+  };
 
   useEffect(() => {
     const el = ref.current!;
@@ -27,16 +44,16 @@ export function Dialog({ title, onClose, children, footer, wide, className }: Pr
       className={`dialog${wide ? ' dialog--wide' : ''}${className ? ` ${className}` : ''}`}
       onCancel={(e) => {
         e.preventDefault();
-        onClose();
+        void requestClose();
       }}
       onMouseDown={(e) => {
-        if (e.target === ref.current) onClose();
+        if (e.target === ref.current && !dirty) onClose();
       }}
       aria-labelledby="dialog-title"
     >
       <header className="dialog__header">
         <h2 id="dialog-title">{title}</h2>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Cerrar">
+        <button type="button" className="icon-btn" onClick={() => void requestClose()} aria-label="Cerrar">
           ✕
         </button>
       </header>
