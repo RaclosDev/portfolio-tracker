@@ -68,14 +68,21 @@ function derive() {
   // Sobre fondo oscuro el mismo % de color satura mucho más: se rebajan los tintes para que las filas no parezcan bloques.
   const tint = luminance(surface) < 0.05 ? 0.6 : 1;
 
+  // Fondos de las filas tintadas (en zona, con orden), donde también se leen subidas y bajadas.
+  const rowBgs = [surface, mix(surface, color('order'), 12 * tint)];
   for (const b of BADGES) {
     const bg = mix(surface, color(b.key), b.bgPct * tint);
+    if (b.key === 'reached') rowBgs.push(bg);
     root.style.setProperty(b.bg, rgbToCss(bg));
     // El texto también se usa sobre la superficie (p. ej. en el gráfico): se exige en ambos fondos.
     root.style.setProperty(b.fg, rgbToCss(readableOn(color(b.key), [bg, surface], text)));
   }
-  root.style.setProperty('--order-bg', rgbToCss(mix(surface, color('order'), 12 * tint)));
-  for (const k of ['up', 'down'] as const) root.style.setProperty(`--${k}`, rgbToCss(readableOn(color(k), [surface], text)));
+  root.style.setProperty('--order-bg', rgbToCss(rowBgs[1]!));
+  for (const k of ['up', 'down'] as const) {
+    root.style.setProperty(`--${k}`, rgbToCss(readableOn(color(k), [surface], text)));
+    // Solo dentro de las filas tintadas (styles.css): así el color elegido no se apaga en el resto de la app.
+    root.style.setProperty(`--${k}-tint`, rgbToCss(readableOn(color(k), rowBgs, text)));
+  }
 }
 
 /** Aplica los colores elegidos (variables --c-*) y recalcula los textos legibles. */
