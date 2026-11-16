@@ -5,6 +5,7 @@ import { App } from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { Gate } from './features/auth/Gate.tsx';
 import { registerServiceWorker } from './lib/push.ts';
+import '@fontsource-variable/inter';
 import './styles.css';
 
 const queryClient = new QueryClient({
