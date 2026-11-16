@@ -65,14 +65,16 @@ function derive() {
   const text = hexToRgb(css.getPropertyValue('--text'));
   if (!surface || !text) return; // sin tema resuelto: se quedan los valores de reserva de styles.css
   const color = (key: keyof Colors) => hexToRgb(current?.[key] ?? COLOR_DEFS.find((c) => c.key === key)!.default)!;
+  // Sobre fondo oscuro el mismo % de color satura mucho más: se rebajan los tintes para que las filas no parezcan bloques.
+  const tint = luminance(surface) < 0.05 ? 0.6 : 1;
 
   for (const b of BADGES) {
-    const bg = mix(surface, color(b.key), b.bgPct);
+    const bg = mix(surface, color(b.key), b.bgPct * tint);
     root.style.setProperty(b.bg, rgbToCss(bg));
     // El texto también se usa sobre la superficie (p. ej. en el gráfico): se exige en ambos fondos.
     root.style.setProperty(b.fg, rgbToCss(readableOn(color(b.key), [bg, surface], text)));
   }
-  root.style.setProperty('--order-bg', rgbToCss(mix(surface, color('order'), 12)));
+  root.style.setProperty('--order-bg', rgbToCss(mix(surface, color('order'), 12 * tint)));
   for (const k of ['up', 'down'] as const) root.style.setProperty(`--${k}`, rgbToCss(readableOn(color(k), [surface], text)));
 }
 
