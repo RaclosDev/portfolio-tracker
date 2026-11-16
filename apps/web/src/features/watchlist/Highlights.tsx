@@ -55,62 +55,58 @@ export function Highlights({ rows, base, onLocate, quoteInfo }: {
   const [expanded, setExpanded] = useState(false);
   if (!rows.length) return null;
   const reached = rows.filter((r) => r.metrics.status === 'reached');
-  const nearest = rows
-    .filter((r) => r.metrics.status !== 'reached' && r.metrics.nearestDistancePct != null)
-    .sort((a, b) => b.metrics.nearestDistancePct! - a.metrics.nearestDistancePct!)[0];
   const orders = rows.filter((r) => r.item.orderActive);
-  const expiring = orders.filter((r) => r.metrics.orderDaysLeft != null && r.metrics.orderDaysLeft <= 7);
   const committed = orders.reduce((s, r) => s + (r.metrics.netBase ?? 0), 0);
   const earnings = rows
     .map((r) => ({ r, d: upcoming(r).find((k) => k.kind === 'earnings' && k.days <= 7) }))
     .filter((x) => x.d)
     .sort((a, b) => a.d!.days - b.d!.days);
 
+  // Distancia hasta un precio, como en la tabla: −0,6 % = le falta bajar un 0,6 %.
+  const dist = (v: number) => pct(Math.abs(v)).replace('+', '−');
+  const near = rows
+    .filter((r) => r.metrics.status !== 'reached' && r.metrics.nearestDistancePct != null)
+    .sort((a, b) => b.metrics.nearestDistancePct! - a.metrics.nearestDistancePct!)
+    .slice(0, 4);
+
   let main: ReactNode;
   if (reached.length) {
     main = (
       <Cell wide label={<span className="hl-label--reached">En zona de compra · {reached.length}</span>}>
-        <ul className="hl-list">
+        <ul className="hl-rows">
           {reached.slice(0, 4).map((r) => {
-            const lvl = r.metrics.levels.find((l) => l.status === 'reached');
+            const lvlIndex = r.metrics.levels.findIndex((l) => l.status === 'reached');
+            const lvl = r.metrics.levels[lvlIndex];
             return (
               <li key={r.item.id}>
-                <RowLink row={r} onLocate={onLocate} full>
-                  {name(r)}
-                </RowLink>
-                {lvl && (
-                  <span className="muted num">
-                    {' '}
-                    {price(r.quote?.price, r.quote?.currency)} ≤ {price(lvl.price, r.quote?.currency)}
-                  </span>
-                )}
+                <RowLink row={r} onLocate={onLocate}>{shortName(r)}</RowLink>
+                <span className="hl-rows__detail">{lvl && <>compra {lvlIndex + 1} · <span className="num">{price(lvl.price, r.quote?.currency)}</span></>}</span>
+                <span className="hl-rows__fig num hl-dist--reached">{price(r.quote?.price, r.quote?.currency)}</span>
               </li>
             );
           })}
-          {reached.length > 4 && <li className="muted">y {reached.length - 4} más</li>}
+          {reached.length > 4 && <li className="hl-rows__more">y {reached.length - 4} más</li>}
         </ul>
       </Cell>
     );
-  } else if (nearest) {
-    const lvlIndex = nearest.metrics.levels.findIndex((l) => l.distancePct === nearest.metrics.nearestDistancePct);
-    const lvl = nearest.metrics.levels[lvlIndex];
+  } else if (near.length) {
     main = (
-      <Cell wide label="Nada en zona de compra · lo más cerca">
-        <p className="hl-nearest">
-          <span className={`hl-big num hl-dist--${lvl?.status ?? 'unknown'}`}>
-            {pct(Math.abs(nearest.metrics.nearestDistancePct!)).replace('+', '−')}
-          </span>
-          <span className="hl-nearest__what">
-            <RowLink row={nearest} onLocate={onLocate} full>
-              {name(nearest)}
-            </RowLink>
-            <span className="muted">
-              {' '}
-              hasta su compra {lvlIndex + 1}
-              {lvl && <span className="num"> ({price(lvl.price, nearest.quote?.currency)})</span>}
-            </span>
-          </span>
-        </p>
+      <Cell wide label="Lo más cerca de tus precios de compra">
+        <ul className="hl-rows hl-rows--ranked">
+          {near.map((r) => {
+            const lvlIndex = r.metrics.levels.findIndex((l) => l.distancePct === r.metrics.nearestDistancePct);
+            const lvl = r.metrics.levels[lvlIndex];
+            return (
+              <li key={r.item.id}>
+                <RowLink row={r} onLocate={onLocate}>{shortName(r)}</RowLink>
+                <span className="hl-rows__detail">{lvl && <>compra {lvlIndex + 1} · <span className="num">{price(lvl.price, r.quote?.currency)}</span></>}</span>
+                <span className={`hl-rows__fig num hl-dist--${lvl?.status ?? 'unknown'}`} title={`Le falta bajar un ${dist(r.metrics.nearestDistancePct!).slice(1)}`}>
+                  {dist(r.metrics.nearestDistancePct!)}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
       </Cell>
     );
   } else {
@@ -121,10 +117,18 @@ export function Highlights({ rows, base, onLocate, quoteInfo }: {
     );
   }
 
+  const expiry = (r: WatchlistRow) => {
+    const d = r.metrics.orderDaysLeft;
+    if (d == null) return <span className="hl-chip">sin fecha</span>;
+    const text = d < 0 ? 'caducada' : d === 0 ? 'caduca hoy' : d === 1 ? 'caduca mañana' : `${d} d`;
+    return <span className={`hl-chip${d <= 1 ? ' hl-chip--warn' : ''}`}>{text}</span>;
+  };
+  const ordersSorted = [...orders].sort((a, b) => (a.metrics.orderDaysLeft ?? 1e9) - (b.metrics.orderDaysLeft ?? 1e9));
+
   const summary = reached.length
     ? `${reached.length} en zona de compra`
-    : nearest
-      ? `${pct(Math.abs(nearest.metrics.nearestDistancePct!)).replace('+', '−')} hasta comprar`
+    : near[0]
+      ? `${dist(near[0].metrics.nearestDistancePct!)} hasta comprar`
       : 'Sin precios de compra';
 
   return (
@@ -142,31 +146,36 @@ export function Highlights({ rows, base, onLocate, quoteInfo }: {
       <section id="watchlist-highlights" className={`highlights${expanded ? ' highlights--open' : ''}`} aria-label="Resumen">
         {main}
         {orders.length > 0 && (
-          <Cell label="Órdenes activas">
-            <p className="hl-value">
-              <strong className="num">{orders.length}</strong> <span className="muted">·</span>{' '}
-              <span className="num">{money(committed, base)}</span>
-            </p>
-            {/* Se nombran todas: así se ve cuál es aunque la tabla esté filtrada y no la muestre. */}
-            {[...expiring, ...orders.filter((r) => !expiring.includes(r))].slice(0, 4).map((r) => (
-              <p key={r.item.id} className={expiring.includes(r) ? 'hl-warn' : 'small'}>
-                <RowLink row={r} onLocate={onLocate}>{shortName(r)}</RowLink>
-                {expiring.includes(r) &&
-                  ` ${r.metrics.orderExpired ? 'caducada' : r.metrics.orderDaysLeft === 0 ? 'caduca hoy' : `caduca en ${r.metrics.orderDaysLeft} d`}`}
-              </p>
-            ))}
-            {orders.length > 4 && <p className="muted small">y {orders.length - 4} más</p>}
+          <Cell
+            label={
+              <>
+                Órdenes activas · {orders.length} <span className="hl-label__aside num">{money(committed, base)}</span>
+              </>
+            }
+          >
+            {/* Se nombran todas: así se ve cuál es aunque la tabla esté filtrada y no la muestre. Primero las que caducan antes. */}
+            <ul className="hl-rows">
+              {ordersSorted.slice(0, 4).map((r) => (
+                <li key={r.item.id}>
+                  <RowLink row={r} onLocate={onLocate}>{shortName(r)}</RowLink>
+                  <span className="hl-rows__detail num">{r.item.orderPrice != null && price(r.item.orderPrice, r.quote?.currency)}</span>
+                  {expiry(r)}
+                </li>
+              ))}
+              {orders.length > 4 && <li className="hl-rows__more">y {orders.length - 4} más</li>}
+            </ul>
           </Cell>
         )}
         {earnings.length > 0 && (
-          <Cell label="Resultados en 7 días">
-            <ul className="hl-inline">
-              {earnings.slice(0, 5).map(({ r, d }) => (
+          <Cell label="Resultados esta semana">
+            <ul className="hl-rows hl-rows--two">
+              {earnings.slice(0, 4).map(({ r, d }) => (
                 <li key={r.item.id}>
-                  <RowLink row={r} onLocate={onLocate}>{shortName(r)}</RowLink> <span className="muted">{when(d!.days)}</span>
+                  <RowLink row={r} onLocate={onLocate}>{shortName(r)}</RowLink>
+                  <span className={`hl-chip${d!.days <= 1 ? ' hl-chip--info' : ''}`}>{when(d!.days)}</span>
                 </li>
               ))}
-              {earnings.length > 5 && <li className="muted">y {earnings.length - 5} más</li>}
+              {earnings.length > 4 && <li className="hl-rows__more">y {earnings.length - 4} más</li>}
             </ul>
           </Cell>
         )}
