@@ -32,7 +32,7 @@
   --pm-price: #111827;
 
   /*
-   * Gr·ficos: series por categorÌa. Tonos medidos para distinguirse entre sÌ (tambiÈn con daltonismo)
+   * Gr√°ficos: series por categor√≠a. Tonos medidos para distinguirse entre s√≠ (tambi√©n con daltonismo)
    * y llegar a 3:1 con la superficie en cada tema. La primera serie es el color de la marca.
    */
   --chart-1: var(--accent);
@@ -45,7 +45,7 @@
   --chart-8: #0284c7;
   --chart-9: #4f46e5;
   --chart-rest: #8b93a1;
-  /* Barra del navegador en el mÛvil (meta theme-color; lib/theme.ts la mantiene al dÌa). */
+  /* Barra del navegador en el m√≥vil (meta theme-color; lib/theme.ts la mantiene al d√≠a). */
   --chrome: var(--accent);
 
   --font-mono: ui-monospace, 'Cascadia Mono', Menlo, monospace;
