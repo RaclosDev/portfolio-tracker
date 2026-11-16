@@ -4,7 +4,7 @@
 
 ![Portfolio Tracker: lista de vigilancia, resumen de cartera y registro de operaciones](docs/screenshots/hero.jpg)
 
-[Arquitectura](docs/ARQUITECTURA.md) · [Instalación y uso](docs/GUIA.md) · [Capturas reproducibles](docs/screenshots/README.md) · [Abrir Watchlist](https://cartera.raclos.es)
+[Arquitectura](docs/arquitectura.md) · [Instalación y uso](docs/guia.md) · [Capturas reproducibles](docs/screenshots/README.md) · [Abrir Watchlist](https://cartera.raclos.es)
 
 ## Qué resuelve
 
@@ -51,7 +51,7 @@ npm ci
 npm run dev
 ```
 
-La web arranca en `http://localhost:5173` y la API en `http://localhost:5174`. Sin `DATABASE_URL`, se utiliza PGlite local. La [guía de configuración](docs/GUIA.md) explica autenticación, notificaciones, copias y despliegue.
+La web arranca en `http://localhost:5173` y la API en `http://localhost:5174`. Sin `DATABASE_URL`, se utiliza PGlite local. La [guía de configuración](docs/guia.md) explica autenticación, notificaciones, copias y despliegue.
 
 ```bash
 npm test
