@@ -191,6 +191,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .btn--primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
 .btn--primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
 .btn--danger-ghost { color: var(--danger); border-color: transparent; background: transparent; }
+.btn--danger { background: var(--danger); border-color: var(--danger); color: var(--surface); font-weight: 600; }
+.btn--danger:hover:not(:disabled) { background: var(--danger); filter: brightness(1.08); }
 .btn--small { height: 28px; padding: 0 10px; font-size: var(--fs-xs); }
 .icon-btn {
   width: 32px; height: 32px; display: inline-grid; place-items: center;
@@ -410,6 +412,34 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .dialog[open] { display: flex; flex-direction: column; }
 .dialog--wide { width: min(720px, calc(100vw - 32px)); }
 .dialog::backdrop { background: rgb(10 14 20 / 45%); }
+.dialog--confirm { width: min(440px, calc(100vw - 32px)); }
+.confirm__msg { margin: 12px 0 4px; white-space: pre-line; line-height: 1.5; color: var(--text-2); }
+
+/* Avisos breves (components/feedback.tsx): abajo en el centro, encima de todo, también de los diálogos. */
+.toasts {
+  inset: auto; margin: 0; padding: 0; border: 0; background: transparent; overflow: visible; /* reinicia el estilo de popover */
+  position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px;
+  width: min(440px, calc(100vw - 24px)); pointer-events: none;
+}
+.toasts:not(:popover-open) { display: none; }
+.toast {
+  pointer-events: auto; display: flex; align-items: center; gap: 10px;
+  padding: 10px 10px 10px 14px; border-radius: 10px;
+  background: var(--text); color: var(--surface); box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+  font-size: var(--fs-sm); animation: toast-in 160ms ease-out;
+}
+.toast--error { background: var(--danger); color: var(--surface); }
+.toast__msg { flex: 1; line-height: 1.4; }
+.toast__action {
+  border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700;
+  padding: 6px 8px; border-radius: 6px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px;
+}
+.toast__close { border: 0; background: transparent; color: inherit; opacity: .7; cursor: pointer; padding: 6px 8px; border-radius: 6px; font: inherit; }
+.toast__action:hover, .toast__close:hover { background: rgb(127 127 127 / 22%); opacity: 1; }
+.toast__action:focus-visible, .toast__close:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
 .dialog__header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
 .dialog__header h2 { margin: 0; font-size: var(--fs-lg); }
 .dialog__body { padding: 6px 18px 16px; overflow-y: auto; }
