@@ -32,7 +32,7 @@ describe('cotización sacada del gráfico', () => {
   it('con la sesión abierta compara con el cierre de la víspera', () => {
     const q = quoteFromChart('SAN.MC', { meta: { ...meta, regularMarketTime: new Date('2026-11-17T09:59:00Z') },
       quotes: [{ date: '2026-11-13T08:00:00Z', close: 9 }, { date: '2026-11-16T08:00:00Z', close: 10 }, { date: '2026-11-17T08:00:00Z', close: 11 }] }, now);
-    expect(q).toMatchObject({ symbol: 'SAN.MC', price: 11, previousClose: 10, currency: 'EUR', name: 'Banco Santander', quoteType: 'EQUITY', low52: 5, high52: 12 });
+    expect(q).toMatchObject({ symbol: 'SAN.MC', price: 11, previousClose: 10, currency: 'EUR', name: 'Banco Santander', quoteType: 'EQUITY', low52: 5, high52: 12, fallback: true });
     expect(q!.changePct).toBeCloseTo(0.1);
   });
   it('si la última barra es de una sesión anterior, esa es el cierre previo', () => {

@@ -228,6 +228,7 @@ p, li { text-wrap: pretty; }
 }
 .updated { font-size: var(--fs-xs); color: var(--text-2); min-width: 120px; text-align: right; }
 .updated--stale { color: var(--down); }
+.updated--warn { color: color-mix(in oklab, var(--c-near), var(--text) 35%); cursor: help; }
 .mobile-primary-nav, .highlights-toggle { display: none; }
 
 /* ---------- Botones ---------- */
@@ -984,7 +985,7 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .wl-table td.col-notes, .wl-table td.col-order { grid-column: 1 / -1; }
 
   .topbar .chip, .topbar .updated { display: none; }
-  .topbar .updated--stale { display: block; order: 11; flex: 1 1 100%; padding: 0 8px 4px; font-size: var(--fs-xs); text-align: left; }
+  .topbar .updated--stale, .topbar .updated--warn { display: block; order: 11; flex: 1 1 100%; padding: 0 8px 4px; font-size: var(--fs-xs); text-align: left; }
   .list-picker__title { padding-left: 10px; font-size: var(--fs-xl); }
   .mobile-primary-nav {
     display: flex; order: 10; flex: 1 1 100%; gap: 3px;

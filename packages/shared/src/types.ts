@@ -33,6 +33,8 @@ export interface Quote {
   isin?: string;
   /** true si la fuente falló y se muestra el último dato guardado. */
   stale: boolean;
+  /** true si la consulta principal de la fuente falló y el precio llega por su vía alternativa. */
+  fallback?: boolean;
 }
 
 export interface AnalystTargets {
