@@ -82,7 +82,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
   const qc = useQueryClient();
 
   const t = ticker.trim().toUpperCase();
-  const quoteSymbol = symbol ?? (/^0P[A-Z0-9]{8}(?:\.[A-Z]{1,3})?$|^[A-Z]{2}[A-Z0-9]{9}\d$|^BORSA:2FADB\d+$/.test(t) ? t : '');
+  const quoteSymbol = symbol ?? (/^0P[A-Z0-9]{8}(?:\.[A-Z]{1,3})?$|^[A-Z]{2}[A-Z0-9]{9}\d$|^BORSA:2FADB\d+$|^[A-Z]+:[A-Z]{2}[A-Z0-9]{9}\d$/.test(t) ? t : '');
   const known = instruments.find((i) => i.ticker === t);
   const foreign = currency !== 'EUR';
   const income = isIncome(type);

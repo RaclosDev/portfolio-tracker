@@ -2,6 +2,9 @@ import type { AnalystTargets, DailyHistory, HistoryRange, PricePoint, Quote, Sym
 import type { CompanyProfile, MarketDataProvider } from './provider.ts';
 import { isIsin } from './isin.ts';
 
+/** Yahoo no usa «:» en sus tickers: BORSA:…, XETRA:… y los ISIN son de las otras fuentes. */
+const notYahoo = (symbol: string) => symbol.includes(':') || isIsin(symbol);
+
 /** Las pausas pertenecen a cada fuente: un 429 de Yahoo no bloquea las alternativas. */
 export class FallbackProvider implements MarketDataProvider {
   readonly id: string;
@@ -35,7 +38,7 @@ export class FallbackProvider implements MarketDataProvider {
     for (const provider of this.providers) {
       if (!missing.size) break;
       // Yahoo cotiza con sus tickers; los ISIN se resuelven a esos tickers en la búsqueda.
-      const requested = [...missing].filter(symbol => provider.id !== 'yahoo' || (!symbol.startsWith('BORSA:') && !isIsin(symbol)));
+      const requested = [...missing].filter(symbol => provider.id !== 'yahoo' || !notYahoo(symbol));
       if (!requested.length) continue;
       const quotes = await this.call(provider, () => provider.getQuotes(requested));
       for (const quote of quotes ?? []) {
@@ -51,7 +54,7 @@ export class FallbackProvider implements MarketDataProvider {
   private async first<T>(symbol: string, run: (provider: MarketDataProvider) => Promise<T | null | undefined>, valid: (result: T) => boolean): Promise<T | null> {
     let failed = false;
     for (const provider of this.providers) {
-      if (provider.id === 'yahoo' && (symbol.startsWith('BORSA:') || isIsin(symbol))) continue;
+      if (provider.id === 'yahoo' && notYahoo(symbol)) continue;
       const result = await this.call(provider, () => run(provider));
       if (result === undefined) failed = true;
       if (result != null && valid(result)) return result;
@@ -75,7 +78,7 @@ export class FallbackProvider implements MarketDataProvider {
   async search(query: string): Promise<SymbolSearchResult[]> {
     const results = new Map<string, SymbolSearchResult>();
     for (const provider of this.providers) {
-      if (provider.id === 'yahoo' && query.toUpperCase().startsWith('BORSA:')) continue;
+      if (provider.id === 'yahoo' && query.includes(':')) continue;
       for (const result of await this.call(provider, () => provider.search(query)) ?? []) {
         if (!results.has(result.symbol)) results.set(result.symbol, result);
       }
