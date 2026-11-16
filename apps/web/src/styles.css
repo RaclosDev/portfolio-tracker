@@ -522,8 +522,9 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   /* Filtros: se desplazan en horizontal en vez de cortarse, y con altura táctil (44 px). */
   .segmented { max-width: 100%; overflow-x: auto; scrollbar-width: thin; }
   .segmented button { white-space: nowrap; min-height: 44px; }
-  .btn, .tab, .icon-btn { min-height: 44px; }
+  .btn, .tab, .icon-btn, select.select, .check { min-height: 44px; }
   .icon-btn { min-width: 44px; }
+  .check input { width: 18px; height: 18px; flex: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -953,8 +954,8 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .topbar .chip { margin-left: 4px; }
   .search { font-size: var(--fs-lg); } /* 16 px: el iPhone no amplía la pantalla al escribir */
 
-  .toolbar .search { height: 40px; }
-  .toolbar .btn--primary { height: 40px; min-height: 40px; }
+  .toolbar .search { height: 44px; }
+  .toolbar .btn--primary { height: 44px; }
   .watchlist-desktop-filters, .watchlist-desktop-hint { display: none; }
   .watchlist-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; }
   .watchlist-toolbar .search { width: 100%; min-width: 0; padding-inline: 8px; }
@@ -978,7 +979,7 @@ th.col-name { z-index: 2; background: var(--surface-2); }
     margin-top: 2px; padding: 3px; border-radius: 9px; background: var(--surface-2);
   }
   .mobile-primary-nav button {
-    flex: 1; min-height: 36px; border: 0; border-radius: 7px;
+    flex: 1; min-height: 44px; border: 0; border-radius: 7px;
     background: transparent; color: var(--text-2); font-weight: 600; cursor: pointer;
   }
   .mobile-primary-nav button[aria-current='page'] {
@@ -986,7 +987,7 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   }
   .highlights-toggle {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    width: 100%; min-height: 40px; margin-bottom: 10px; padding: 0 12px;
+    width: 100%; min-height: 44px; margin-bottom: 10px; padding: 0 12px;
     border: 1px solid var(--border); border-radius: var(--radius);
     background: var(--surface); color: var(--text-2); text-align: left; cursor: pointer;
   }
@@ -1135,7 +1136,16 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .wl-table--watchlist tr.row td:not(.col-name):not(.col-mobile-price):not(.col-mobile-signal) { display: none; }
   .wl-table--watchlist tr.row td::before { content: none; }
   .wl-table--watchlist :is(th, td).col-name { position: static; min-width: 0; max-width: none; }
-  .wl-table--watchlist .name-btn { display: block; min-height: 32px; max-width: 100%; font-size: var(--fs-md); white-space: nowrap; text-align: left; }
+  /* Sin botón de editar en la fila: el nombre recupera el hueco que se le reservaba. */
+  .wl-table--watchlist tr.row td.col-name { padding-right: 8px; }
+  .wl-table--watchlist .name-btn {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+    max-width: 100%; font-size: var(--fs-md); line-height: 1.25; white-space: normal; text-align: left;
+  }
+  /* Cabeceras que ordenan: el botón ocupa los 44 px de alto de la celda. */
+  .wl-table th:has(> .th-btn) { padding-top: 0; padding-bottom: 0; }
+  .th-btn { min-width: 44px; min-height: 44px; }
+  .al-right > .th-btn { justify-content: flex-end; }
   .wl-table--watchlist .col-name .stack, .wl-table--watchlist .col-name .sub { min-width: 0; max-width: 100%; }
   .wl-table--watchlist .col-name .sub { overflow: hidden; white-space: nowrap; }
   .wl-table--watchlist .col-name .sub > .badge, .wl-table--watchlist .col-name .sub > .badge--btn { display: none; }
@@ -1169,6 +1179,7 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .segmented button.on .count--warn { color: inherit; }
 .row--issue td { background: color-mix(in srgb, var(--danger) 8%, transparent); }
 .col-check { width: 28px; }
+.check-hit { display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .bulkbar { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
 .optype { font-size: var(--fs-xs); }
 .optype--buy { color: var(--accent); font-weight: 600; }
@@ -1260,11 +1271,27 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .portfolio-summary .cartera-breakdown .highlights { grid-template-columns: 1fr; gap: 8px; }
   .cartera-breakdown .hl-cell { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .cartera-breakdown .hl-figure small { display: inline; }
-  .portfolio-charts__arrows .btn, .portfolio-chart-tabs button, .portfolio-periods button { min-height: 42px; }
+  .portfolio-charts__arrows .btn, .portfolio-chart-tabs button, .portfolio-periods button { min-height: 44px; min-width: 44px; }
+  .portfolio-charts :is(.input, input[type='range']) { min-height: 44px; }
   .portfolio-chart-tabs { flex-wrap: nowrap; overflow-x: auto; }
   .portfolio-chart-tabs button { flex-shrink: 0; }
-  .portfolio-periods { gap: 0; }
-  .portfolio-periods button { padding-inline: 4px; }
+  /* Ocho periodos en una fila: se reparten el ancho en vez de saltar a una segunda línea. */
+  .portfolio-periods { flex-wrap: nowrap; gap: 0; }
+  .portfolio-periods button { flex: 1 1 auto; min-width: 0; padding-inline: 4px; }
+  /* Ventas y cobros por año: las cinco columnas caben en un móvil. Si aun así no caben,
+     una sombra en el borde avisa de que la tabla se desliza. */
+  .portfolio-annual .cartera-table { font-size: var(--fs-xs); }
+  .portfolio-annual .cartera-table :is(th, td) { padding: 10px 4px; }
+  .portfolio-annual .databar { min-width: 0; padding: 0; }
+  .portfolio-annual .databar__fill { display: none; }
+  .portfolio-annual .table-wrap {
+    --edge: color-mix(in srgb, var(--text) 30%, transparent);
+    background:
+      linear-gradient(to right, var(--bg) 40%, transparent) left / 32px 100% no-repeat local,
+      linear-gradient(to left, var(--bg) 40%, transparent) right / 32px 100% no-repeat local,
+      linear-gradient(to right, var(--edge), transparent) left / 10px 100% no-repeat scroll,
+      linear-gradient(to left, var(--edge), transparent) right / 10px 100% no-repeat scroll;
+  }
   .portfolio-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .portfolio-dates label { display: grid; gap: 4px; min-width: 0; }
   .portfolio-dates .input { width: 100%; }
@@ -1308,7 +1335,9 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .cartera-compact .col-name { width: 44%; }
   .cartera-compact .col-type { width: 27%; }
   .cartera-compact .col-amount { width: 27%; }
-  .registro-table .col-check { width: 38px; }
+  /* La casilla ocupa toda su celda: 44 px de zona táctil sin abrir la operación al fallar el toque. */
+  .registro-table :is(thead, tbody) > :is(tr, tr.row) > .col-check { width: 44px; padding: 0; }
+  .registro-table .check-hit { min-height: 44px; }
   .registro-table .col-check input { width: 20px; height: 20px; }
   .registro-table .registro-desktop { display: none; }
   .registro-table .registro-mobile { display: inline; }
