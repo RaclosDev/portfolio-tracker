@@ -219,13 +219,18 @@ export function App() {
   const anyStale = onPortfolio
     ? Object.values(pf.data?.quotes ?? {}).some((q) => q.stale)
     : view?.rows.some((r) => r.quote?.stale);
+  // La consulta principal de Yahoo falla y los precios llegan por la vía alternativa (más lenta, sin estado del mercado).
+  const anyFallback = onPortfolio
+    ? Object.values(pf.data?.quotes ?? {}).some((q) => q.fallback && !q.stale)
+    : view?.rows.some((r) => r.quote?.fallback && !r.quote.stale);
   const fetching = onPortfolio ? pf.isFetching || pfRefreshing : wl.isFetching || refresh.isPending;
   const generatedAt = onPortfolio ? pf.data?.generatedAt : view?.generatedAt;
   const refetchFailed = onPortfolio ? pf.isRefetchError : wl.isRefetchError;
   const updateLabel = fetching ? 'Actualizando…'
     : refetchFailed ? `Sin conexión con el servidor · precios de ${timeAgo(generatedAt, now)}`
     : anyStale ? 'Sin conexión: datos guardados'
-    : `Actualizado ${timeAgo(generatedAt, now)}`;
+    : `Actualizado ${timeAgo(generatedAt, now)}${anyFallback ? ' · fuente alternativa' : ''}`;
+  const updateState = anyStale || refetchFailed ? ' updated--stale' : anyFallback ? ' updated--warn' : '';
   const fxBadges = fxChips.map(([currency, rate]) => (
     <span key={currency} className="chip" title={`1 ${base} = ${rate} ${currency}`}>
       {base}/{currency} <strong>{num(rate, 4)}</strong>
@@ -379,7 +384,11 @@ export function App() {
 
         <div className="topbar__right">
           {fxBadges}
-          <span className={`updated${anyStale || refetchFailed ? ' updated--stale' : ''}`} aria-live="polite">
+          <span
+            className={`updated${updateState}`}
+            aria-live="polite"
+            title={updateState === ' updated--warn' ? 'La consulta principal de cotizaciones está fallando: los precios llegan por una vía alternativa y pueden tardar hasta 2 minutos más.' : undefined}
+          >
             {updateLabel}
           </span>
           <button
