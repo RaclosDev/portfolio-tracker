@@ -769,6 +769,12 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .alert-list .pill, .alert-list .badge { justify-self: start; }
 .alert-list__text { display: grid; gap: 2px; }
 .alert-list__when { white-space: nowrap; }
+.alert-list__text .link-btn { text-align: left; }
+/* Móvil: etiqueta y hora arriba, el aviso a todo el ancho debajo. */
+@media (max-width: 700px) {
+  .alert-list li { grid-template-columns: 1fr auto; gap: 6px 12px; }
+  .alert-list__text { grid-column: 1 / -1; grid-row: 2; }
+}
 .badge--muted { background: var(--muted-bg); color: var(--muted-fg); }
 .field select, select.select { height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
 .setting-row input[type='time'] { height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
