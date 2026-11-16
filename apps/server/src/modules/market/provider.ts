@@ -1,4 +1,9 @@
-import type { AnalystTargets, DailyHistory, HistoryRange, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
+import type { AnalystTargets, DailyHistory, HistoryRange, InstrumentHit, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
+
+/** Catálogo de productos por nombre, ISIN o WKN (sin precios). */
+export interface InstrumentCatalog {
+  findInstruments(query: string): Promise<InstrumentHit[]>;
+}
 
 /**
  * Contrato de cualquier fuente de datos de mercado.

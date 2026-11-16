@@ -1,8 +1,8 @@
-import { shiftDate, type AnalystTargets, type DailyHistory, type HistoryRange, type PricePoint, type Quote, type SymbolSearchResult } from '@watchlist/shared';
+import { shiftDate, type AnalystTargets, type DailyHistory, type HistoryRange, type InstrumentHit, type Listing, type PricePoint, type Quote, type SymbolSearchResult } from '@watchlist/shared';
 import type { Db } from '../../db/database.ts';
 import { isinCandidates, isIsin } from './isin.ts';
 import { isVenueSymbol } from './onvista.provider.ts';
-import type { CompanyProfile, MarketDataProvider } from './provider.ts';
+import type { CompanyProfile, InstrumentCatalog, MarketDataProvider } from './provider.ts';
 
 type Kind = string; // 'quote' | TARGETS_KIND | 'history-<periodo>'
 /** Sube la versión cuando AnalystTargets gane campos: así no se sirve la caché antigua sin ellos. */
@@ -80,6 +80,7 @@ export class MarketService {
     private db: Db,
     private opts: { quoteTtlMs: number; targetsTtlMs: number },
     private log: (msg: string, err?: unknown) => void = () => {},
+    private catalog?: InstrumentCatalog,
   ) {}
 
   get providerId() {
@@ -221,6 +222,36 @@ export class MarketService {
     const own = direct.filter((r) => !isVenueSymbol(r.symbol));
     if (own.length) return [...own, ...venues];
     return [...(await this.isinYahoo(query)), ...venues];
+  }
+
+  /** Productos que encajan con un nombre, ISIN o WKN (paso 1 del buscador: qué valor es). */
+  async instruments(query: string): Promise<InstrumentHit[]> {
+    if (!this.catalog) return [];
+    try {
+      return await this.catalog.findInstruments(query);
+    } catch (err) {
+      this.log(`No se pudo buscar el producto «${query}»`, err);
+      return [];
+    }
+  }
+
+  /** Bolsas donde se puede seguir un ISIN, con su precio (paso 2: dónde). Primero las que tienen gráfico. */
+  async listings(isin: string): Promise<Listing[]> {
+    const found = await this.search(isin);
+    const quotes = await this.getQuotes(found.map((r) => r.symbol));
+    return found
+      .map((r) => {
+        const q = quotes.get(r.symbol);
+        const priceOnly = isVenueSymbol(r.symbol) || q?.source === 'onvista';
+        return {
+          ...r,
+          exchange: (priceOnly ? q?.exchange : null) ?? r.exchange,
+          currency: q?.currency ?? null,
+          price: q && !q.stale ? q.price : null,
+          priceOnly,
+        };
+      })
+      .sort((a, b) => Number(a.priceOnly) - Number(b.priceOnly) || Number(b.price !== null) - Number(a.price !== null));
   }
 
   private async isinYahoo(query: string): Promise<SymbolSearchResult[]> {

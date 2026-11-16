@@ -306,6 +306,32 @@ describe('límite de Yahoo', () => {
   });
 });
 
+describe('buscador en dos pasos', () => {
+  const ISIN = 'JE00B588CD74';
+  it('primero el producto por nombre; luego sus bolsas con precio, las de solo precio al final', async () => {
+    const catalog = { findInstruments: vi.fn().mockResolvedValue([{ isin: ISIN, name: 'Swiss Gold', type: 'ETF' }]) };
+    const venues: MarketDataProvider = { id: 'bolsas',
+      getQuotes: async (symbols) => [{ ...quote(`XETRA:${ISIN}`, 336, 'EUR'), exchange: 'Xetra', source: 'onvista' },
+        quote('SGBS.MI', 336.5, 'EUR')].filter((q) => symbols.includes(q.symbol)),
+      getTargets: async () => null, getHistory: async () => [],
+      search: async (q) => q === ISIN ? [
+        { symbol: `XETRA:${ISIN}`, name: 'Swiss Gold', exchange: 'Xetra (onvista)', type: 'ETF' },
+        { symbol: 'SGBS.MI', name: 'Swiss Gold', exchange: 'Milan', type: 'ETF' },
+        { symbol: 'SGBS.XX', name: 'Swiss Gold', exchange: 'Sin precio', type: 'ETF' },
+      ] : [] };
+    await app.close();
+    app = await buildApp(createServicesFromDb(db, { provider: venues, catalog }));
+    expect((await get('/api/market/instruments?q=swiss%20gold')).json()).toEqual([{ isin: ISIN, name: 'Swiss Gold', type: 'ETF' }]);
+    const listings = (await get(`/api/market/listings?isin=${ISIN.toLowerCase()}`)).json();
+    expect(listings.map((l: { symbol: string; price: number | null; priceOnly: boolean; exchange: string }) => [l.symbol, l.price, l.priceOnly, l.exchange])).toEqual([
+      ['SGBS.MI', 336.5, false, 'Milan'], ['SGBS.XX', null, false, 'Sin precio'], [`XETRA:${ISIN}`, 336, true, 'Xetra'],
+    ]);
+    expect((await get('/api/market/listings?isin=GZUR.DE')).statusCode).toBe(400);
+    catalog.findInstruments.mockRejectedValue(new Error('HTTP 503'));
+    expect((await get('/api/market/instruments?q=oro')).json()).toEqual([]);
+  });
+});
+
 describe('históricos', () => {
   it('recupera un minigráfico antes vacío sin invalidar los históricos válidos guardados', async () => {
     const history = vi.spyOn(provider, 'getHistory');

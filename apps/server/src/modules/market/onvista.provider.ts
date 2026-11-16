@@ -1,6 +1,6 @@
-import type { Quote, SymbolSearchResult } from '@watchlist/shared';
+import type { InstrumentHit, Quote, SymbolSearchResult } from '@watchlist/shared';
 import { isIsin } from './isin.ts';
-import type { MarketDataProvider } from './provider.ts';
+import type { InstrumentCatalog, MarketDataProvider } from './provider.ts';
 
 /*
  * Cotizaciones de onvista.de (API JSON pública de su web). Cubre lo que Yahoo no tiene o tiene sin precio:
@@ -108,7 +108,7 @@ export function toQuote(snapshot: Snapshot, symbol: string): Omit<Quote, 'stale'
   };
 }
 
-export class OnvistaProvider implements MarketDataProvider {
+export class OnvistaProvider implements MarketDataProvider, InstrumentCatalog {
   readonly id = 'onvista';
   private instruments = new Map<string, { value: Instrument | null; expires: number }>();
   private snapshots = new Map<string, { value: Snapshot; expires: number }>();
@@ -184,26 +184,48 @@ export class OnvistaProvider implements MarketDataProvider {
     return results;
   }
 
-  /** Por nombre, ISIN o WKN: cada valor encontrado se ofrece en las bolsas alemanas donde cotiza. */
-  async search(query: string): Promise<SymbolSearchResult[]> {
+  /** Productos por nombre, ISIN o WKN, sin pedir precios (la bolsa se elige después con search(isin)). */
+  async findInstruments(query: string): Promise<InstrumentHit[]> {
     const q = query.trim();
     if (q.length < 3 || q.length > 100) return [];
     const parsed = parseOnvistaSymbol(q);
-    const found = parsed ? [await this.instrument(parsed.isin)].filter((i): i is Instrument => !!i) : await this.query(q, 5);
-    const results: SymbolSearchResult[] = [];
-    for (const instrument of found.filter((i) => i.isin && isIsin(i.isin) && quoteType(i)).slice(0, 3)) {
-      const snap = await this.snapshot(instrument);
-      const venues = (parsed?.venue ? [parsed.venue] : Object.keys(VENUES)).filter((v) => pickQuote(snap, v)).slice(0, 2);
-      for (const venue of venues) {
-        results.push({
-          symbol: `${venue}:${instrument.isin}`,
-          name: `${instrument.name} · ${instrument.isin}`,
-          exchange: `${VENUES[venue]!.name} (onvista)`,
-          type: quoteType(instrument),
-        });
-      }
+    const found = parsed ? [await this.instrument(parsed.isin)] : await this.byName(q);
+    const hits = new Map<string, InstrumentHit>();
+    for (const i of found) {
+      if (i?.isin && isIsin(i.isin) && quoteType(i) && !hits.has(i.isin)) hits.set(i.isin, { isin: i.isin, name: i.name, type: quoteType(i) });
     }
-    return results;
+    return [...hits.values()].slice(0, 8);
+  }
+
+  /**
+   * onvista no encuentra nada con muchas palabras («wisdomtree swiss gold»): si pasa, prueba con cada pareja de palabras
+   * seguidas (máximo 3 consultas) y ordena por cuántas palabras de la búsqueda tiene el nombre.
+   */
+  private async byName(q: string): Promise<Instrument[]> {
+    const full = await this.query(q, 12);
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    if (full.length || words.length < 3) return full;
+    const pairs = words.slice(0, -1).map((w, i) => `${w} ${words[i + 1]}`).slice(0, 3);
+    const lists = await Promise.all(pairs.map((p) => this.query(p, 10).catch(() => [])));
+    const score = (i: Instrument) => words.filter((w) => i.name.toLowerCase().includes(w)).length;
+    return lists.flat().map((i, n) => ({ i, n, s: score(i) })).sort((a, b) => b.s - a.s || a.n - b.n).map((x) => x.i);
+  }
+
+  /** Por ISIN (o bolsa:ISIN): las bolsas alemanas donde cotiza. Por nombre no busca: eso lo hace findInstruments. */
+  async search(query: string): Promise<SymbolSearchResult[]> {
+    const parsed = parseOnvistaSymbol(query);
+    if (!parsed) return [];
+    const instrument = await this.instrument(parsed.isin);
+    if (!instrument || !quoteType(instrument)) return [];
+    const snap = await this.snapshot(instrument);
+    return (parsed.venue ? [parsed.venue] : Object.keys(VENUES))
+      .filter((v) => pickQuote(snap, v))
+      .map((venue) => ({
+        symbol: `${venue}:${instrument.isin}`,
+        name: `${instrument.name} · ${instrument.isin}`,
+        exchange: `${VENUES[venue]!.name} (onvista)`,
+        type: quoteType(instrument),
+      }));
   }
 
   async getTargets() {
