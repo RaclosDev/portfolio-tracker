@@ -506,7 +506,7 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
                   type="button"
                   className="btn btn--small"
                   onClick={async () => {
-                    const name = await ask('Renombrar lista', 'Nuevo nombre', l.name);
+                    const name = await ask('Renombrar lista', 'Nuevo nombre', l.name, 'Renombrar');
                     if (name) listsM.rename.mutate({ id: l.id, name }, { onError: toastError('No se pudo renombrar la lista.') });
                   }}
                 >

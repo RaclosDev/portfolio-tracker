@@ -242,7 +242,7 @@ export function App() {
   const throttleMin = throttleLeftMs > 3 * 60_000 ? Math.ceil(throttleLeftMs / 60_000) : null;
 
   const newList = async () => {
-    const name = await ask('Nueva lista', 'Nombre de la lista');
+    const name = await ask('Nueva lista', 'Nombre de la lista', '', 'Crear lista');
     if (name) {
       setListError(null);
       try {
@@ -256,7 +256,7 @@ export function App() {
 
   const renameCurrentList = async () => {
     if (!selectedList) return;
-    const name = await ask('Renombrar lista', 'Nuevo nombre', selectedList.name);
+    const name = await ask('Renombrar lista', 'Nuevo nombre', selectedList.name, 'Renombrar');
     if (!name || name === selectedList.name) return;
     setListError(null);
     try {
@@ -428,6 +428,7 @@ export function App() {
             model={carteraModel}
             isPending={pf.isPending}
             error={pf.error}
+            onRetry={() => void pf.refetch()}
             draft={buyDraft}
             onDraftUsed={clearDraft}
           />
@@ -471,7 +472,12 @@ export function App() {
               </Dialog>
             )}
 
-            {wl.isError && <p className="error-box">No se pudo cargar la lista: {(wl.error as Error).message}</p>}
+            {wl.isError && (
+              <div className="error-box" role="alert">
+                No se pudo cargar la lista: {(wl.error as Error).message}{' '}
+                <button type="button" className="btn" onClick={() => void wl.refetch()}>Reintentar</button>
+              </div>
+            )}
             {wl.isPending && listId && <p className="muted center">Cargando cotizaciones…</p>}
             {view && view.rows.length === 0 && (
               <div className="empty">
