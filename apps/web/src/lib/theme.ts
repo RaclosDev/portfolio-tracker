@@ -83,6 +83,9 @@ function derive() {
     // Solo dentro de las filas tintadas (styles.css): así el color elegido no se apaga en el resto de la app.
     root.style.setProperty(`--${k}-tint`, rgbToCss(readableOn(color(k), rowBgs, text)));
   }
+  // La barra del navegador en el móvil sigue al tema que se ve, también si se ha forzado en Ajustes.
+  const chrome = css.getPropertyValue('--chrome').trim();
+  if (chrome) document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((m) => { m.content = chrome; });
 }
 
 /** Aplica los colores elegidos (variables --c-*) y recalcula los textos legibles. */

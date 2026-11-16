@@ -7,6 +7,7 @@ const H = 180;
 const M = { left: 62, right: 12, top: 12, bottom: 26 };
 const dateLabel = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString('es-ES');
 const shortMoney = new Intl.NumberFormat('es-ES', { notation: 'compact', maximumFractionDigits: 1 });
+const tickLabel = (v: number) => `${shortMoney.format(v)} €`;
 
 export type HistoryMode = 'result' | 'value' | 'fx';
 
@@ -28,6 +29,8 @@ export function PortfolioHistoryChart({ points, mode }: { points: PortfolioHisto
   const selectedIndex = points.findIndex((p) => p.date === selectedDate);
   const index = selectedIndex < 0 ? points.length - 1 : selectedIndex;
   const selected = points[index];
+  // Las etiquetas del eje usan --fs-xs (0,857 rem): su ancho depende del tamaño de letra elegido en Ajustes.
+  const labelPx = parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.857;
   const geo = useMemo(() => {
     const values = points.flatMap((p) => compare ? [p.valueEur, p.constantFxEur] : [p[field]])
       .filter((n): n is number => n != null);
@@ -36,7 +39,10 @@ export function PortfolioHistoryChart({ points, mode }: { points: PortfolioHisto
     const pad = (maxValue - minValue || Math.abs(maxValue) * 0.1 || 1) * 0.12;
     const min = mode === 'result' ? minValue - pad : Math.max(0, minValue - pad);
     const max = maxValue + pad;
-    const x = (i: number) => M.left + i / Math.max(1, points.length - 1) * (width - M.left - M.right);
+    const ticks = [0, 1, 2, 3].map((n) => min + (max - min) * n / 3);
+    // Margen izquierdo: lo que ocupa la etiqueta más larga (≈0,56 em por carácter) más el hueco hasta la gráfica.
+    const left = Math.max(M.left, Math.ceil(Math.max(...ticks.map((v) => tickLabel(v).length)) * labelPx * 0.56) + 14);
+    const x = (i: number) => left + i / Math.max(1, points.length - 1) * (width - left - M.right);
     const y = (v: number) => M.top + (max - v) / (max - min) * (H - M.top - M.bottom);
     const path = (field: 'valueEur' | 'constantFxEur' | 'resultEur') => {
       let connected = false;
@@ -47,9 +53,8 @@ export function PortfolioHistoryChart({ points, mode }: { points: PortfolioHisto
         return `${command}${x(i).toFixed(2)},${y(p[field]).toFixed(2)}`;
       }).join(' ');
     };
-    return { x, y, actual: path(field), fixed: path('constantFxEur'),
-      ticks: [0, 1, 2, 3].map((n) => min + (max - min) * n / 3), hasValues: values.length > 0 };
-  }, [points, compare, field, mode, width]);
+    return { x, y, left, ticks, actual: path(field), fixed: path('constantFxEur'), hasValues: values.length > 0 };
+  }, [points, compare, field, mode, width, labelPx]);
 
   if (!selected) return <p className="chart-empty muted">No hay fechas en este periodo.</p>;
   const first = points[0]!;
@@ -57,7 +62,7 @@ export function PortfolioHistoryChart({ points, mode }: { points: PortfolioHisto
     const matrix = event.currentTarget.getScreenCTM();
     if (!matrix) return;
     const x = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse()).x;
-    const next = Math.round((x - M.left) / (width - M.left - M.right) * (points.length - 1));
+    const next = Math.round((x - geo.left) / (width - geo.left - M.right) * (points.length - 1));
     setSelectedDate(points[Math.max(0, Math.min(points.length - 1, next))]!.date);
   };
 
@@ -75,16 +80,16 @@ export function PortfolioHistoryChart({ points, mode }: { points: PortfolioHisto
       aria-label={`${mode === 'result' ? 'Resultado económico' : 'Valor de cartera'} del ${dateLabel(first.date)} al ${dateLabel(points[points.length - 1]!.date)}${compare ? ', con y sin efecto divisa' : ''}. Consulta cada fecha en el control inferior.`}
       onPointerMove={move} onPointerDown={move}>
       {geo.ticks.map((v) => <g key={v}>
-        <line x1={M.left} x2={width - M.right} y1={geo.y(v)} y2={geo.y(v)} stroke="var(--border)" />
-        <text x={M.left - 10} y={geo.y(v) + 4} textAnchor="end">{shortMoney.format(v)} €</text>
+        <line x1={geo.left} x2={width - M.right} y1={geo.y(v)} y2={geo.y(v)} stroke="var(--border)" />
+        <text x={geo.left - 10} y={geo.y(v) + 4} textAnchor="end">{tickLabel(v)}</text>
       </g>)}
-      {mode === 'result' && <line x1={M.left} x2={width - M.right} y1={geo.y(0)} y2={geo.y(0)} stroke="var(--text-2)" strokeDasharray="3 4" />}
+      {mode === 'result' && <line x1={geo.left} x2={width - M.right} y1={geo.y(0)} y2={geo.y(0)} stroke="var(--text-2)" strokeDasharray="3 4" />}
       {[...new Set(width < 480 ? [0, points.length - 1] : [0, Math.floor((points.length - 1) / 2), points.length - 1])].map((i) =>
         <text key={i} x={geo.x(i)} y={H - 5} textAnchor={i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'}>{dateLabel(points[i]!.date)}</text>)}
       {compare && <path d={geo.fixed} className="portfolio-history__line portfolio-history__line--fixed" />}
       <path d={geo.actual} className="portfolio-history__line" />
       <line x1={geo.x(index)} x2={geo.x(index)} y1={M.top} y2={H - M.bottom} stroke="var(--text-2)" strokeDasharray="3 4" />
-      {compare && selected.constantFxEur != null && <circle cx={geo.x(index)} cy={geo.y(selected.constantFxEur)} r={4} fill="var(--history-fixed)" />}
+      {compare && selected.constantFxEur != null && <circle cx={geo.x(index)} cy={geo.y(selected.constantFxEur)} r={4} fill="var(--chart-3)" />}
       {selected[field] != null && <circle cx={geo.x(index)} cy={geo.y(selected[field])} r={4} fill="var(--accent)" />}
     </svg> : <p className="chart-empty muted">Faltan cotizaciones históricas para estas fechas. Revisa los símbolos de los valores o elige otro periodo.</p>}
     {compare && <div className="portfolio-history__legend" aria-label="Leyenda"><span>Con efecto divisa</span><span>Sin efecto divisa</span></div>}
