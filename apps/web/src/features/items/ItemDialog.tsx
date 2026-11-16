@@ -1,9 +1,10 @@
-import { localToday, MAX_BUY_LEVELS, roundUpShares, type ItemInput, type Settings, type WatchlistRow } from '@watchlist/shared';
-import { useQuery } from '@tanstack/react-query';
+import { itemInputSchema, localToday, MAX_BUY_LEVELS, roundUpShares, type ItemInput, type Settings, type WatchlistRow } from '@watchlist/shared';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { ApiError, api } from '../../api/client.ts';
 import { useDeleteItem, useSaveItem } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
+import { toast, toastError } from '../../components/feedback.tsx';
 import { MINOR_CURRENCY, money, num, parseDecimal, pct, price, shortDate } from '../../lib/format.ts';
 import { tickerFromSymbol, type OperationDraft } from '../cartera/OperationDialog.tsx';
 import { SymbolPicker } from './SymbolPicker.tsx';
@@ -50,7 +51,12 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
   /** '' = avisos activados · 'always' · o una fecha AAAA-MM-DD hasta la que se silencian */
   const [muted, setMuted] = useState<string>(item?.mutedUntil ?? '');
   const [error, setError] = useState<string | null>(null);
+  // Hay cambios sin guardar si el formulario difiere de como se abrió (para no perderlos al cerrar sin querer).
+  const formState = JSON.stringify([symbol, name, levels, brokerTarget, brokerName, invest, shares, orderActive, orderPrice, orderUntil, notes, muted]);
+  const [initialForm] = useState(formState);
+  const dirty = formState !== initialForm;
 
+  const qc = useQueryClient();
   const save = useSaveItem();
   const del = useDeleteItem();
 
@@ -123,16 +129,33 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
     }
   };
 
+  // Se quita al momento y el aviso ofrece «Deshacer» (vuelve a crearlo con los mismos datos), en vez de preguntar antes.
   const remove = async () => {
-    if (!item || !confirm(`¿Quitar ${item.name ?? item.symbol} de la lista?`)) return;
-    await del.mutateAsync(item.id);
+    if (!item) return;
+    try {
+      await del.mutateAsync(item.id);
+    } catch (err) {
+      return setError(err instanceof Error ? err.message : 'No se pudo quitar');
+    }
     onClose();
+    const label = item.name ?? item.symbol;
+    toast(`${label} quitado de la lista.`, {
+      action: {
+        label: 'Deshacer',
+        onClick: async () => {
+          await api.createItem(itemInputSchema.parse(item));
+          await qc.invalidateQueries();
+          toast(`${label} recuperado.`);
+        },
+      },
+    });
   };
 
   return (
     <Dialog
       title={item ? `Editar ${item.name ?? item.symbol}` : 'Añadir valor'}
       onClose={onClose}
+      dirty={dirty}
       wide
       footer={
         <>

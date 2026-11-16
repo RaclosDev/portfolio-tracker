@@ -1,7 +1,10 @@
-import { shiftDate, type AnalystTargets, type DailyHistory, type HistoryRange, type PricePoint, type Quote, type SymbolSearchResult } from '@watchlist/shared';
+import { shiftDate, type AnalystTargets, type DailyHistory, type HistoryRange, type InstrumentHit, type Listing, type PricePoint, type Quote, type SymbolSearchResult } from '@watchlist/shared';
 import type { Db } from '../../db/database.ts';
 import { isinCandidates, isIsin } from './isin.ts';
-import type { CompanyProfile, MarketDataProvider } from './provider.ts';
+import { queryWords, rankByWords, sameName, wordPairs, wordScore } from './words.ts';
+import { isVenueSymbol } from './onvista.provider.ts';
+import { parseFtSymbol } from './ft.provider.ts';
+import type { CompanyProfile, InstrumentCatalog, MarketDataProvider } from './provider.ts';
 
 type Kind = string; // 'quote' | TARGETS_KIND | 'history-<periodo>'
 /** Sube la versión cuando AnalystTargets gane campos: así no se sirve la caché antigua sin ellos. */
@@ -79,6 +82,7 @@ export class MarketService {
     private db: Db,
     private opts: { quoteTtlMs: number; targetsTtlMs: number },
     private log: (msg: string, err?: unknown) => void = () => {},
+    private catalog?: InstrumentCatalog,
   ) {}
 
   get providerId() {
@@ -208,11 +212,93 @@ export class MarketService {
     return rates;
   }
 
-  /** Búsqueda por nombre o ticker; si es un ISIN, se traduce con OpenFIGI y se comprueba en el proveedor. */
+  /**
+   * Búsqueda por nombre o ticker; si es un ISIN, se traduce con OpenFIGI a tickers de Yahoo y se comprueban.
+   * Con ISIN se juntan los resultados de las fuentes directas (fondos, bolsas alemanas de onvista) y los de Yahoo.
+   */
   async search(query: string): Promise<SymbolSearchResult[]> {
-    if (!isIsin(query)) return this.provider.search(query);
-    const direct = await this.provider.search(query).catch(() => []);
-    if (direct.length) return direct;
+    if (!isIsin(query)) return this.byName(query);
+    const direct = await this.provider.search(query).catch(() => [] as SymbolSearchResult[]);
+    // Las bolsas de onvista van al final: Yahoo da además gráficos e históricos.
+    const venues = direct.filter((r) => isVenueSymbol(r.symbol));
+    const ft = direct.filter((r) => parseFtSymbol(r.symbol));
+    const own = direct.filter((r) => !isVenueSymbol(r.symbol) && !parseFtSymbol(r.symbol));
+    // FT encuentra casi cualquier ISIN: no cuenta como fuente directa para dejar de consultar Yahoo.
+    return [...(own.length ? own : await this.isinYahoo(query)), ...ft, ...venues];
+  }
+
+  /**
+   * Productos que encajan con un nombre, ISIN o WKN (paso 1 del buscador: qué valor es). Además del catálogo, los
+   * tickers de Yahoo que llevan el ISIN en el símbolo (p. ej. JE00B588CD74.SG) también son un producto. Primero los
+   * que más palabras de la búsqueda tienen en el nombre.
+   */
+  async instruments(query: string): Promise<InstrumentHit[]> {
+    const [catalog, tickers] = await Promise.all([
+      this.catalog
+        ? this.catalog.findInstruments(query).catch((err) => (this.log(`No se pudo buscar el producto «${query}»`, err), []))
+        : [],
+      isIsin(query) || query.trim().length < 3 ? [] : this.byName(query).catch(() => [] as SymbolSearchResult[]),
+    ]);
+    const fromTickers = tickers.flatMap((r) => {
+      const isin = /^(?:FT:)?([A-Z]{2}[A-Z0-9]{9}\d)[.:][A-Z]+$/.exec(r.symbol)?.[1];
+      // Yahoo marca estos símbolos de Stuttgart como fondo aunque sean ETC o acciones: mejor sin tipo que uno falso.
+      return isin && isIsin(isin) ? [{ isin, name: r.name, type: null }] : [];
+    });
+    const words = queryWords(query);
+    const byIsin = new Map<string, InstrumentHit>();
+    for (const hit of [...catalog, ...fromTickers]) if (!byIsin.has(hit.isin)) byIsin.set(hit.isin, hit);
+    return [...byIsin.values()]
+      .map((hit, order) => ({ hit, order, score: wordScore(hit.name, words) }))
+      .sort((a, b) => b.score - a.score || a.order - b.order)
+      .map((x) => x.hit)
+      .slice(0, 12);
+  }
+
+  /**
+   * Búsqueda por nombre o ticker. Si un nombre largo no da nada, reintenta por parejas de palabras y deja los
+   * resultados que tienen al menos dos palabras de la búsqueda.
+   */
+  private async byName(query: string): Promise<SymbolSearchResult[]> {
+    const found = await this.provider.search(query);
+    const pairs = wordPairs(query);
+    if (found.length || !pairs.length) return found;
+    const lists = await Promise.all(pairs.map((p) => this.provider.search(p).catch(() => [] as SymbolSearchResult[])));
+    return rankByWords(query, lists, (r) => r.symbol, (r) => r.name);
+  }
+
+  /**
+   * Bolsas donde se puede seguir un ISIN, con su precio (paso 2: dónde). Primero las que tienen gráfico.
+   * Se juntan: lo que las fuentes dan por ISIN, la traducción de OpenFIGI y los tickers de Yahoo con el mismo nombre
+   * de producto (Yahoo no encuentra por ISIN, p. ej., SGBS.MI ni GZURD.XD).
+   */
+  async listings(isin: string): Promise<Listing[]> {
+    const [direct, figi, named] = await Promise.all([
+      this.provider.search(isin).catch(() => [] as SymbolSearchResult[]),
+      this.isinYahoo(isin),
+      this.instruments(isin).then(async ([product]) =>
+        product ? (await this.byName(product.name).catch(() => [])).filter((r) => sameName(r.name, product.name)) : [],
+      ),
+    ]);
+    const bySymbol = new Map<string, SymbolSearchResult>();
+    for (const r of [...direct, ...figi, ...named]) if (!bySymbol.has(r.symbol)) bySymbol.set(r.symbol, r);
+    const found = [...bySymbol.values()].slice(0, 24);
+    const quotes = await this.getQuotes(found.map((r) => r.symbol));
+    return found
+      .map((r) => {
+        const q = quotes.get(r.symbol);
+        const priceOnly = isVenueSymbol(r.symbol) || q?.source === 'onvista';
+        return {
+          ...r,
+          exchange: (priceOnly ? q?.exchange : null) ?? r.exchange,
+          currency: q?.currency ?? null,
+          price: q && !q.stale ? q.price : null,
+          priceOnly,
+        };
+      })
+      .sort((a, b) => Number(a.priceOnly) - Number(b.priceOnly) || Number(b.price !== null) - Number(a.price !== null));
+  }
+
+  private async isinYahoo(query: string): Promise<SymbolSearchResult[]> {
     let candidates: string[] = [];
     try {
       candidates = await isinCandidates(query);

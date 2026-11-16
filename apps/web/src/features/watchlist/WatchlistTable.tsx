@@ -15,6 +15,7 @@ import {
   shortDate,
 } from '../../lib/format.ts';
 import { KEY_DATE_LABEL, upcoming } from '../../lib/keyDates.ts';
+import { NoteCell } from './NoteCell.tsx';
 import { PriceMap } from './PriceMap.tsx';
 import { Sparkline } from './Sparkline.tsx';
 import { ValueExpanded } from './ValueExpanded.tsx';
@@ -142,7 +143,7 @@ function LevelCell({ row, index, onSave }: { row: WatchlistRow; index: number; o
 
 function Upside({ value }: { value: number | null }) {
   if (value == null) return null;
-  return <span className={`delta ${value >= 0 ? 'up' : 'down'}`}>{pct(value, 0)}</span>;
+  return <span className={`delta ${value > 0 ? 'up' : value < 0 ? 'down' : ''}`}>{pct(value, 0)}</span>;
 }
 
 function PriceCell({ row }: { row: WatchlistRow }) {
@@ -392,11 +393,7 @@ const columns: Column[] = [
     id: 'notes',
     label: 'Notas',
     cell: ({ item }) =>
-      item.notes ? (
-        <span className="notes" title={item.notes}>
-          {item.notes}
-        </span>
-      ) : null,
+      item.notes ? <NoteCell note={item.notes} /> : null,
   },
   {
     id: 'per',

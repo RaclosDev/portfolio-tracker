@@ -19,7 +19,7 @@ function Row({ label, children, sub }: { label: string; children: ReactNode; sub
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="sheet__section">
-      <h4>{title}</h4>
+      <h3>{title}</h3>
       <dl>{children}</dl>
     </section>
   );
@@ -145,7 +145,7 @@ export function QuoteSheet({ row, base }: { row: WatchlistRow; base: string }) {
 
       {item.notes && (
         <section className="sheet__section sheet__notes">
-          <h4>Notas</h4>
+          <h3>Notas</h3>
           <p>{item.notes}</p>
         </section>
       )}

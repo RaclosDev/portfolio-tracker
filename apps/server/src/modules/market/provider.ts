@@ -1,4 +1,20 @@
-import type { AnalystTargets, DailyHistory, HistoryRange, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
+import type { AnalystTargets, DailyHistory, HistoryRange, InstrumentHit, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
+
+/** Catálogo de productos por nombre, ISIN o WKN (sin precios). */
+export interface InstrumentCatalog {
+  findInstruments(query: string): Promise<InstrumentHit[]>;
+}
+
+/** Varios catálogos como uno: se consultan a la vez y el que falla no tapa a los demás. */
+export function mergeCatalogs(catalogs: InstrumentCatalog[], log: (message: string, error?: unknown) => void = () => {}): InstrumentCatalog {
+  return {
+    async findInstruments(query) {
+      const lists = await Promise.all(catalogs.map((c) => c.findInstruments(query).catch((err) => (log(`No se pudo buscar el producto «${query}»`, err), []))));
+      // Intercalados: el primer acierto de cada catálogo queda arriba, no detrás de todos los del anterior.
+      return Array.from({ length: Math.max(0, ...lists.map((l) => l.length)) }, (_, i) => lists.flatMap((l) => l.slice(i, i + 1))).flat();
+    },
+  };
+}
 
 /**
  * Contrato de cualquier fuente de datos de mercado.

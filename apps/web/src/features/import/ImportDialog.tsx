@@ -128,6 +128,7 @@ export function ImportDialog({ fileName, sheets, lists, defaultListId, defaultIn
     <Dialog
       title="Importar desde Excel o CSV"
       onClose={onClose}
+      dirty={!busy}
       wide
       className="import-dialog"
       footer={

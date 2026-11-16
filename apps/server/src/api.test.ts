@@ -306,6 +306,62 @@ describe('límite de Yahoo', () => {
   });
 });
 
+describe('buscador en dos pasos', () => {
+  const ISIN = 'JE00B588CD74';
+  it('primero el producto por nombre; luego sus bolsas con precio (por ISIN, OpenFIGI y mismo nombre), las de solo precio al final', async () => {
+    const catalog = { findInstruments: vi.fn().mockResolvedValue([{ isin: ISIN, name: 'Swiss Gold', type: 'ETF' }]) };
+    const prices = [{ ...quote(`XETRA:${ISIN}`, 336, 'EUR'), exchange: 'Xetra', source: 'onvista' }, quote('SGBS.MI', 336.5, 'EUR'),
+      quote('GZUR.DE', 336.2, 'EUR'), quote('GZURD.XD', 337, 'EUR')];
+    const venues: MarketDataProvider = { id: 'bolsas',
+      getQuotes: async (symbols) => prices.filter((q) => symbols.includes(q.symbol)),
+      getTargets: async () => null, getHistory: async () => [],
+      search: async (q) => q === ISIN ? [
+        { symbol: `XETRA:${ISIN}`, name: 'Swiss Gold', exchange: 'Xetra (onvista)', type: 'ETF' },
+        { symbol: 'SGBS.MI', name: 'Swiss Gold', exchange: 'Milan', type: 'ETF' },
+        { symbol: 'SGBS.XX', name: 'Swiss Gold', exchange: 'Sin precio', type: 'ETF' },
+      ] : q === 'Swiss Gold' ? [
+        { symbol: 'GZURD.XD', name: 'SWISS GOLD', exchange: 'Xetra', type: 'ETF' }, // mismo producto en otra bolsa
+        { symbol: 'ZGLD.SW', name: 'Swiss Gold ETF CHF', exchange: 'Swiss', type: 'ETF' }, // otro producto
+      ] : [] };
+    // OpenFIGI traduce el ISIN a GZUR en Xetra.
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response(JSON.stringify([{ data: [{ ticker: 'GZUR', exchCode: 'GY' }] }]))));
+    await app.close();
+    app = await buildApp(createServicesFromDb(db, { provider: venues, catalog }));
+    expect((await get('/api/market/instruments?q=swiss%20gold')).json()).toEqual([{ isin: ISIN, name: 'Swiss Gold', type: 'ETF' }]);
+    const listings = (await get(`/api/market/listings?isin=${ISIN.toLowerCase()}`)).json();
+    vi.unstubAllGlobals();
+    expect(listings.map((l: { symbol: string; price: number | null; priceOnly: boolean; exchange: string }) => [l.symbol, l.price, l.priceOnly, l.exchange])).toEqual([
+      ['SGBS.MI', 336.5, false, 'Milan'], ['GZUR.DE', 336.2, false, 'Test'], ['GZURD.XD', 337, false, 'Xetra'],
+      ['SGBS.XX', null, false, 'Sin precio'], [`XETRA:${ISIN}`, 336, true, 'Xetra'],
+    ]);
+    expect((await get('/api/market/listings?isin=GZUR.DE')).statusCode).toBe(400);
+    catalog.findInstruments.mockRejectedValue(new Error('HTTP 503'));
+    expect((await get('/api/market/instruments?q=oro')).json()).toEqual([]);
+  });
+  it('un nombre largo sin resultados se busca por parejas de palabras y ordena por coincidencias', async () => {
+    const search = vi.fn<MarketDataProvider['search']>(async (q) => q === 'swiss gold' ? [
+      { symbol: 'ZGLD.SW', name: 'Swisscanto Gold ETF', exchange: 'Swiss', type: 'ETF' },
+      { symbol: 'SGBS.MI', name: 'WisdomTree Physical Swiss Gold', exchange: 'Milan', type: 'ETF' },
+      { symbol: 'XAU', name: 'Gold Spot', exchange: null, type: 'CURRENCY' },
+    ] : []);
+    await app.close();
+    app = await buildApp(createServicesFromDb(db, { provider: Object.assign(new FakeProvider(), { search }) }));
+    const found = (await get('/api/market/search?q=WisdomTree%20Swiss%20Gold')).json();
+    expect(found.map((r: { symbol: string }) => r.symbol)).toEqual(['SGBS.MI', 'ZGLD.SW']);
+    expect(search.mock.calls.map(([q]) => q)).toEqual(['WisdomTree Swiss Gold', 'wisdomtree swiss', 'swiss gold']);
+    // Un ticker con el ISIN en el símbolo también es un producto, y va delante del catálogo si coincide más.
+    search.mockImplementation(async (q) => q === 'swiss gold'
+      ? [{ symbol: 'JE00B588CD74.SG', name: 'WisdomTree Physical Swiss Gold', exchange: 'Stuttgart', type: 'MUTUALFUND' }] : []);
+    const catalog = { findInstruments: vi.fn().mockResolvedValue([{ isin: 'CH0047533523', name: 'ZKB Swisscanto Gold ETF', type: 'ETF' }]) };
+    await app.close();
+    app = await buildApp(createServicesFromDb(db, { provider: Object.assign(new FakeProvider(), { search }), catalog }));
+    expect((await get('/api/market/instruments?q=wisdomtree%20swiss%20gold')).json()).toEqual([
+      { isin: 'JE00B588CD74', name: 'WisdomTree Physical Swiss Gold', type: null },
+      { isin: 'CH0047533523', name: 'ZKB Swisscanto Gold ETF', type: 'ETF' },
+    ]);
+  });
+});
+
 describe('históricos', () => {
   it('recupera un minigráfico antes vacío sin invalidar los históricos válidos guardados', async () => {
     const history = vi.spyOn(provider, 'getHistory');

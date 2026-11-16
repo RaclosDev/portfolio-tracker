@@ -1,29 +1,31 @@
 import { DEFAULT_SETTINGS, type WatchlistRow } from '@watchlist/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from './api/client.ts';
 import { keys, useForceRefresh, useListMutations, useLists, usePortfolio, useSaveItem, useSettings, useWatchlist } from './api/hooks.ts';
-import { CarteraPage } from './features/cartera/CarteraPage.tsx';
 import type { OperationDraft } from './features/cartera/OperationDialog.tsx';
 import { useCarteraModel } from './features/cartera/model.ts';
-import { ItemDialog } from './features/items/ItemDialog.tsx';
-import { SettingsDialog } from './features/settings/SettingsDialog.tsx';
 import { PriceMapLegend } from './features/watchlist/PriceMap.tsx';
 import { Highlights, goToRow } from './features/watchlist/Highlights.tsx';
 import { Dialog } from './components/Dialog.tsx';
+import { toastError } from './components/feedback.tsx';
 import { StatusFilter, filterRow, type Filter } from './features/watchlist/StatusFilter.tsx';
 import { WatchlistTable, type Tag } from './features/watchlist/WatchlistTable.tsx';
 import { TagFilters, rowType, type TypeFilter } from './features/watchlist/TagFilters.tsx';
-import { TOUR_STEPS } from './features/tour/steps.tsx';
-import { CARTERA_TOUR_STEPS } from './features/tour/carteraSteps.tsx';
-import { Tour } from './features/tour/Tour.tsx';
 import { num, timeAgo } from './lib/format.ts';
 import { applyAppearance, applyColors } from './lib/theme.ts';
 import { usePrompt } from './components/usePrompt.tsx';
 import { Icon } from './components/Icon.tsx';
 import { PushBanner } from './components/PushBanner.tsx';
 import { UpdateBanner } from './components/UpdateBanner.tsx';
-import { AlertsDialog } from './features/alerts/AlertsDialog.tsx';
+
+// Lo que no hace falta para pintar la lista va en trozos aparte, que se descargan al usarlos.
+const loadCartera = () => import('./features/cartera/CarteraPage.tsx').then((m) => ({ default: m.CarteraPage }));
+const CarteraPage = lazy(loadCartera);
+const ItemDialog = lazy(() => import('./features/items/ItemDialog.tsx').then((m) => ({ default: m.ItemDialog })));
+const SettingsDialog = lazy(() => import('./features/settings/SettingsDialog.tsx').then((m) => ({ default: m.SettingsDialog })));
+const AlertsDialog = lazy(() => import('./features/alerts/AlertsDialog.tsx').then((m) => ({ default: m.AlertsDialog })));
+const AppTour = lazy(() => import('./features/tour/AppTour.tsx'));
 
 const LS_LIST = 'watchlist.listId';
 const LS_TOUR = 'watchlist.tourSeen';
@@ -61,6 +63,11 @@ export function App() {
   const [page, setPage] = useState<Page>(() => (localStorage.getItem(LS_PAGE) === 'cartera' ? 'cartera' : 'lista'));
   useEffect(() => localStorage.setItem(LS_PAGE, page), [page]);
   const onPortfolio = page === 'cartera';
+  // La cartera es el destino más probable: su trozo se descarga solo, poco después de arrancar.
+  useEffect(() => {
+    const id = window.setTimeout(() => void loadCartera(), 2000);
+    return () => window.clearTimeout(id);
+  }, []);
 
   const wl = useWatchlist(listId, settings.refreshSeconds);
   // La cartera se refresca al ritmo normal solo cuando se está viendo; si no, cada 5 min (para el contador).
@@ -73,6 +80,8 @@ export function App() {
     setPfRefreshing(true);
     try {
       qc.setQueryData(keys.portfolio, await api.portfolio(true));
+    } catch (e) {
+      toastError('No se pudieron actualizar las cotizaciones.')(e);
     } finally {
       setPfRefreshing(false);
     }
@@ -119,7 +128,7 @@ export function App() {
     const next = [...row.item.buyPrices];
     if (value == null) next.splice(index, 1);
     else next[index] = value;
-    saveItem.mutate({ id: row.item.id, data: { buyPrices: next } });
+    saveItem.mutate({ id: row.item.id, data: { buyPrices: next } }, { onError: toastError('No se pudo guardar el precio de compra.') });
   };
 
   const view = wl.data;
@@ -239,7 +248,7 @@ export function App() {
   const throttleMin = throttleLeftMs > 3 * 60_000 ? Math.ceil(throttleLeftMs / 60_000) : null;
 
   const newList = async () => {
-    const name = await ask('Nueva lista', 'Nombre de la lista');
+    const name = await ask('Nueva lista', 'Nombre de la lista', '', 'Crear lista');
     if (name) {
       setListError(null);
       try {
@@ -253,7 +262,7 @@ export function App() {
 
   const renameCurrentList = async () => {
     if (!selectedList) return;
-    const name = await ask('Renombrar lista', 'Nuevo nombre', selectedList.name);
+    const name = await ask('Renombrar lista', 'Nuevo nombre', selectedList.name, 'Renombrar');
     if (!name || name === selectedList.name) return;
     setListError(null);
     try {
@@ -265,6 +274,7 @@ export function App() {
 
   return (
     <div className="app">
+      <a className="skip-link" href="#contenido">Saltar al contenido</a>
       <header className="topbar">
         <div className="brand">
           <img src="/favicon.svg" alt="" width={24} height={24} />
@@ -376,7 +386,7 @@ export function App() {
             type="button"
             className="btn"
             data-tour="refresh"
-            onClick={() => (onPortfolio ? void refreshPortfolio() : listId && refresh.mutate(listId))}
+            onClick={() => (onPortfolio ? void refreshPortfolio() : listId && refresh.mutate(listId, { onError: toastError('No se pudieron actualizar las cotizaciones.') }))}
             disabled={onPortfolio ? pfRefreshing : !listId || refresh.isPending}
             title="Forzar actualización de cotizaciones"
             aria-label="Actualizar"
@@ -410,7 +420,7 @@ export function App() {
         </div>
       </header>
 
-      <main className="content">
+      <main className="content" id="contenido" tabIndex={-1}>
         <UpdateBanner />
         <PushBanner />
         {listError && <p className="error-box" role="alert">{listError}</p>}
@@ -421,13 +431,16 @@ export function App() {
           </p>
         )}
         {onPortfolio ? (
-          <CarteraPage
-            model={carteraModel}
-            isPending={pf.isPending}
-            error={pf.error}
-            draft={buyDraft}
-            onDraftUsed={clearDraft}
-          />
+          <Suspense fallback={<p className="muted center">Cargando la cartera…</p>}>
+            <CarteraPage
+              model={carteraModel}
+              isPending={pf.isPending}
+              error={pf.error}
+              onRetry={() => void pf.refetch()}
+              draft={buyDraft}
+              onDraftUsed={clearDraft}
+            />
+          </Suspense>
         ) : (
           <>
             {view && <Highlights rows={view.rows} base={base} onLocate={locateRow} quoteInfo={<>{updateLabel} {fxBadges}</>} />}
@@ -468,7 +481,12 @@ export function App() {
               </Dialog>
             )}
 
-            {wl.isError && <p className="error-box">No se pudo cargar la lista: {(wl.error as Error).message}</p>}
+            {wl.isError && (
+              <div className="error-box" role="alert">
+                No se pudo cargar la lista: {(wl.error as Error).message}{' '}
+                <button type="button" className="btn" onClick={() => void wl.refetch()}>Reintentar</button>
+              </div>
+            )}
             {wl.isPending && listId && <p className="muted center">Cargando cotizaciones…</p>}
             {view && view.rows.length === 0 && (
               <div className="empty">
@@ -515,34 +533,36 @@ export function App() {
           </>
         )}
         <p className="footnote">
-          Cotizaciones: Yahoo Finance, Borsa Italiana / FIDA y Quefondos / VDOS. Consenso: Yahoo Finance. Los datos pueden tener retraso.
+          Cotizaciones: Yahoo Finance, Borsa Italiana / FIDA, Quefondos / VDOS, onvista y FT Markets. Consenso: Yahoo Finance. Los datos pueden tener retraso.
           {!onPortfolio && <span className="watchlist-desktop-hint"> Doble clic en una fila para editarla.</span>}
         </p>
       </main>
 
-      {editing && listId && (
-        <ItemDialog
-          listId={listId}
-          row={editing === 'new' ? null : editing}
-          settings={view?.settings ?? settings}
-          fx={view?.fx ?? {}}
-          onClose={() => setEditing(null)}
-          onBought={(draft) => {
-            setEditing(null);
-            setBuyDraft(draft);
-            setPage('cartera');
-          }}
-        />
-      )}
       {promptEl}
-      {tourOpen && <Tour key={page} steps={onPortfolio ? CARTERA_TOUR_STEPS : TOUR_STEPS} onClose={closeTour} />}
-      {showSettings && <SettingsDialog settings={settings} lists={lists} onClose={() => setShowSettings(false)} />}
-      {showAlerts && (
-        <AlertsDialog
-          itemIds={new Map((view?.rows ?? []).map((r) => [r.item.symbol, r.item.id]))}
-          onClose={() => setShowAlerts(false)}
-        />
-      )}
+      <Suspense fallback={null}>
+        {editing && listId && (
+          <ItemDialog
+            listId={listId}
+            row={editing === 'new' ? null : editing}
+            settings={view?.settings ?? settings}
+            fx={view?.fx ?? {}}
+            onClose={() => setEditing(null)}
+            onBought={(draft) => {
+              setEditing(null);
+              setBuyDraft(draft);
+              setPage('cartera');
+            }}
+          />
+        )}
+        {tourOpen && <AppTour key={page} portfolio={onPortfolio} onClose={closeTour} />}
+        {showSettings && <SettingsDialog settings={settings} lists={lists} onClose={() => setShowSettings(false)} />}
+        {showAlerts && (
+          <AlertsDialog
+            itemIds={new Map((view?.rows ?? []).map((r) => [r.item.symbol, r.item.id]))}
+            onClose={() => setShowAlerts(false)}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

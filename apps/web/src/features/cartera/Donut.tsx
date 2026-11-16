@@ -1,8 +1,8 @@
 import { money, pct } from '../../lib/format.ts';
 
-/** Colores de las porciones (los primeros, los de más peso). El resto se agrupa en «Otros». */
-const COLORS = ['#0f766e', '#2563eb', '#d97706', '#7c3aed', '#db2777', '#059669', '#dc2626', '#0891b2', '#65a30d', '#9333ea'];
+/** Porciones con color propio (--chart-1…9 en styles.css, por orden de peso). El resto se agrupa en «Otros». */
 const MAX_SLICES = 9;
+const sliceColor = (label: string, i: number) => (label === 'Otros' ? 'var(--chart-rest)' : `var(--chart-${i + 1})`);
 
 export interface Slice {
   label: string;
@@ -37,7 +37,7 @@ export function Donut({ title, slices, showValues = false }: { title: string; sl
                   cy={70}
                   r={R}
                   fill="none"
-                  stroke={s.label === 'Otros' ? 'var(--text-2)' : COLORS[i % COLORS.length]}
+                  stroke={sliceColor(s.label, i)}
                   strokeWidth={20}
                   strokeDasharray={`${Math.max(0, len - 1)} ${C}`}
                   strokeDashoffset={-offset}
@@ -53,7 +53,7 @@ export function Donut({ title, slices, showValues = false }: { title: string; sl
           <ul className="donut__legend">
             {shown.map((s, i) => (
               <li key={s.label}>
-                <i style={{ background: s.label === 'Otros' ? 'var(--text-2)' : COLORS[i % COLORS.length] }} aria-hidden />
+                <i style={{ background: sliceColor(s.label, i) }} aria-hidden />
                 <span className="donut__label" title={s.label}>{s.label}</span>
                 <span className="num muted">{pct(s.value / total, 0).replace('+', '')}{showValues && <small>{money(s.value, 'EUR', 2)}</small>}</span>
               </li>

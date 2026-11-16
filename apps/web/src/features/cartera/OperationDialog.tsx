@@ -4,16 +4,19 @@ import {
   localToday,
   OPERATION_LABELS,
   OPERATION_TYPES,
+  operationInputSchema,
   type Instrument,
   type Operation,
   type OperationInput,
   type OperationType,
   type Quote,
 } from '@watchlist/shared';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState, type FormEvent } from 'react';
-import { ApiError } from '../../api/client.ts';
+import { ApiError, api } from '../../api/client.ts';
 import { useOperationMutations } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
+import { toast } from '../../components/feedback.tsx';
 import { money, parseDecimal } from '../../lib/format.ts';
 import { QuoteSymbolField } from './QuoteSymbolField.tsx';
 import { tradeTotal } from './tradeTotal.ts';
@@ -72,9 +75,14 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
   const [transferRef, setTransferRef] = useState(op?.transferRef ?? '');
   const [review, setReview] = useState(op?.needsReview ?? false);
   const [error, setError] = useState<string | null>(null);
+  // Cambios sin guardar: solo lo que escribe el usuario (el símbolo y la divisa también los rellena la búsqueda de cotización).
+  const formState = JSON.stringify([type, date, ticker, shares, priceRaw, fees, fx, amount, whEs, whForeign, ratio, broker, notes, dayOrder, transferRef, review]);
+  const [initialForm] = useState(formState);
+  const dirty = formState !== initialForm;
+  const qc = useQueryClient();
 
   const t = ticker.trim().toUpperCase();
-  const quoteSymbol = symbol ?? (/^0P[A-Z0-9]{8}(?:\.[A-Z]{1,3})?$|^[A-Z]{2}[A-Z0-9]{9}\d$|^BORSA:2FADB\d+$/.test(t) ? t : '');
+  const quoteSymbol = symbol ?? (/^0P[A-Z0-9]{8}(?:\.[A-Z]{1,3})?$|^[A-Z]{2}[A-Z0-9]{9}\d$|^BORSA:2FADB\d+$|^[A-Z]+:[A-Z]{2}[A-Z0-9]{9}\d$/.test(t) ? t : '');
   const known = instruments.find((i) => i.ticker === t);
   const foreign = currency !== 'EUR';
   const income = isIncome(type);
@@ -136,14 +144,25 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
     }
   };
 
+  // Se borra al momento y el aviso ofrece «Deshacer» (la vuelve a crear con los mismos datos), en vez de preguntar antes.
   const del = async () => {
-    if (!op || !confirm('¿Borrar esta operación del registro?')) return;
+    if (!op) return;
     try {
       await remove.mutateAsync(op.id);
-      onClose();
     } catch (err) {
-      setError((err as Error).message);
+      return setError((err as Error).message);
     }
+    onClose();
+    toast(`Operación de ${op.ticker} borrada.`, {
+      action: {
+        label: 'Deshacer',
+        onClick: async () => {
+          await api.createOperation(operationInputSchema.parse(op));
+          await qc.invalidateQueries();
+          toast('Operación recuperada.');
+        },
+      },
+    });
   };
 
   const brokerOptions = [...new Set([...KNOWN_BROKERS, ...brokers])];
@@ -151,6 +170,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
     <Dialog
       title={op ? 'Editar operación' : 'Nueva operación'}
       onClose={onClose}
+      dirty={dirty}
       footer={
         <>
           {op && (

@@ -5,19 +5,20 @@ interface Request {
   title: string;
   label: string;
   initial: string;
+  submitLabel: string;
   resolve: (value: string | null) => void;
 }
 
 /**
  * Sustituto de window.prompt() con el estilo de la app.
- * Uso: const [ask, promptEl] = usePrompt(); … const name = await ask('Título', 'Etiqueta');
+ * Uso: const [ask, promptEl] = usePrompt(); … const name = await ask('Título', 'Etiqueta', 'inicial', 'Crear');
  * y renderizar {promptEl}.
  */
 export function usePrompt() {
   const [req, setReq] = useState<Request | null>(null);
 
-  const ask = (title: string, label: string, initial = '') =>
-    new Promise<string | null>((resolve) => setReq({ title, label, initial, resolve }));
+  const ask = (title: string, label: string, initial = '', submitLabel = 'Guardar') =>
+    new Promise<string | null>((resolve) => setReq({ title, label, initial, submitLabel, resolve }));
 
   const finish = (value: string | null) => {
     req?.resolve(value);
@@ -45,7 +46,7 @@ function PromptDialog({ req, onDone }: { req: Request; onDone: (v: string | null
             Cancelar
           </button>
           <button type="submit" form="prompt-form" className="btn btn--primary" disabled={!value.trim()}>
-            Aceptar
+            {req.submitLabel}
           </button>
         </>
       }

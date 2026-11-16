@@ -3,8 +3,10 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
+import { FeedbackHost } from './components/feedback.tsx';
 import { Gate } from './features/auth/Gate.tsx';
 import { registerServiceWorker } from './lib/push.ts';
+import '@fontsource-variable/inter';
 import './styles.css';
 
 const queryClient = new QueryClient({
@@ -13,6 +15,15 @@ const queryClient = new QueryClient({
 
 registerServiceWorker();
 
+// Tras una publicación los trozos de la versión anterior dejan de existir: si uno no carga, se
+// recarga para coger la nueva (una vez por minuto como mucho, para no entrar en bucle).
+window.addEventListener('vite:preloadError', () => {
+  const last = Number(sessionStorage.getItem('watchlist.chunkReload') ?? 0);
+  if (Date.now() - last < 60_000) return;
+  sessionStorage.setItem('watchlist.chunkReload', String(Date.now()));
+  location.reload();
+});
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
@@ -20,6 +31,7 @@ createRoot(document.getElementById('root')!).render(
         <Gate>
           <App />
         </Gate>
+        <FeedbackHost />
       </QueryClientProvider>
     </ErrorBoundary>
   </StrictMode>,
