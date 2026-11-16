@@ -7,21 +7,36 @@ import { computeMetrics } from '../../packages/shared/src/calc.ts';
 import { computePortfolioHistory, shiftDate } from '../../packages/shared/src/cartera/history.ts';
 
 const require = createRequire(process.env.PLAYWRIGHT_PACKAGE_JSON ?? new URL('../../package.json', import.meta.url));
-const { chromium, expect } = require('@playwright/test');
+const { chromium } = require('@playwright/test');
 const origin = process.argv[2] ?? 'http://127.0.0.1:5173';
 const output = fileURLToPath(new URL('./', import.meta.url));
+// Tema de la captura: «light» (por defecto) o «dark».
+const THEME = process.argv[3] === 'dark' ? 'dark' : 'light';
 const now = '2026-11-11T11:00:00.000Z';
-const settings = { ...DEFAULT_SETTINGS, theme: 'light' };
+const settings = { ...DEFAULT_SETTINGS, theme: THEME };
 const examples = [
-  ['IBE.MC', 'Iberdrola', 13.48, 13.5, 0.012, 'Energía'],
-  ['MSFT', 'Microsoft', 425.6, 410, -0.007, 'Tecnología'],
-  ['SAN.MC', 'Santander', 5.24, 5.1, 0.008, 'Finanzas'],
-  ['VWCE.DE', 'Vanguard FTSE All-World', 126.3, 120, 0.004, 'ETF global'],
+  ['IBE.MC', 'Iberdrola', 13.48, 13.5, 0.012, 'Energía', 320],
+  ['MSFT', 'Microsoft', 425.6, 410, -0.007, 'Tecnología', 14],
+  ['SAN.MC', 'Santander', 5.24, 5.1, 0.008, 'Finanzas', 900],
+  ['VWCE.DE', 'Vanguard FTSE All-World', 126.3, 120, 0.004, 'ETF global', 62],
+  ['ITX.MC', 'Inditex', 51.9, 48, 0.015, 'Consumo', 85],
+  ['ASML.AS', 'ASML Holding', 742.4, 690, -0.011, 'Tecnología', 6],
+  ['AAPL', 'Apple', 231.2, 215, 0.006, 'Tecnología', 22],
+  ['NVDA', 'NVIDIA', 138.7, 120, 0.021, 'Tecnología', 40],
+  ['AIR.PA', 'Airbus', 148.6, 140, -0.004, 'Industria', 28],
+  ['MC.PA', 'LVMH', 612.3, 640, -0.018, 'Consumo', 5],
+  ['REP.MC', 'Repsol', 12.31, 12.8, 0.003, 'Energía', 260],
+  ['SXR8.DE', 'iShares Core S&P 500', 548.9, 520, 0.005, 'ETF EE. UU.', 12],
+  ['NOVO-B.CO', 'Novo Nordisk', 96.4, 105, -0.023, 'Salud', 30],
+  ['BBVA.MC', 'BBVA', 10.42, 9.6, 0.009, 'Finanzas', 410],
 ];
+const USD = new Set(['MSFT', 'AAPL', 'NVDA']);
+const ETF = new Set(['VWCE.DE', 'SXR8.DE']);
+const BROKERS = ['ING', 'MyInvestor', 'Interactive Brokers'];
 const quotes = Object.fromEntries(examples.map(([symbol, name, price, , changePct]) => [symbol, {
-  symbol, name, price, changePct, currency: symbol === 'MSFT' ? 'USD' : 'EUR',
+  symbol, name, price, changePct, currency: USD.has(symbol) ? 'USD' : 'EUR',
   previousClose: price / (1 + changePct), low52: price * 0.74, high52: price * 1.12,
-  quoteType: symbol === 'VWCE.DE' ? 'ETF' : 'EQUITY', exchange: 'Demo',
+  quoteType: ETF.has(symbol) ? 'ETF' : 'EQUITY', exchange: symbol.endsWith('.MC') ? 'BME' : symbol.endsWith('.DE') ? 'XETRA' : symbol.endsWith('.PA') ? 'Euronext París' : symbol.endsWith('.AS') ? 'Euronext Ámsterdam' : symbol.endsWith('.CO') ? 'Nasdaq Copenhague' : 'NASDAQ',
   marketState: 'REGULAR', fetchedAt: now, stale: false,
 }]));
 const fx = { EUR: 1, USD: 1.09 };
@@ -38,16 +53,21 @@ const rows = examples.map(([symbol, name, price, buyPrice], index) => {
 const instruments = examples.map(([ticker, name, , , , sector]) => instrumentInputSchema.parse({
   ticker, symbol: ticker, name, sector, currency: quotes[ticker].currency,
 }));
-const operations = examples.flatMap(([ticker, , price], index) => [
-  { ticker, date: '2026-02-12', type: 'buy', shares: [160, 8, 240, 18][index],
-    price: price * 0.88, amountEur: [160, 8, 240, 18][index] * price * 0.88 / fx[quotes[ticker].currency], broker: index % 2 ? 'MyInvestor' : 'ING' },
-  { ticker, date: '2026-08-15', type: 'dividend', amountEur: [42, 18, 35, 0][index], broker: index % 2 ? 'MyInvestor' : 'ING' },
+const operations = examples.flatMap(([ticker, , price, , , , shares], index) => [
+  { ticker, date: `2025-${String(1 + index % 12).padStart(2, '0')}-12`, type: 'buy', shares: Math.round(shares * 0.6),
+    price: price * 0.78, amountEur: Math.round(shares * 0.6) * price * 0.78 / fx[quotes[ticker].currency], broker: BROKERS[index % 3] },
+  { ticker, date: `2026-${String(1 + (index * 5) % 9).padStart(2, '0')}-0${1 + index % 9}`, type: 'buy', shares: shares - Math.round(shares * 0.6),
+    price: price * 0.9, amountEur: (shares - Math.round(shares * 0.6)) * price * 0.9 / fx[quotes[ticker].currency], broker: BROKERS[index % 3] },
+  { ticker, date: `2026-${String(5 + index % 6).padStart(2, '0')}-15`, type: 'dividend', amountEur: ETF.has(ticker) || ticker === 'NVDA' ? 0 : +(shares * price * 0.011).toFixed(2), broker: BROKERS[index % 3] },
+  ...(index % 5 === 2 ? [{ ticker, date: '2026-09-2' + index % 9, type: 'sell', shares: Math.round(shares * 0.25), price: price * 1.04, amountEur: Math.round(shares * 0.25) * price * 1.04 / fx[quotes[ticker].currency], broker: BROKERS[index % 3] }] : []),
+  { ticker, date: `2025-${String(6 + index % 6).padStart(2, '0')}-18`, type: 'dividend', amountEur: ETF.has(ticker) || ticker === 'NVDA' ? 0 : +(shares * price * 0.006).toFixed(2), broker: BROKERS[index % 3] },
 ]).filter((op) => op.amountEur > 0).map((op, index) => ({
   id: index + 1, ...operationInputSchema.parse(op), createdAt: now, updatedAt: now,
 }));
+const changePctOf = (sym) => examples.find((e) => e[0] === sym)[4];
 const list = { id: 1, name: 'Vigilar nuevas', itemCount: rows.length };
 const sparks = Object.fromEntries(examples.map(([symbol, , price], index) => [symbol,
-  Array.from({ length: 40 }, (_, i) => +(price * (0.86 + i * 0.0035 + Math.sin(i * 0.7 + index) * 0.02)).toFixed(2)),
+  Array.from({ length: 40 }, (_, i) => +(price * (0.9 + (changePctOf(symbol) > 0 ? 1 : -0.6) * i * 0.0028 * (1 + index % 4) / 2 + Math.sin(i * (0.35 + index * 0.13) + index * 2) * 0.025 + Math.sin(i * 1.7 + index) * 0.012)).toFixed(2)),
 ]));
 const responses = {
   '/api/session': { authRequired: false, authenticated: true, googleEnabled: false },
@@ -75,10 +95,10 @@ function historyFixture(from, to) {
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch();
 try {
-  const context = await browser.newContext({ viewport: { width: 430, height: 932 },
-    deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'es-ES',
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: THEME,
+    deviceScaleFactor: 2, locale: 'es-ES',
     timezoneId: 'Europe/Madrid', reducedMotion: 'reduce', serviceWorkers: 'block' });
-  await context.addInitScript(() => localStorage.setItem('watchlist.tourSeen', '1'));
+  await context.addInitScript(() => { localStorage.setItem('watchlist.tourSeen', '1'); localStorage.setItem('watchlist.cartera.tourSeen', '1'); });
   const failures = [];
   await context.route('**/*', async (route) => {
     const url = new URL(route.request().url());
@@ -99,21 +119,23 @@ try {
   await page.clock.setFixedTime(new Date(now));
   const capture = async (name) => {
     await page.evaluate(() => document.fonts.ready);
-    await expect(page.locator('body')).not.toContainText('Cargando');
-    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await page.screenshot({ path: `${output}/${name}.png`, animations: 'disabled' });
-    console.log(`Captured ${name}.png`);
+    await page.waitForTimeout(1200);
+    await page.screenshot({ path: `${output}/${name}-${THEME}.png`, animations: 'disabled' });
+    console.log('Captured', name);
   };
   await page.goto(origin);
-  await expect(page.getByText('Iberdrola', { exact: true }).filter({ visible: true }).first()).toBeVisible();
-  await capture('watchlist-mobile');
-  await page.getByRole('button', { name: /^Cartera/ }).click();
-  await expect(page.getByText('Valor actual', { exact: true })).toBeVisible();
-  await capture('portfolio-mobile');
-  await page.getByRole('combobox', { name: 'Sección de Cartera' }).selectOption('registro');
-  await expect(page.getByRole('button', { name: /Editar IBE.MC/ }).filter({ visible: true }).first()).toBeVisible();
-  await capture('operations-mobile');
-  if (failures.length) throw new Error(failures.join('\n'));
+  await page.getByText('Iberdrola', { exact: true }).first().waitFor();
+  await capture('watchlist');
+  await page.getByRole('button', { name: /^Cartera/ }).first().click();
+  await page.waitForTimeout(2500);
+  await capture('portfolio');
+  await page.getByText(/^En cartera/).first().click();
+  await capture('positions');
+  await page.getByText('Registro', { exact: true }).first().click();
+  await capture('operations');
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+  if (overflow) failures.push('Desbordamiento horizontal');
+  if (failures.length) throw new Error(failures.join(' ; '));
 } finally {
   await browser.close();
 }

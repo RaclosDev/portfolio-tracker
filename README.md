@@ -18,18 +18,16 @@
 
 <table>
   <tr>
-    <td align="center"><strong>Lista de vigilancia</strong></td>
-    <td align="center"><strong>Resumen de cartera</strong></td>
-    <td align="center"><strong>Registro de operaciones</strong></td>
+    <td align="center" width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/watchlist-dark.png"><img src="docs/screenshots/watchlist-light.png" alt="Lista de vigilancia con precios, niveles de compra y distancia a cada nivel" width="440"></picture><br><sub><b>Lista de vigilancia</b> · niveles de compra y distancia</sub></td>
+    <td align="center" width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/portfolio-dark.png"><img src="docs/screenshots/portfolio-light.png" alt="Resumen de una cartera de ejemplo con su evolución y totales" width="440"></picture><br><sub><b>Cartera</b> · evolución, rentabilidad y totales</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/watchlist-mobile.png" alt="Lista con distancias a los niveles de compra" width="260"></td>
-    <td><img src="docs/screenshots/portfolio-mobile.png" alt="Resumen y distribución de una cartera de ejemplo" width="260"></td>
-    <td><img src="docs/screenshots/operations-mobile.png" alt="Registro filtrable de compras y dividendos" width="260"></td>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/positions-dark.png"><img src="docs/screenshots/positions-light.png" alt="Posiciones abiertas de la cartera con precio medio, valor y resultado" width="440"></picture><br><sub><b>Posiciones</b> · precio medio, valor y resultado</sub></td>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/operations-dark.png"><img src="docs/screenshots/operations-light.png" alt="Registro filtrable de compras, ventas y dividendos" width="440"></picture><br><sub><b>Registro</b> · compras, ventas y dividendos</sub></td>
   </tr>
 </table>
 
-Capturas de la interfaz real con datos ficticios reproducibles. No representan una cuenta, cotizaciones actuales ni resultados de inversión. Cada usuario dispone de listas, cartera y ajustes privados.
+Capturas de la interfaz real en escritorio, renovadas en noviembre de 2026; se muestran en claro u oscuro según el tema de GitHub. Los datos son ficticios y reproducibles: no representan una cuenta, cotizaciones actuales ni resultados de inversión. Cada usuario dispone de listas, cartera y ajustes privados.
 
 ## Decisiones técnicas que puedes revisar
 
@@ -37,7 +35,7 @@ Capturas de la interfaz real con datos ficticios reproducibles. No representan u
 | --- | --- | --- |
 | Compartir reglas entre API e interfaz | Monorepo TypeScript con esquemas Zod y funciones de cálculo compartidas | [`packages/shared`](packages/shared/src) |
 | Reconstruir posiciones desde operaciones | Cálculo de lotes FIFO separado de la presentación, con pruebas de dominio | [`ledger.ts`](packages/shared/src/cartera/ledger.ts), [`ledger.test.ts`](packages/shared/src/cartera/ledger.test.ts) |
-| Trabajar con datos de mercado externos | Proveedor aislado, caché y tratamiento de fallos en el servicio de mercado | [`modules/market`](apps/server/src/modules/market) |
+| Trabajar con datos de mercado externos | Cinco fuentes en cadena tras una misma interfaz, con caché y pausa propia ante límites de consultas | [`modules/market`](apps/server/src/modules/market) |
 | Recuperar una cartera tras una importación | Copias automáticas y servicio de restauración | [`backup.service.ts`](apps/server/src/modules/backup/backup.service.ts) |
 | Separar los datos de cada usuario | Registro con correo y contraseña o Google, sesiones revocables y un esquema de datos por cuenta | [`modules/auth`](apps/server/src/modules/auth) |
 | Desarrollar sin instalar un servidor de base de datos | PostgreSQL en producción y PGlite en desarrollo y pruebas | [`database.ts`](apps/server/src/db/database.ts) |
@@ -65,7 +63,7 @@ La [CI](.github/workflows/desplegar.yml) comprueba tipos, pruebas y compilación
 
 ## Fuentes de cotización
 
-Se consulta Yahoo Finance y, para los valores sin precio y con cobertura alternativa, Borsa Italiana / FIDA y después Quefondos / VDOS. Si ninguna responde, se muestra el último precio guardado como tal. Cada proveedor tiene su propia pausa ante límites de consultas.
+Se consulta Yahoo Finance y, para los valores sin precio y con cobertura alternativa, Borsa Italiana / FIDA, Quefondos / VDOS, onvista (bolsas alemanas como Xetra o Tradegate) y FT Markets, en ese orden. El buscador por nombre combina los catálogos de onvista y Euronext. Si ninguna responde, se muestra el último precio guardado como tal. Cada proveedor tiene su propia pausa ante límites de consultas.
 
 Borsa aporta el último valor liquidativo de fondos, con su fecha e ISIN; no proporciona una serie histórica desde esa ficha. Se puede buscar el nombre de la clase en «Cotización automática» y elegir el resultado de Borsa. Los identificadores `BORSA:2FADB…` se guardan sin necesitar claves de API. Como su buscador no indexa todos los ISIN, los vínculos verificados por ISIN están en `borsa.provider.ts` y se comprueban contra la ficha en cada actualización. No hay cobertura universal ni conversión automática entre clases de un fondo.
 
