@@ -158,7 +158,7 @@ function OptionContent({ option: o, product }: { option: Option; product: Instru
         <>
           <span className="ticker">{o.hit.isin}</span>
           <span className="combo__name">{o.hit.name}</span>
-          <span className="sub">{typeLabel(o.hit.type)} · ver bolsas ›</span>
+          <span className="sub">{[typeLabel(o.hit.type), 'ver bolsas ›'].filter(Boolean).join(' · ')}</span>
         </>
       );
     case 'ticker':
