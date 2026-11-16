@@ -1,6 +1,7 @@
 import type { Operation } from '@watchlist/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { money, pct } from '../../lib/format.ts';
+import { tabListKeys } from '../../lib/tabs.ts';
 import { CarteraImportDialog } from './CarteraImportDialog.tsx';
 import { PortfolioCharts } from './PortfolioCharts.tsx';
 import { ClosedView, HoldingsView } from './HoldingsView.tsx';
@@ -56,7 +57,7 @@ function Totals({ model }: { model: CarteraModel }) {
       )}
     </section>
     <section className="cartera-breakdown" aria-label="Desglose del resultado">
-      <h3>De dónde sale la ganancia total</h3>
+      <h2>De dónde sale la ganancia total</h2>
       <div className="highlights">
         <Figure label="Latente" value={money(complete ? s.unrealizedEur : null, 'EUR', 2)} sub={pct(complete && s.costEur ? s.unrealizedEur / s.costEur : null)} delta={s.unrealizedEur} title="Ganancia o pérdida de las acciones que sigues teniendo" />
         <Figure label="Ganancia en ventas" value={money(s.realizedEur, 'EUR', 2)} delta={s.realizedEur} title="Importe de las ventas menos el coste FIFO de las acciones vendidas" />
@@ -96,7 +97,7 @@ function ResumenView({ model }: { model: CarteraModel }) {
       <div className="portfolio-ledger">
         <Totals model={model} />
         <section className="portfolio-annual" aria-labelledby="annual-results-title">
-          <h3 id="annual-results-title" className="renta__h">Ventas y cobros por año</h3>
+          <h2 id="annual-results-title" className="renta__h">Ventas y cobros por año</h2>
           <p className="small muted">Ganancias realizadas y cobros. No incluye la variación del latente.</p>
           <div className="table-wrap" role="region" aria-label="Detalle anual de ventas y cobros" tabIndex={0}>
             <table className="wl-table cartera-table">
@@ -147,7 +148,7 @@ function ResumenView({ model }: { model: CarteraModel }) {
       <div className="portfolio-analytics">
         <PortfolioCharts model={model} byBroker={byBroker} />
         <section className="portfolio-lifetime" aria-label="Desde el principio">
-          <h3 className="renta__h">Desde el principio</h3>
+          <h2 className="renta__h">Desde el principio</h2>
           <table className="renta-summary">
             <tbody>
               <tr>
@@ -223,12 +224,15 @@ export function CarteraPage({ model, isPending, error, onRetry, draft, onDraftUs
   return (
     <div className="cartera">
       <div className="toolbar cartera-toolbar no-print">
-        <div className="segmented cartera-tabs" role="tablist" aria-label="Secciones de la cartera">
+        <div className="segmented cartera-tabs" role="tablist" aria-label="Secciones de la cartera" onKeyDown={tabListKeys}>
           {TABS.map((t) => (
             <button
               key={t.id}
               type="button"
               role="tab"
+              id={`cartera-tab-${t.id}`}
+              aria-controls="cartera-panel"
+              tabIndex={tab === t.id ? 0 : -1}
               className={tab === t.id ? 'on' : ''}
               aria-selected={tab === t.id}
               onClick={() => setTab(t.id)}
@@ -271,6 +275,7 @@ export function CarteraPage({ model, isPending, error, onRetry, draft, onDraftUs
         Hay {money(model.ledger.inTransitEur, 'EUR', 2)} en traspasos pendientes de entrada. Este importe está incluido en el valor de la cartera.
       </p>}
 
+      <div role="tabpanel" id="cartera-panel" aria-labelledby={`cartera-tab-${tab}`}>
       {empty ? (
         <div className="empty">
           <p>Todavía no hay operaciones. Importa un Excel o CSV de tu bróker o añade la primera compra.</p>
@@ -292,6 +297,7 @@ export function CarteraPage({ model, isPending, error, onRetry, draft, onDraftUs
           {tab === 'renta' && <RentaView model={model} />}
         </>
       )}
+      </div>
 
       {ticker && !editing && (
         <TickerDialog

@@ -139,12 +139,14 @@ export function RegistroView({
           <thead>
             <tr>
               <th className="col-check">
-                <input
-                  type="checkbox"
-                  aria-label="Seleccionar todas las filtradas"
-                  checked={allSelected}
-                  onChange={() => setSelected(allSelected ? new Set() : new Set(filtered.map((o) => o.id)))}
-                />
+                <label className="check-hit">
+                  <input
+                    type="checkbox"
+                    aria-label="Seleccionar todas las filtradas"
+                    checked={allSelected}
+                    onChange={() => setSelected(allSelected ? new Set() : new Set(filtered.map((o) => o.id)))}
+                  />
+                </label>
               </th>
               <th className="col-date">Fecha</th>
               <th className="col-instrument">Valor<span className="registro-mobile"> y fecha</span></th>
@@ -163,7 +165,9 @@ export function RegistroView({
             {filtered.slice(0, limit).map((o) => (
               <tr key={o.id} className={`row row--click${issues.has(o.id) ? ' row--issue' : ''}`} onClick={() => onEdit(o)}>
                 <td className="col-check" onClick={(e) => e.stopPropagation()}>
-                  <input type="checkbox" aria-label={`Seleccionar ${o.ticker} ${o.date}`} checked={selected.has(o.id)} onChange={() => toggle(o.id)} />
+                  <label className="check-hit">
+                    <input type="checkbox" aria-label={`Seleccionar ${o.ticker} ${o.date}`} checked={selected.has(o.id)} onChange={() => toggle(o.id)} />
+                  </label>
                 </td>
                 <td className="num col-date">
                   {shortDate(o.date)}

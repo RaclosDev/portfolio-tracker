@@ -171,7 +171,17 @@ export function TickerDialog({
               return (
                 <tr key={o.id} className="row row--click" onClick={() => onEditOperation(o)}>
                   <td className="num">
-                    {shortDate(o.date)}
+                    <button
+                      type="button"
+                      className="cell-link"
+                      aria-label={`Editar ${OPERATION_LABELS[o.type]} del ${shortDate(o.date)}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditOperation(o);
+                      }}
+                    >
+                      {shortDate(o.date)}
+                    </button>
                     {o.dayOrder != null && <span className="sub" title="Orden en el día"> ·{o.dayOrder}</span>}
                   </td>
                   <td>{OPERATION_LABELS[o.type]}</td>
