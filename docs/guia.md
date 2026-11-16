@@ -104,6 +104,6 @@ En local no hace falta PostgreSQL: sin `DATABASE_URL` se usa **PGlite** (Postgre
 
 Variables de entorno: `DATABASE_URL`, `APP_PASSWORD`, `APP_OWNER_EMAIL`, `SESSION_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `PUBLIC_URL`, `TZ` (Europe/Madrid), `PORT` (5174), `HOST`, `DATA_DIR`, `QUOTE_TTL_SECONDS` (45), `TARGETS_TTL_HOURS` (12).
 
-Estructura: `apps/server` (API, avisos y notificaciones), `apps/web` (interfaz, PWA), `packages/shared` (tipos y cálculos). Arquitectura y decisiones: [Arquitectura](ARQUITECTURA.md).
+Estructura: `apps/server` (API, avisos y notificaciones), `apps/web` (interfaz, PWA), `packages/shared` (tipos y cálculos). Arquitectura y decisiones: [Arquitectura](arquitectura.md).
 
 > Los datos de Yahoo Finance pueden llevar retraso y no son asesoramiento de inversión.
