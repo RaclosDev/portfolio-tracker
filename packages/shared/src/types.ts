@@ -60,6 +60,21 @@ export interface SymbolSearchResult {
   type: string | null;
 }
 
+/** Un producto (acción, ETF, fondo…) identificado por su ISIN, sin elegir aún la bolsa. */
+export interface InstrumentHit {
+  isin: string;
+  name: string;
+  type: string | null;
+}
+
+/** Una bolsa o plataforma donde se puede seguir un producto, con su último precio si lo hay. */
+export interface Listing extends SymbolSearchResult {
+  currency: string | null;
+  price: number | null;
+  /** Solo hay precio actual: sin gráfico ni histórico. */
+  priceOnly: boolean;
+}
+
 export type LevelStatus = 'reached' | 'veryNear' | 'near' | 'far' | 'veryFar' | 'unknown';
 
 export interface LevelView {
