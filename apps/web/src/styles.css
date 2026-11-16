@@ -214,23 +214,30 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 .highlights p, .highlights ul { margin: 0; }
 .hl-cell { flex: 1 1 220px; min-width: 0; padding: 10px 16px 12px; background: var(--surface); }
-.hl-cell--main { flex: 2.2 1 340px; }
+.hl-cell--main { flex: 1.3 1 340px; }
 .hl-label { font-size: var(--fs-xs); color: var(--text-2); margin-bottom: 4px !important; }
 .hl-label--reached { color: var(--reached-fg); font-weight: 600; }
 .hl-value { font-size: var(--fs-lg); }
-.hl-nearest { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
-.hl-nearest__what { min-width: 0; font-size: var(--fs-md); }
+.hl-label__aside { float: right; color: var(--text-2); }
 .highlights .link-btn { text-align: left; }
-.hl-big { font-size: var(--fs-3xl); font-weight: 650; line-height: 1.1; letter-spacing: -0.01em; white-space: nowrap; }
+/* Filas alineadas en columnas: nombre · detalle · cifra (o fecha). La cifra va a la derecha para comparar de un vistazo. */
+.hl-rows { list-style: none; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 3px 14px; align-items: baseline; font-size: var(--fs-sm); }
+.hl-rows li { display: contents; }
+.hl-rows .link-btn { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--text); }
+.hl-rows .link-btn:hover { color: var(--accent); }
+.hl-rows--two { grid-template-columns: minmax(0, 1fr) auto; }
+.hl-rows__detail { color: var(--text-2); white-space: nowrap; text-align: right; }
+.hl-rows__fig { font-weight: 600; text-align: right; white-space: nowrap; }
+.hl-rows--ranked li:first-child .link-btn, .hl-rows--ranked li:first-child .hl-rows__fig { font-weight: 650; font-size: var(--fs-md); }
+.hl-rows__more { grid-column: 1 / -1; color: var(--text-2); }
+.hl-chip { justify-self: end; padding: 0 6px; border-radius: 4px; font-size: var(--fs-xs); line-height: 1.6; white-space: nowrap; color: var(--text-2); background: var(--surface-2); }
+.hl-chip--warn { color: var(--expired-fg); background: color-mix(in srgb, var(--expired-fg) 14%, transparent); }
+.hl-chip--info { color: var(--text); }
+.hl-dist--reached { color: var(--reached-fg); }
 .hl-dist--veryNear { color: var(--veryNear-fg); }
 .hl-dist--near { color: var(--near-fg); }
 .hl-dist--far { color: var(--far-fg); }
 .hl-dist--veryFar, .hl-dist--unknown { color: var(--veryFar-fg); }
-.hl-list { list-style: none; padding: 0; display: grid; gap: 2px; font-size: var(--fs-md); }
-.hl-inline { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: var(--fs-sm); }
-.hl-inline li { white-space: nowrap; }
-.hl-warn { font-size: var(--fs-sm); color: var(--expired-fg); margin-top: 2px !important; }
-.hl-warn .link-btn { color: inherit; }
 .hl-cell--full { flex-basis: 100%; }
 .hl-figure { font-size: var(--fs-xl); font-weight: 600; }
 .hl-figure.delta { font-size: var(--fs-xl); }
@@ -912,7 +919,6 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .toolbar .spacer { display: none; }
   .toolbar .search { flex: 1 1 160px; width: auto; }
   .hl-cell { flex-basis: 100%; padding: 10px 12px; }
-  .hl-big { font-size: var(--fs-2xl); }
 
   /* Cabecera: selector de lista a la izquierda y acciones a la derecha (sin logo ni pestañas). */
   .topbar { padding: 6px 8px 8px 12px; padding-top: max(6px, env(safe-area-inset-top)); gap: 4px 2px; }
