@@ -484,11 +484,16 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgb(0 0 0 / 18%);
 }
 .combo__list li {
-  display: grid; grid-template-columns: 110px 1fr auto; gap: 10px; align-items: center;
+  display: grid; grid-template-columns: 130px 1fr auto; gap: 10px; align-items: center;
   padding: 7px 8px; border-radius: 6px; cursor: pointer;
 }
 .combo__list li.active { background: var(--surface-2); }
 .combo__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.combo__list .ticker { overflow-wrap: anywhere; }
+.combo__list li.combo__group { display: block; padding: 8px 8px 4px; cursor: default; font-size: var(--fs-xs); color: var(--text-2); }
+.combo__list li.combo__empty { display: block; cursor: default; color: var(--text-2); }
+.combo__list li.combo__row--back { border-bottom: 1px solid var(--border); border-radius: 6px 6px 0 0; margin-bottom: 2px; }
+.combo__price { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 
 .list-admin { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 6px; }
 .list-admin li { display: flex; justify-content: space-between; align-items: center; }

@@ -17,6 +17,8 @@ import type {
   ItemPatch,
   Quote,
   Settings,
+  InstrumentHit,
+  Listing,
   SymbolSearchResult,
   WatchList,
   WatchlistView,
@@ -122,6 +124,8 @@ export const api = {
     request<{ imported: number; skipped: number; savedTo: number | null }>('POST', '/api/portfolio/import', data),
 
   search: (q: string) => request<SymbolSearchResult[]>('GET', `/api/market/search?q=${encodeURIComponent(q)}`),
+  instruments: (q: string) => request<InstrumentHit[]>('GET', `/api/market/instruments?q=${encodeURIComponent(q)}`),
+  listings: (isin: string) => request<Listing[]>('GET', `/api/market/listings?isin=${encodeURIComponent(isin)}`),
   fx: (currencies: string[]) =>
     request<Record<string, number>>('GET', `/api/market/fx?currencies=${encodeURIComponent(currencies.join(','))}`),
   quotes: (symbols: string[]) => request<Quote[]>('GET', `/api/market/quotes?symbols=${encodeURIComponent(symbols.join(','))}`),

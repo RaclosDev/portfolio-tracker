@@ -230,6 +230,15 @@ export async function registerRoutes(app: FastifyInstance) {
     const { q } = z.object({ q: z.string().trim().min(1).max(60) }).parse(req.query);
     return req.services.market.search(q);
   });
+  /** Buscador en dos pasos: primero qué producto (por nombre, ISIN o WKN), luego en qué bolsa seguirlo. */
+  app.get('/api/market/instruments', async (req) => {
+    const { q } = z.object({ q: z.string().trim().min(1).max(60) }).parse(req.query);
+    return req.services.market.instruments(q);
+  });
+  app.get('/api/market/listings', async (req) => {
+    const { isin } = z.object({ isin: z.string().trim().toUpperCase().regex(/^[A-Z]{2}[A-Z0-9]{9}\d$/) }).parse(req.query);
+    return req.services.market.listings(isin);
+  });
   app.get('/api/market/quote/:symbol', async (req) => {
     const { symbol } = z.object({ symbol: z.string().min(1).max(32) }).parse(req.params);
     const sym = symbol.toUpperCase();

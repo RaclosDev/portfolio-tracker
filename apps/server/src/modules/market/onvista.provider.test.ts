@@ -57,13 +57,31 @@ describe('cotizaciones de onvista', () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
-  it('la búsqueda ofrece las bolsas alemanas donde cotiza', async () => {
-    const provider = new OnvistaProvider(fakeApi());
-    expect(await provider.search('wisdomtree swiss gold')).toEqual([
+  it('por nombre encuentra el producto sin pedir precios, y por ISIN las bolsas donde cotiza', async () => {
+    const fetcher = fakeApi();
+    const provider = new OnvistaProvider(fetcher);
+    expect(await provider.findInstruments('wisdomtree swiss gold')).toEqual([{ isin: ISIN, name: 'WisdomTree Physical Swiss Gold', type: 'ETF' }]);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(await provider.findInstruments('go')).toEqual([]);
+    expect(await provider.search('wisdomtree swiss gold')).toEqual([]);
+    expect(await provider.search(ISIN)).toEqual([
       { symbol: `XETRA:${ISIN}`, name: `WisdomTree Physical Swiss Gold · ${ISIN}`, exchange: 'Xetra (onvista)', type: 'ETF' },
       { symbol: `LSX:${ISIN}`, name: `WisdomTree Physical Swiss Gold · ${ISIN}`, exchange: 'LS Exchange (onvista)', type: 'ETF' },
     ]);
-    expect(await provider.search('go')).toEqual([]);
+    expect(await provider.search(`LSX:${ISIN}`)).toHaveLength(1);
+  });
+
+  it('si el nombre largo no da nada, prueba por parejas de palabras y pone delante lo que más coincide', async () => {
+    const gold = { ...instrument, isin: 'IE00B4ND3602', name: 'iShares Physical Gold ETC' };
+    const fetcher = vi.fn<typeof fetch>(async (input) => {
+      const text = new URL(String(input)).searchParams.get('searchValue');
+      if (text === 'wisdomtree physical gold') return json({ list: [] });
+      if (text === 'physical gold') return json({ list: [gold, instrument] });
+      return json({ list: [] });
+    });
+    const hits = await new OnvistaProvider(fetcher).findInstruments('WisdomTree Physical Gold');
+    expect(hits.map((h) => h.isin)).toEqual([ISIN, 'IE00B4ND3602']);
+    expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
   it('si onvista falla y no hay nada, lanza el error para que el respaldo lo pause', async () => {
