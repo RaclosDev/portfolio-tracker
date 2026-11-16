@@ -1,5 +1,6 @@
 import type { InstrumentHit, Quote, SymbolSearchResult } from '@watchlist/shared';
 import { isIsin } from './isin.ts';
+import { rankByWords, wordPairs } from './words.ts';
 import type { InstrumentCatalog, MarketDataProvider } from './provider.ts';
 
 /*
@@ -197,18 +198,13 @@ export class OnvistaProvider implements MarketDataProvider, InstrumentCatalog {
     return [...hits.values()].slice(0, 8);
   }
 
-  /**
-   * onvista no encuentra nada con muchas palabras («wisdomtree swiss gold»): si pasa, prueba con cada pareja de palabras
-   * seguidas (máximo 3 consultas) y ordena por cuántas palabras de la búsqueda tiene el nombre.
-   */
+  /** Si un nombre largo no da nada, reintenta por parejas de palabras (ver words.ts). */
   private async byName(q: string): Promise<Instrument[]> {
     const full = await this.query(q, 12);
-    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-    if (full.length || words.length < 3) return full;
-    const pairs = words.slice(0, -1).map((w, i) => `${w} ${words[i + 1]}`).slice(0, 3);
-    const lists = await Promise.all(pairs.map((p) => this.query(p, 10).catch(() => [])));
-    const score = (i: Instrument) => words.filter((w) => i.name.toLowerCase().includes(w)).length;
-    return lists.flat().map((i, n) => ({ i, n, s: score(i) })).sort((a, b) => b.s - a.s || a.n - b.n).map((x) => x.i);
+    const pairs = wordPairs(q);
+    if (full.length || !pairs.length) return full;
+    const lists = await Promise.all(pairs.map((p) => this.query(p, 10).catch(() => [] as Instrument[])));
+    return rankByWords(q, lists, (i) => i.isin ?? `${i.entityType}/${i.entityValue}`, (i) => i.name);
   }
 
   /** Por ISIN (o bolsa:ISIN): las bolsas alemanas donde cotiza. Por nombre no busca: eso lo hace findInstruments. */
