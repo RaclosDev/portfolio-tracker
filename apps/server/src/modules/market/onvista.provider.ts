@@ -200,7 +200,8 @@ export class OnvistaProvider implements MarketDataProvider, InstrumentCatalog {
 
   /** Si un nombre largo no da nada, reintenta por parejas de palabras (ver words.ts). */
   private async byName(q: string): Promise<Instrument[]> {
-    const full = await this.query(q, 12);
+    // Límite amplio: onvista rellena con futuros, que se descartan después.
+    const full = await this.query(q, 30);
     const pairs = wordPairs(q);
     if (full.length || !pairs.length) return full;
     const lists = await Promise.all(pairs.map((p) => this.query(p, 10).catch(() => [] as Instrument[])));
