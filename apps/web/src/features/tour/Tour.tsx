@@ -136,7 +136,7 @@ export function Tour({ steps: allSteps, onClose }: { steps: TourStep[]; onClose:
             <span key={i} className={i === index ? 'on' : i < index ? 'done' : ''} />
           ))}
         </div>
-        <h3 id="tour-title">{step.title}</h3>
+        <h2 id="tour-title">{step.title}</h2>
         <div id="tour-body" className="tour__body">
           {step.body}
         </div>
