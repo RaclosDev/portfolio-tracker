@@ -268,6 +268,7 @@ export function App() {
 
   return (
     <div className="app">
+      <a className="skip-link" href="#contenido">Saltar al contenido</a>
       <header className="topbar">
         <div className="brand">
           <img src="/favicon.svg" alt="" width={24} height={24} />
@@ -413,7 +414,7 @@ export function App() {
         </div>
       </header>
 
-      <main className="content">
+      <main className="content" id="contenido" tabIndex={-1}>
         <UpdateBanner />
         <PushBanner />
         {listError && <p className="error-box" role="alert">{listError}</p>}

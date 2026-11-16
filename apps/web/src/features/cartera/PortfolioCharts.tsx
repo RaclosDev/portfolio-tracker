@@ -72,7 +72,7 @@ export function PortfolioCharts({ model, byBroker }: { model: CarteraModel; byBr
     : view === 4 ? model.valuation.bySector.map((s) => ({ label: s.sector, value: s.valueEur })) : byBroker;
   return <section className="portfolio-charts" aria-label="Gráficos de la cartera">
     <div className="portfolio-charts__heading">
-      <h3 id="portfolio-chart-title">{VIEWS[view]!.title}</h3>
+      <h2 id="portfolio-chart-title">{VIEWS[view]!.title}</h2>
       <div className="portfolio-charts__arrows">
         <span className="small muted" aria-live="polite">{view + 1} / {VIEWS.length}</span>
         <button type="button" className="btn" aria-label="Gráfica anterior" onClick={() => setView((view + VIEWS.length - 1) % VIEWS.length)}>←</button>

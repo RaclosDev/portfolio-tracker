@@ -136,6 +136,12 @@
 body { margin: 0; }
 button, input, textarea, select { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.skip-link {
+  position: absolute; left: 8px; top: -100px; z-index: 100; padding: 8px 12px; border-radius: var(--radius);
+  background: var(--accent); color: var(--accent-text); font-weight: 600; text-decoration: none;
+}
+.skip-link:focus { top: 8px; }
+main:focus { outline: none; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .muted { color: var(--text-2); }
 .small { font-size: var(--fs-xs); }
@@ -542,7 +548,7 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   background: var(--surface); color: var(--text); box-shadow: 0 20px 50px rgb(0 0 0 / 35%);
   transition: top 0.25s ease, left 0.25s ease;
 }
-.tour__pop h3 { margin: 6px 0 8px; font-size: var(--fs-lg); }
+.tour__pop h2 { margin: 6px 0 8px; font-size: var(--fs-lg); }
 .tour__body { font-size: var(--fs-sm); line-height: 1.5; }
 .tour__body p { margin: 0 0 8px; }
 .tour__body ul { margin: 0 0 8px; padding-left: 18px; }
@@ -741,8 +747,10 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 
 /* ---------- Tabla: nombre que abre la ficha, edición en celda, grupos, minigráfico ---------- */
 .name-btn { all: unset; cursor: pointer; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-.name-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
-.name-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+/* Botón con aspecto de texto dentro de una celda: da acceso por teclado a lo que hace el clic en la fila. */
+.cell-link { all: unset; cursor: pointer; }
+.name-btn:hover, .cell-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.name-btn:focus-visible, .cell-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
 .cell-edit { all: unset; cursor: pointer; display: flex; border-radius: 6px; padding: 2px 4px; margin: -2px -4px; }
 .cell-edit:hover { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--border); }
 .cell-edit:focus-visible { outline: 2px solid var(--accent); }
@@ -1034,8 +1042,9 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .xp__body { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, 1fr); gap: 14px; align-items: stretch; }
 .xp__panel { min-width: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 .xp__visual { padding: 0 18px 14px; display: flex; flex-direction: column; }
-.xp__visual > .pm-large { flex: 1; display: flex; align-items: center; }
-.xp__visual > .xp-history { flex: 1; }
+.xp__view { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.xp__view > .pm-large { flex: 1; display: flex; align-items: center; }
+.xp__view > .xp-history { flex: 1; }
 .xp__data { padding: 4px 18px 14px; }
 
 /* Pestañas del panel: subrayado bajo la activa, como en las fichas de los brókers. */
@@ -1071,7 +1080,7 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 /* Ficha de datos: etiqueta a la izquierda, cifra a la derecha, en una o dos columnas según el ancho. */
 .sheet { columns: 2 260px; column-gap: 28px; }
 .sheet__section { break-inside: avoid; padding-top: 12px; }
-.sheet__section h4 { margin: 0 0 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); }
+.sheet__section h3 { margin: 0 0 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); }
 .sheet__section dl { margin: 0; }
 .sheet__row {
   display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
@@ -1178,7 +1187,7 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .portfolio-summary .cartera-totals .hl-cell:first-child .hl-figure { font-size: var(--fs-4xl); font-weight: 700; }
 .portfolio-summary .cartera-totals .hl-cell:nth-child(n+3) .hl-figure { font-size: var(--fs-xl); }
 .cartera-breakdown { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 12px; }
-.cartera-breakdown h3 { font-size: var(--fs-xs); margin: 0 0 12px; font-weight: 600; }
+.cartera-breakdown h2 { font-size: var(--fs-xs); margin: 0 0 12px; font-weight: 600; }
 .portfolio-summary .cartera-breakdown .highlights { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .cartera-breakdown .hl-figure, .cartera-breakdown .hl-figure.delta { font-size: var(--fs-lg); }
 .cartera-breakdown .hl-figure small { display: block; font-size: var(--fs-xs); margin-top: 2px; }
@@ -1195,7 +1204,7 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 [data-theme='dark'] .portfolio-charts { --history-fixed: #e9ac49; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .portfolio-charts { --history-fixed: #e9ac49; } }
 .portfolio-charts__heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.portfolio-charts__heading h3 { margin: 0; font-size: var(--fs-lg); }
+.portfolio-charts__heading h2 { margin: 0; font-size: var(--fs-lg); }
 .portfolio-charts__arrows { display: flex; align-items: center; gap: 8px; flex-shrink: 0; white-space: nowrap; }
 .portfolio-charts__arrows .btn { min-height: 36px; min-width: 36px; padding: 4px 8px; font-size: var(--fs-xl); }
 .portfolio-chart-tabs, .portfolio-periods { display: flex; flex-wrap: wrap; gap: 4px; }

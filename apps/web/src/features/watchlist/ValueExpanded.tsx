@@ -1,13 +1,15 @@
 import { DEFAULT_STATUS_NAMES, type WatchlistRow } from '@watchlist/shared';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useSettings } from '../../api/hooks.ts';
 import { pct, price } from '../../lib/format.ts';
+import { tabListKeys } from '../../lib/tabs.ts';
 import { HistoryView } from './HistoryView.tsx';
 import { PriceMapLarge } from './PriceMapLarge.tsx';
 import { QuoteSheet } from './QuoteSheet.tsx';
 
 type View = 'mapa' | 'grafico';
 const VIEW_KEY = 'watchlist.detalle.vista';
+const VIEWS: [View, string][] = [['mapa', 'Mapa de precios'], ['grafico', 'Gráfico histórico']];
 
 interface Props {
   row: WatchlistRow;
@@ -25,6 +27,7 @@ interface Props {
 export function ValueExpanded({ row, base, width, onEdit, onClose }: Props) {
   const names = useSettings().data?.statusNames ?? DEFAULT_STATUS_NAMES;
   const [view, setView] = useState<View>(() => (localStorage.getItem(VIEW_KEY) as View) || 'mapa');
+  const id = useId();
   const { item, quote, metrics } = row;
   const idx = metrics.levels.findIndex((l) => metrics.status === 'reached'
     ? l.status === 'reached'
@@ -44,7 +47,8 @@ export function ValueExpanded({ row, base, width, onEdit, onClose }: Props) {
   }
 
   return (
-    <div className="xp" style={width ? { width } : undefined} role="region" aria-label={`Detalle de ${item.name ?? item.symbol}`}>
+    <div className="xp" style={width ? { width } : undefined} role="region" aria-labelledby={`${id}-title`}>
+      <h2 id={`${id}-title`} className="sr-only">Detalle de {item.name ?? item.symbol}</h2>
       <header className="xp__head">
         <div className="xp__quote">
           <span className="xp__price num">{price(quote?.price, quote?.currency)}</span>
@@ -69,20 +73,24 @@ export function ValueExpanded({ row, base, width, onEdit, onClose }: Props) {
 
       <div className="xp__body">
         <section className="xp__panel xp__visual">
-          <div className="xp__tabs" role="tablist" aria-label="Vista">
-            <button type="button" role="tab" aria-selected={view === 'mapa'} className={view === 'mapa' ? 'on' : ''} onClick={() => choose('mapa')}>
-              Mapa de precios
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === 'grafico'}
-              className={view === 'grafico' ? 'on' : ''}
-              onClick={() => choose('grafico')}
-            >
-              Gráfico histórico
-            </button>
+          <div className="xp__tabs" role="tablist" aria-label="Vista" onKeyDown={tabListKeys}>
+            {VIEWS.map(([v, label]) => (
+              <button
+                key={v}
+                type="button"
+                role="tab"
+                id={`${id}-tab-${v}`}
+                aria-controls={`${id}-panel`}
+                aria-selected={view === v}
+                tabIndex={view === v ? 0 : -1}
+                className={view === v ? 'on' : ''}
+                onClick={() => choose(v)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
+          <div className="xp__view" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${view}`}>
           {view === 'mapa' ? (
             <>
               <PriceMapLarge row={row} />
@@ -98,6 +106,7 @@ export function ValueExpanded({ row, base, width, onEdit, onClose }: Props) {
           ) : (
             <HistoryView row={row} />
           )}
+          </div>
         </section>
         <section className="xp__panel xp__data" aria-label="Datos">
           <QuoteSheet row={row} base={base} />
