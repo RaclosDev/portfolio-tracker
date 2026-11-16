@@ -54,7 +54,7 @@ export function StatusFilter({ rows, bands, names, value, onChange }: Props) {
             title={o.title}
             onClick={() => onChange(value === o.id && o.id !== 'all' ? 'all' : o.id)}
           >
-            {o.id !== 'all' && o.id !== 'order' && <i className={`swatch swatch--${o.id}`} aria-hidden />}
+            {o.id !== 'all' && <i className={`swatch swatch--${o.id}`} aria-hidden />}
             {o.label}
             <span className="count">{n}</span>
           </button>
