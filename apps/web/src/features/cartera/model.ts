@@ -41,4 +41,5 @@ export function useCarteraModel(view: CarteraView | undefined): CarteraModel | n
   return useMemo(() => (view ? buildModel(view) : null), [view]);
 }
 
-export const signed = (v: number | null | undefined) => (v == null ? '' : v >= 0 ? 'up' : 'down');
+// Un cero (redondeado a céntimos) no es ganancia ni pérdida: va sin color.
+export const signed = (v: number | null | undefined) => (v == null || Math.abs(v) < 0.005 ? '' : v > 0 ? 'up' : 'down');

@@ -143,7 +143,7 @@ function LevelCell({ row, index, onSave }: { row: WatchlistRow; index: number; o
 
 function Upside({ value }: { value: number | null }) {
   if (value == null) return null;
-  return <span className={`delta ${value >= 0 ? 'up' : 'down'}`}>{pct(value, 0)}</span>;
+  return <span className={`delta ${value > 0 ? 'up' : value < 0 ? 'down' : ''}`}>{pct(value, 0)}</span>;
 }
 
 function PriceCell({ row }: { row: WatchlistRow }) {

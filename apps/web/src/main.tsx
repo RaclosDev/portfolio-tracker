@@ -3,6 +3,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
+import { FeedbackHost } from './components/feedback.tsx';
 import { Gate } from './features/auth/Gate.tsx';
 import { registerServiceWorker } from './lib/push.ts';
 import '@fontsource-variable/inter';
@@ -21,6 +22,7 @@ createRoot(document.getElementById('root')!).render(
         <Gate>
           <App />
         </Gate>
+        <FeedbackHost />
       </QueryClientProvider>
     </ErrorBoundary>
   </StrictMode>,

@@ -136,7 +136,7 @@ export function CarteraImportDialog({ view, onClose }: { view: CarteraView; onCl
   };
 
   return (
-    <Dialog title="Importar operaciones" onClose={() => { if (!busy) onClose(); }} wide className="dialog--xl portfolio-import"
+    <Dialog title="Importar operaciones" onClose={() => { if (!busy) onClose(); }} dirty={sheets.length > 0 && !done} wide className="dialog--xl portfolio-import"
       footer={<>
         {step === 'preview' && !done && <button className="btn" type="button" disabled={busy} onClick={() => { setStep('columns'); setConfirmed(false); }}>Volver a las columnas</button>}
         <span className="spacer" /><button className="btn" type="button" onClick={onClose} disabled={busy}>{done ? 'Cerrar' : 'Cancelar'}</button>

@@ -188,13 +188,14 @@ interface Props {
   model: CarteraModel | null;
   isPending: boolean;
   error: Error | null;
+  onRetry?: () => void;
   /** Alta que llega desde fuera («Lo he comprado» en la lista de vigilancia). */
   draft?: OperationDraft | null;
   onDraftUsed?: () => void;
 }
 
 /** Cartera real a partir del registro de operaciones (FIFO), con resumen, cerradas, registro y Renta. */
-export function CarteraPage({ model, isPending, error, draft, onDraftUsed }: Props) {
+export function CarteraPage({ model, isPending, error, onRetry, draft, onDraftUsed }: Props) {
   const [tab, setTab] = useState<Tab>(() => TABS.find((item) => item.id === localStorage.getItem(TAB_KEY))?.id ?? 'resumen');
   useEffect(() => localStorage.setItem(TAB_KEY, tab), [tab]);
   const [ticker, setTicker] = useState<string | null>(null);
@@ -208,7 +209,13 @@ export function CarteraPage({ model, isPending, error, draft, onDraftUsed }: Pro
     }
   }, [draft, onDraftUsed]);
 
-  if (error) return <p className="error-box">No se pudo cargar la cartera: {error.message}</p>;
+  if (error)
+    return (
+      <div className="error-box" role="alert">
+        No se pudo cargar la cartera: {error.message}{' '}
+        {onRetry && <button type="button" className="btn" onClick={onRetry}>Reintentar</button>}
+      </div>
+    );
   if (isPending || !model) return <p className="muted center">Cargando la cartera…</p>;
   const empty = model.view.operations.length === 0;
   const reviewCount = model.view.operations.filter((o) => o.needsReview).length;
