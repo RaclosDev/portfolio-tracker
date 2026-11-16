@@ -1,8 +1,7 @@
 import type { Operation } from '@watchlist/shared';
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { money, pct } from '../../lib/format.ts';
 import { tabListKeys } from '../../lib/tabs.ts';
-import { CarteraImportDialog } from './CarteraImportDialog.tsx';
 import { PortfolioCharts } from './PortfolioCharts.tsx';
 import { ClosedView, HoldingsView } from './HoldingsView.tsx';
 import { signed, type CarteraModel } from './model.ts';
@@ -10,6 +9,8 @@ import { OperationDialog, type OperationDraft } from './OperationDialog.tsx';
 import { RegistroView } from './RegistroView.tsx';
 import { RentaView } from './RentaView.tsx';
 import { TickerDialog } from './TickerDialog.tsx';
+
+const CarteraImportDialog = lazy(() => import('./CarteraImportDialog.tsx').then((m) => ({ default: m.CarteraImportDialog })));
 
 type Tab = 'resumen' | 'abiertas' | 'cerradas' | 'registro' | 'renta';
 const TABS: { id: Tab; label: string }[] = [
@@ -318,7 +319,9 @@ export function CarteraPage({ model, isPending, error, onRetry, draft, onDraftUs
         />
       )}
       {importing && (
-        <CarteraImportDialog view={model.view} onClose={() => setImporting(false)} />
+        <Suspense fallback={null}>
+          <CarteraImportDialog view={model.view} onClose={() => setImporting(false)} />
+        </Suspense>
       )}
     </div>
   );
