@@ -126,6 +126,8 @@
   --fx-bg: color-mix(in oklab, var(--c-fx) 18%, var(--surface));
   --up: color-mix(in oklab, var(--c-up), var(--text) 20%);
   --down: color-mix(in oklab, var(--c-down), var(--text) 20%);
+  --up-tint: color-mix(in oklab, var(--c-up), var(--text) 35%);
+  --down-tint: color-mix(in oklab, var(--c-down), var(--text) 35%);
   --pm-broker: var(--c-broker);
   --pm-consensus: var(--c-consensus);
 }
@@ -289,6 +291,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .content > .legend { margin-top: 10px; }
 .icon { display: block; }
 .stale { display: inline-flex; vertical-align: -2px; margin-left: 4px; color: var(--down); cursor: help; }
+::placeholder { color: var(--text-2); opacity: 1; }
 .search {
   width: 260px; height: 34px; padding: 0 12px;
   border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
@@ -336,6 +339,8 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .row--veryNear td.col-name { box-shadow: inset 4px 0 0 var(--veryNear-fg); }
 .row--near td.col-name { box-shadow: inset 4px 0 0 var(--near-fg); }
 .row--order td { background: var(--order-bg); }
+/* Sobre fila tintada las subidas y bajadas usan la variante calculada contra ese fondo (lib/theme.ts). */
+.row--reached, .row--order { --up: var(--up-tint); --down: var(--down-tint); }
 .row--order td.col-name { box-shadow: inset 4px 0 0 var(--order-edge); }
 .col-notes { max-width: 220px; }
 .col-actions { width: 40px; text-align: right; }
@@ -1151,6 +1156,8 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .cartera-table .num.delta, .cartera-table .delta { font-size: inherit; }
 .row--click { cursor: pointer; }
 .segmented .count--warn { color: var(--down); opacity: 1; }
+/* Sobre la pestaña activa el rojo no se lee contra el color de acento: hereda el del botón. */
+.segmented button.on .count--warn { color: inherit; }
 .row--issue td { background: color-mix(in srgb, var(--danger) 8%, transparent); }
 .col-check { width: 28px; }
 .bulkbar { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
