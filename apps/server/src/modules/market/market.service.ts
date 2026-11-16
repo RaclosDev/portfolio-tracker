@@ -3,6 +3,7 @@ import type { Db } from '../../db/database.ts';
 import { isinCandidates, isIsin } from './isin.ts';
 import { queryWords, rankByWords, sameName, wordPairs, wordScore } from './words.ts';
 import { isVenueSymbol } from './onvista.provider.ts';
+import { parseFtSymbol } from './ft.provider.ts';
 import type { CompanyProfile, InstrumentCatalog, MarketDataProvider } from './provider.ts';
 
 type Kind = string; // 'quote' | TARGETS_KIND | 'history-<periodo>'
@@ -220,9 +221,10 @@ export class MarketService {
     const direct = await this.provider.search(query).catch(() => [] as SymbolSearchResult[]);
     // Las bolsas de onvista van al final: Yahoo da además gráficos e históricos.
     const venues = direct.filter((r) => isVenueSymbol(r.symbol));
-    const own = direct.filter((r) => !isVenueSymbol(r.symbol));
-    if (own.length) return [...own, ...venues];
-    return [...(await this.isinYahoo(query)), ...venues];
+    const ft = direct.filter((r) => parseFtSymbol(r.symbol));
+    const own = direct.filter((r) => !isVenueSymbol(r.symbol) && !parseFtSymbol(r.symbol));
+    // FT encuentra casi cualquier ISIN: no cuenta como fuente directa para dejar de consultar Yahoo.
+    return [...(own.length ? own : await this.isinYahoo(query)), ...ft, ...venues];
   }
 
   /**
@@ -238,7 +240,7 @@ export class MarketService {
       isIsin(query) || query.trim().length < 3 ? [] : this.byName(query).catch(() => [] as SymbolSearchResult[]),
     ]);
     const fromTickers = tickers.flatMap((r) => {
-      const isin = /^([A-Z]{2}[A-Z0-9]{9}\d)\.[A-Z]+$/.exec(r.symbol)?.[1];
+      const isin = /^(?:FT:)?([A-Z]{2}[A-Z0-9]{9}\d)[.:][A-Z]+$/.exec(r.symbol)?.[1];
       // Yahoo marca estos símbolos de Stuttgart como fondo aunque sean ETC o acciones: mejor sin tipo que uno falso.
       return isin && isIsin(isin) ? [{ isin, name: r.name, type: null }] : [];
     });
@@ -249,7 +251,7 @@ export class MarketService {
       .map((hit, order) => ({ hit, order, score: wordScore(hit.name, words) }))
       .sort((a, b) => b.score - a.score || a.order - b.order)
       .map((x) => x.hit)
-      .slice(0, 8);
+      .slice(0, 12);
   }
 
   /**
@@ -279,7 +281,7 @@ export class MarketService {
     ]);
     const bySymbol = new Map<string, SymbolSearchResult>();
     for (const r of [...direct, ...figi, ...named]) if (!bySymbol.has(r.symbol)) bySymbol.set(r.symbol, r);
-    const found = [...bySymbol.values()].slice(0, 16);
+    const found = [...bySymbol.values()].slice(0, 24);
     const quotes = await this.getQuotes(found.map((r) => r.symbol));
     return found
       .map((r) => {

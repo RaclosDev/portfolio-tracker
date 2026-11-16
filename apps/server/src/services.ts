@@ -6,11 +6,13 @@ import { BackupService } from './modules/backup/backup.service.ts';
 import { ItemsRepository } from './modules/items/items.repository.ts';
 import { ListsRepository } from './modules/lists/lists.repository.ts';
 import { MarketService } from './modules/market/market.service.ts';
-import type { InstrumentCatalog, MarketDataProvider } from './modules/market/provider.ts';
+import { mergeCatalogs, type InstrumentCatalog, type MarketDataProvider } from './modules/market/provider.ts';
 import { YahooProvider } from './modules/market/yahoo.provider.ts';
 import { BorsaProvider } from './modules/market/borsa.provider.ts';
 import { QuefondosProvider } from './modules/market/quefondos.provider.ts';
 import { OnvistaProvider } from './modules/market/onvista.provider.ts';
+import { FtProvider } from './modules/market/ft.provider.ts';
+import { EuronextCatalog } from './modules/market/euronext.catalog.ts';
 import { FallbackProvider } from './modules/market/fallback.provider.ts';
 import { PortfolioService } from './modules/portfolio/portfolio.service.ts';
 import { InstrumentsRepository, OperationsRepository } from './modules/portfolio/cartera.repository.ts';
@@ -37,11 +39,11 @@ export function createServicesFromDb(
   // Sin proveedor propio (producción) onvista también hace de catálogo de productos; en los tests no se sale a internet.
   const onvista = opts.provider ? undefined : new OnvistaProvider();
   const market = opts.market ?? new MarketService(
-    opts.provider ?? new FallbackProvider([new YahooProvider(), new BorsaProvider(), new QuefondosProvider(), onvista!], log),
+    opts.provider ?? new FallbackProvider([new YahooProvider(), new BorsaProvider(), new QuefondosProvider(), onvista!, new FtProvider()], log),
     db,
     { quoteTtlMs: config.quoteTtlMs, targetsTtlMs: config.targetsTtlMs },
     log,
-    opts.catalog ?? onvista,
+    opts.catalog ?? (onvista && mergeCatalogs([onvista, new EuronextCatalog()], log)),
   );
   const watchlist = new WatchlistService(lists, items, settings, market);
   const operations = new OperationsRepository(db);

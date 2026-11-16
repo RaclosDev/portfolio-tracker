@@ -533,7 +533,7 @@ export function App() {
           </>
         )}
         <p className="footnote">
-          Cotizaciones: Yahoo Finance, Borsa Italiana / FIDA y Quefondos / VDOS. Consenso: Yahoo Finance. Los datos pueden tener retraso.
+          Cotizaciones: Yahoo Finance, Borsa Italiana / FIDA, Quefondos / VDOS, onvista y FT Markets. Consenso: Yahoo Finance. Los datos pueden tener retraso.
           {!onPortfolio && <span className="watchlist-desktop-hint"> Doble clic en una fila para editarla.</span>}
         </p>
       </main>
