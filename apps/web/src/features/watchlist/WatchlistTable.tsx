@@ -15,6 +15,7 @@ import {
   shortDate,
 } from '../../lib/format.ts';
 import { KEY_DATE_LABEL, upcoming } from '../../lib/keyDates.ts';
+import { NoteCell } from './NoteCell.tsx';
 import { PriceMap } from './PriceMap.tsx';
 import { Sparkline } from './Sparkline.tsx';
 import { ValueExpanded } from './ValueExpanded.tsx';
@@ -392,11 +393,7 @@ const columns: Column[] = [
     id: 'notes',
     label: 'Notas',
     cell: ({ item }) =>
-      item.notes ? (
-        <span className="notes" title={item.notes}>
-          {item.notes}
-        </span>
-      ) : null,
+      item.notes ? <NoteCell note={item.notes} /> : null,
   },
   {
     id: 'per',
