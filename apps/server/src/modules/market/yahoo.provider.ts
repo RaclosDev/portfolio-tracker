@@ -31,6 +31,48 @@ export function dailyHistoryFromChart(chart: DailyChart): DailyHistory {
   };
 }
 
+interface QuoteChart {
+  meta?: Record<string, unknown>;
+  quotes?: { date: Date | string; close?: number | null }[];
+}
+
+/**
+ * Cotización a partir del gráfico diario. El gráfico no pide la credencial («crumb») que Yahoo exige para las
+ * cotizaciones y que a veces niega a los servidores en la nube: es el plan B cuando esa consulta falla.
+ */
+export function quoteFromChart(symbol: string, chart: QuoteChart, now = new Date()) {
+  const meta = chart.meta ?? {};
+  const price = n(meta.regularMarketPrice);
+  if (price == null) return null;
+  const bars = (chart.quotes ?? []).filter((q) => n(q.close) != null && q.close! > 0);
+  const at = meta.regularMarketTime instanceof Date ? meta.regularMarketTime.getTime()
+    : n(meta.regularMarketTime) != null ? n(meta.regularMarketTime)! * 1000 : now.getTime();
+  // La última barra es la sesión del precio actual: el cierre anterior es la barra de antes.
+  const last = bars.at(-1);
+  const sameSession = last && at - new Date(last.date).getTime() < 86_400_000;
+  const previousClose = (sameSession ? bars.at(-2)?.close : last?.close) ?? null;
+  return {
+    symbol,
+    name: s(meta.longName) ?? s(meta.shortName),
+    currency: s(meta.currency),
+    price,
+    changePct: previousClose ? price / previousClose - 1 : null,
+    previousClose,
+    low52: n(meta.fiftyTwoWeekLow),
+    high52: n(meta.fiftyTwoWeekHigh),
+    quoteType: s(meta.instrumentType),
+    exchange: s(meta.fullExchangeName) ?? s(meta.exchangeName),
+    marketState: null,
+    fetchedAt: now.toISOString(),
+    source: 'Yahoo Finance',
+  };
+}
+
+/** Cuánto vale una cotización sacada del gráfico (una consulta por valor: no se repite en cada refresco). */
+const CHART_QUOTE_TTL_MS = 2 * 60_000;
+/** Tras un fallo de la consulta de cotizaciones, cuánto se tarda en volver a probarla. */
+const QUOTE_RETRY_MS = 10 * 60_000;
+
 /** Días hacia atrás e intervalo de cada periodo del gráfico. */
 const RANGES: Record<HistoryRange, { days: number; interval: '1d' | '1wk' }> = {
   '1m': { days: 31, interval: '1d' },
@@ -108,7 +150,17 @@ export class YahooProvider implements MarketDataProvider {
 
   async getQuotes(symbols: string[]) {
     if (!symbols.length) return [];
-    const res = (await this.yf.quote(symbols, { return: 'array' }, LOOSE)) as Record<string, unknown>[];
+    if (Date.now() < this.quoteBlockedUntil) return this.chartQuotes(symbols);
+    let res: Record<string, unknown>[];
+    try {
+      res = (await this.yf.quote(symbols, { return: 'array' }, LOOSE)) as Record<string, unknown>[];
+    } catch (err) {
+      const quotes = await this.chartQuotes(symbols);
+      if (!quotes.length) throw err;
+      this.quoteBlockedUntil = Date.now() + QUOTE_RETRY_MS;
+      console.warn(`[watchlist] Yahoo no da cotizaciones (${err instanceof Error ? err.message : err}): se usan las del gráfico`);
+      return quotes;
+    }
     const now = new Date().toISOString();
     return res.map((q) => ({
       symbol: String(q.symbol),
@@ -125,6 +177,32 @@ export class YahooProvider implements MarketDataProvider {
       fetchedAt: now,
       source: 'Yahoo Finance',
     }));
+  }
+
+  private quoteBlockedUntil = 0;
+  private chartCache = new Map<string, { value: NonNullable<ReturnType<typeof quoteFromChart>>; expires: number }>();
+
+  /** Cotizaciones por la vía del gráfico, de cuatro en cuatro. Si no sale ninguna y hubo errores, falla. */
+  private async chartQuotes(symbols: string[]) {
+    const out: NonNullable<ReturnType<typeof quoteFromChart>>[] = [];
+    const pending = [...symbols];
+    let failure: unknown;
+    await Promise.all(Array.from({ length: Math.min(4, pending.length) }, async () => {
+      for (let symbol = pending.shift(); symbol; symbol = pending.shift()) {
+        const hit = this.chartCache.get(symbol);
+        if (hit && hit.expires > Date.now()) { out.push(hit.value); continue; }
+        try {
+          const chart = (await this.yf.chart(symbol, { period1: new Date(Date.now() - 10 * 86_400_000), interval: '1d' }, LOOSE)) as QuoteChart;
+          const value = quoteFromChart(symbol, chart);
+          if (!value) continue;
+          if (this.chartCache.size >= 1024) this.chartCache.delete(this.chartCache.keys().next().value!);
+          this.chartCache.set(symbol, { value, expires: Date.now() + CHART_QUOTE_TTL_MS });
+          out.push(value);
+        } catch (err) { failure ??= err; }
+      }
+    }));
+    if (!out.length && failure) throw failure;
+    return out;
   }
 
   async getTargets(symbol: string) {
