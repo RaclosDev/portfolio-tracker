@@ -65,6 +65,7 @@ export function quoteFromChart(symbol: string, chart: QuoteChart, now = new Date
     marketState: null,
     fetchedAt: now.toISOString(),
     source: 'Yahoo Finance',
+    fallback: true,
   };
 }
 
