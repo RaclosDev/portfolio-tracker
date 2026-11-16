@@ -277,6 +277,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .swatch--near { background: var(--near-fg); }
 .swatch--far { background: var(--far-fg); }
 .swatch--veryFar { background: var(--veryFar-fg); }
+.swatch--order { background: var(--order-fg); }
 .segmented button.on .swatch { outline: 1.5px solid var(--accent-text); }
 .content > .legend { margin-top: 10px; }
 .icon { display: block; }
@@ -339,6 +340,14 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .ticker { font-family: ui-monospace, 'Cascadia Mono', Menlo, monospace; font-size: var(--fs-xs); }
 .strong { font-weight: 650; }
 .notes { display: block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); }
+/* Nota en la tabla: icono en el escritorio y texto entero en la tarjeta del móvil. */
+.col-notes { text-align: center; }
+.notes--inline { display: none; }
+.note-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--text-2); cursor: pointer; }
+.note-btn:hover, .note-btn:focus-visible { color: var(--text); background: var(--surface-2); }
+.note-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.note-pop { position: fixed; inset: auto; margin: 0; max-width: 320px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); box-shadow: var(--shadow); font-size: var(--fs-sm); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; }
 
 .delta { font-size: var(--fs-xs); }
 .delta.up { color: var(--up); }
@@ -818,6 +827,8 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .wl-table tr.row td.col-map { padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 2px; }
   .wl-table td.col-map .price-map { width: 100%; max-width: 420px; height: auto; }
   .wl-table td.col-notes .notes { white-space: normal; max-width: none; font-size: var(--fs-sm); }
+  .wl-table td.col-notes .notes--inline { display: block; }
+  .wl-table td.col-notes .note-btn { display: none; }
 
   /* Fuera lo que no aporta en la tarjeta: celdas vacías ("–") y el botón "Añadir" (se añade desde Editar). */
   .wl-table tr.row td:has(> .muted:only-child),
