@@ -35,7 +35,7 @@ export function Gate({ children }: { children: ReactNode }) {
     return (
       <main className="login">
         <div className="login__card">
-          <h1>Watchlist</h1>
+          <h1>Portfolio Tracker</h1>
           <p className="error-box">No se puede conectar con el servidor. Si acaba de arrancar, espera unos segundos.</p>
           <button type="button" className="btn btn--primary" onClick={() => void session.refetch()}>
             Reintentar
@@ -107,7 +107,7 @@ function Login({ googleEnabled, registrationEnabled, onDone }: {
       <form className="login__card" onSubmit={submit}>
         <div className="brand">
           <img src="/favicon.svg" alt="" width={28} height={28} />
-          <h1>Watchlist</h1>
+          <h1>Portfolio Tracker</h1>
         </div>
         <h2 className="login__title">{registering ? 'Crear cuenta' : 'Iniciar sesión'}</h2>
         {!registering && <p className="muted small">Organiza tus listas de seguimiento y tu cartera en una cuenta privada.</p>}

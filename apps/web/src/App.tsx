@@ -283,7 +283,7 @@ export function App() {
       <header className="topbar">
         <div className="brand">
           <img src="/favicon.svg" alt="" width={24} height={24} />
-          <h1>Watchlist</h1>
+          <h1>Portfolio Tracker</h1>
         </div>
 
         <nav className="tabs" aria-label="Listas">

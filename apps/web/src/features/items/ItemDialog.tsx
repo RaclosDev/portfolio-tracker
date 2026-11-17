@@ -4,7 +4,7 @@ import { useState, type FormEvent } from 'react';
 import { ApiError, api } from '../../api/client.ts';
 import { useDeleteItem, useSaveItem } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
-import { toast, toastError } from '../../components/feedback.tsx';
+import { toast } from '../../components/feedback.tsx';
 import { MINOR_CURRENCY, money, num, parseDecimal, pct, price, shortDate } from '../../lib/format.ts';
 import { tickerFromSymbol, type OperationDraft } from '../cartera/OperationDialog.tsx';
 import { SymbolPicker } from './SymbolPicker.tsx';

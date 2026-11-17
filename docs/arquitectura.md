@@ -1,4 +1,4 @@
-# Watchlist — Requisitos y arquitectura
+# Portfolio Tracker — Requisitos y arquitectura
 
 ## 1. Punto de partida (Excel "Vigilar nuevas")
 

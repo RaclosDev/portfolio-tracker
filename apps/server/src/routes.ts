@@ -300,7 +300,7 @@ export async function registerRoutes(app: FastifyInstance) {
     reply.code(204);
   });
   app.post('/api/push/test', async (req) =>
-    req.services.push.sendAll({ title: 'Watchlist', body: 'Las notificaciones funcionan en este dispositivo.', tag: 'prueba', url: '/' }),
+    req.services.push.sendAll({ title: 'Portfolio Tracker', body: 'Las notificaciones funcionan en este dispositivo.', tag: 'prueba', url: '/' }),
   );
 
   // Copias de seguridad
