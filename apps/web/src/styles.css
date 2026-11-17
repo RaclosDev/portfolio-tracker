@@ -945,6 +945,12 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .login__google:active { background: #e8e8e8; }
 .login__google svg { flex-shrink: 0; }
 .login-loading { margin-top: 30vh; }
+.login__demo { justify-content: center; text-decoration: none; }
+.demo-banner {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 10px; margin: 0; padding: 6px 12px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface)); border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm); text-align: center;
+}
 .snapshot-list li { flex-wrap: wrap; gap: 6px 12px; }
 
 /* ---------- Móvil: cabecera compacta y barra de herramientas en menos líneas ---------- */

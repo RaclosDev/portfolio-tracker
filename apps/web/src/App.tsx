@@ -1,7 +1,7 @@
 import { DEFAULT_SETTINGS, type WatchlistRow } from '@watchlist/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { api } from './api/client.ts';
+import { api, DEMO } from './api/client.ts';
 import { keys, useForceRefresh, useListMutations, useLists, usePortfolio, useSaveItem, useSettings, useWatchlist } from './api/hooks.ts';
 import type { OperationDraft } from './features/cartera/OperationDialog.tsx';
 import { useCarteraModel } from './features/cartera/model.ts';
@@ -279,6 +279,12 @@ export function App() {
 
   return (
     <div className="app">
+      {DEMO && (
+        <p className="demo-banner" role="status">
+          <strong>Modo demo.</strong> Datos ficticios: los cambios se pierden al recargar.
+          <a href="/">Salir y crear una cuenta</a>
+        </p>
+      )}
       <a className="skip-link" href="#contenido">Saltar al contenido</a>
       <header className="topbar">
         <div className="brand">
