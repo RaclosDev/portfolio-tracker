@@ -48,7 +48,7 @@ export function CarteraImportDialog({ view, onClose }: { view: CarteraView; onCl
     stepLabel.current?.focus({ preventScroll: true });
     stepLabel.current?.scrollIntoView({ block: 'start' });
   }, [step]);
-  const rows = sheets[sheetIndex]?.data ?? [];
+  const rows = useMemo(() => sheets[sheetIndex]?.data ?? [], [sheets, sheetIndex]);
   const header = rows[headerIndex] ?? [];
   const patch = (next: Partial<ImportOptions>) => { setOptions((o) => ({ ...o, ...next })); setConfirmed(false); };
   const configure = (sheet: ReadSheet, index: number) => {

@@ -46,7 +46,7 @@ export function App() {
   const settingsQ = useSettings();
   const listsQ = useLists();
   const settings = settingsQ.data ?? DEFAULT_SETTINGS;
-  const lists = listsQ.data ?? [];
+  const lists = useMemo(() => listsQ.data ?? [], [listsQ.data]);
 
   const [listId, setListId] = useState<number | null>(() => Number(localStorage.getItem(LS_LIST)) || null);
   useEffect(() => {

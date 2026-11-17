@@ -130,7 +130,7 @@ export function HistoryChart({
         {geo.labels.map((r) =>
           r.kind === 'price' ? (
             // El precio actual va en un recuadro, como en los gráficos de los brókers.
-            <g key="precio" className="chart__ref chart__ref--price">
+            <g key={`precio-${r.label}`} className="chart__ref chart__ref--price">
               <line x1={geo.x(points.length - 1)} x2={W - M.right} y1={r.y} y2={r.y} />
               <rect x={W - M.right + 2} y={r.ly - 7.5} width={(r.label.length + pr(r.value).length + 1) * 6.2 + 8} height={15} rx={3} />
               <text x={W - M.right + 6} y={r.ly + 3.5}>
