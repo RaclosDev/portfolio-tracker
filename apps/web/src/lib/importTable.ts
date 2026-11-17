@@ -193,7 +193,7 @@ export function parseTable(data: Cell[][]): ParsedTable | null {
 
 /** CSV con «;» (Excel en español), «,» o tabuladores, con comillas. */
 export function parseCsv(input: string): string[][] {
-  let textIn = input.replace(/^﻿/, '');
+  let textIn = input.replace(/^\uFEFF/, '');
   const declared = textIn.match(/^sep=([;,\t])\r?\n/i);
   if (declared) textIn = textIn.slice(declared[0].length);
   const delimiters = [';', '\t', ','];

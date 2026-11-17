@@ -111,12 +111,28 @@ export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'sy
         onBlur={() => setTimeout(() => (setOpen(false), setProduct(null)), 150)}
         onKeyDown={(e) => {
           // Escape en las bolsas vuelve a los productos; en la lista de productos, la cierra.
-          if (e.key === 'Escape' && product) return (e.stopPropagation(), e.preventDefault(), setProduct(null), setActive(0));
+          if (e.key === 'Escape' && product) {
+            e.stopPropagation();
+            e.preventDefault();
+            setProduct(null);
+            setActive(0);
+            return;
+          }
           if (!showList) return;
-          if (e.key === 'ArrowDown') (e.preventDefault(), setActive((a) => Math.min(a + 1, options.length - 1)));
-          else if (e.key === 'ArrowUp') (e.preventDefault(), setActive((a) => Math.max(a - 1, 0)));
-          else if (e.key === 'Enter' && options.length) (e.preventDefault(), choose(options[Math.min(active, options.length - 1)]!));
-          else if (e.key === 'Escape') (e.stopPropagation(), e.preventDefault(), setOpen(false));
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setActive((a) => Math.min(a + 1, options.length - 1));
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActive((a) => Math.max(a - 1, 0));
+          } else if (e.key === 'Enter' && options.length) {
+            e.preventDefault();
+            choose(options[Math.min(active, options.length - 1)]!);
+          } else if (e.key === 'Escape') {
+            e.stopPropagation();
+            e.preventDefault();
+            setOpen(false);
+          }
         }}
       />
       {fetching && <span className="combo__spinner" aria-hidden />}

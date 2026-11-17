@@ -1,6 +1,6 @@
 {
-  "name": "Watchlist",
-  "short_name": "Watchlist",
+  "name": "Portfolio Tracker",
+  "short_name": "Cartera",
   "description": "Valores a vigilar, niveles de compra y cartera",
   "lang": "es",
   "start_url": "/",

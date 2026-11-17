@@ -4,14 +4,17 @@
 
 ![Portfolio Tracker: lista de vigilancia, resumen de cartera y registro de operaciones](docs/screenshots/hero.jpg)
 
-[Arquitectura](docs/arquitectura.md) · [Instalación y uso](docs/guia.md) · [Capturas reproducibles](docs/screenshots/README.md) · [Abrir Watchlist](https://cartera.raclos.es)
+[![CI](https://github.com/RaclosDev/portfolio-tracker/actions/workflows/desplegar.yml/badge.svg)](https://github.com/RaclosDev/portfolio-tracker/actions/workflows/desplegar.yml) [![CodeQL](https://github.com/RaclosDev/portfolio-tracker/actions/workflows/codeql.yml/badge.svg)](https://github.com/RaclosDev/portfolio-tracker/actions/workflows/codeql.yml) [![Licencia MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+[Arquitectura](docs/arquitectura.md) · [Instalación y uso](docs/guia.md) · [Capturas reproducibles](docs/screenshots/README.md) · [Abrir Portfolio Tracker](https://cartera.raclos.es)
 
 ## Qué resuelve
 
-- **Vigilar acciones y ETF:** listas, búsqueda por nombre, ticker o ISIN, hasta tres niveles de compra y distancia al precio actual. Los importes contemplan la conversión de divisa.
+- **Vigilar acciones, ETF y fondos:** listas, búsqueda por nombre, ticker o ISIN, hasta tres niveles de compra y distancia al precio actual. Los importes contemplan la conversión de divisa.
 - **Entender la cartera:** posiciones, reparto por valor, sector y bróker, rentabilidad y posiciones cerradas, calculados a partir de compras, ventas y otras operaciones.
-- **Mantener un registro:** dividendos, scrip, derechos y splits; importación de Excel/CSV con revisión de columnas, vista previa y detección de posibles duplicados. El cálculo de lotes utiliza FIFO y permite exportar informes.
+- **Mantener un registro:** dividendos, scrip, derechos, splits y traspasos entre fondos; importación de Excel/CSV con revisión de columnas, vista previa y detección de posibles duplicados. El cálculo de lotes utiliza FIFO y permite exportar informes.
 - **Recibir avisos:** notificaciones push de niveles y órdenes registradas, con un resumen diario. La aplicación hace seguimiento; no envía operaciones a un bróker.
+- **Usarla en cualquier pantalla:** PWA instalable con tema claro y oscuro, y vista compacta en el móvil.
 - **Conservar los datos:** copias diarias y una copia antes de importar, con exportación y restauración desde la interfaz.
 
 ## Un recorrido por la aplicación
@@ -40,7 +43,7 @@ Capturas de la interfaz real en escritorio, renovadas en noviembre de 2026; se m
 | Separar los datos de cada usuario | Registro con correo y contraseña o Google, sesiones revocables y un esquema de datos por cuenta | [`modules/auth`](apps/server/src/modules/auth) |
 | Desarrollar sin instalar un servidor de base de datos | PostgreSQL en producción y PGlite en desarrollo y pruebas | [`database.ts`](apps/server/src/db/database.ts) |
 
-**Stack:** Node.js · TypeScript · Fastify 5 · React 19 · TanStack Query · Vite · PostgreSQL / PGlite · Vitest · GitHub Actions.
+**Stack:** Node.js · TypeScript · Fastify 5 · React 19 · TanStack Query · Vite · PostgreSQL / PGlite · Vitest · ESLint · GitHub Actions.
 
 ## Desarrollo local
 
@@ -54,12 +57,13 @@ npm run dev
 La web arranca en `http://localhost:5173` y la API en `http://localhost:5174`. Sin `DATABASE_URL`, se utiliza PGlite local. La [guía de configuración](docs/guia.md) explica autenticación, notificaciones, copias y despliegue.
 
 ```bash
+npm run lint
 npm test
 npm run typecheck
 npm run build
 ```
 
-La [CI](.github/workflows/desplegar.yml) comprueba tipos, pruebas y compilación antes del despliegue. Las cotizaciones externas pueden tener retraso; la aplicación organiza información y no ofrece asesoramiento de inversión.
+La [CI](.github/workflows/desplegar.yml) comprueba lint, tipos, pruebas y compilación antes del despliegue; CodeQL analiza el código y Dependabot propone actualizaciones semanales. Las cotizaciones externas pueden tener retraso; la aplicación organiza información y no ofrece asesoramiento de inversión.
 
 ## Fuentes de cotización
 

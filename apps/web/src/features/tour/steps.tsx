@@ -5,7 +5,7 @@ const cell = (col: string) => `.wl-table tbody tr:first-child td.col-${col}`;
 
 export const TOUR_STEPS: TourStep[] = [
   {
-    title: 'Bienvenido a tu Watchlist',
+    title: 'Bienvenido a Portfolio Tracker',
     body: (
       <>
         <p>
