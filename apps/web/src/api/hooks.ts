@@ -104,6 +104,16 @@ export function useOperationMutations() {
   };
 }
 
+/** Mayores posiciones de cada fondo o ETF en cartera. Cambian poco: el servidor las guarda una semana. */
+export function usePortfolioComposition(enabled = true) {
+  return useQuery({
+    queryKey: ['portfolio-composition'],
+    queryFn: api.portfolioComposition,
+    enabled,
+    staleTime: 60 * 60_000,
+  });
+}
+
 /** Minigráficos de 1 año de los valores en cartera. */
 export function useSparklines1y(symbols: string[]) {
   return useQuery({

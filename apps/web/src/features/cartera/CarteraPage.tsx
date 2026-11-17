@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { money, pct } from '../../lib/format.ts';
 import { tabListKeys } from '../../lib/tabs.ts';
 import { PortfolioCharts } from './PortfolioCharts.tsx';
+import { ExposureView } from './ExposureView.tsx';
 import { ClosedView, HoldingsView } from './HoldingsView.tsx';
 import { signed, type CarteraModel } from './model.ts';
 import { OperationDialog, type OperationDraft } from './OperationDialog.tsx';
@@ -12,10 +13,11 @@ import { TickerDialog } from './TickerDialog.tsx';
 
 const CarteraImportDialog = lazy(() => import('./CarteraImportDialog.tsx').then((m) => ({ default: m.CarteraImportDialog })));
 
-type Tab = 'resumen' | 'abiertas' | 'cerradas' | 'registro' | 'renta';
+type Tab = 'resumen' | 'abiertas' | 'exposicion' | 'cerradas' | 'registro' | 'renta';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'resumen', label: 'Resumen' },
   { id: 'abiertas', label: 'En cartera' },
+  { id: 'exposicion', label: 'Exposición' },
   { id: 'cerradas', label: 'Cerradas' },
   { id: 'registro', label: 'Registro' },
   { id: 'renta', label: 'Renta' },
@@ -293,6 +295,7 @@ export function CarteraPage({ model, isPending, error, onRetry, draft, onDraftUs
         <>
           {tab === 'resumen' && <ResumenView model={model} />}
           {tab === 'abiertas' && <HoldingsView model={model} onOpen={setTicker} />}
+          {tab === 'exposicion' && <ExposureView model={model} onOpen={setTicker} />}
           {tab === 'cerradas' && <ClosedView model={model} onOpen={setTicker} />}
           {tab === 'registro' && <RegistroView model={model} onImport={() => setImporting(true)} onEdit={(op) => setEditing({ op })} />}
           {tab === 'renta' && <RentaView model={model} />}

@@ -13,6 +13,8 @@ import { QuefondosProvider } from './modules/market/quefondos.provider.ts';
 import { OnvistaProvider } from './modules/market/onvista.provider.ts';
 import { FtProvider } from './modules/market/ft.provider.ts';
 import { EuronextCatalog } from './modules/market/euronext.catalog.ts';
+import { JustEtfProvider } from './modules/market/justetf.provider.ts';
+import { ExtraEtfComposition, FtComposition, OnvistaComposition, YahooComposition, type CompositionSource } from './modules/market/composition.ts';
 import { FallbackProvider } from './modules/market/fallback.provider.ts';
 import { PortfolioService } from './modules/portfolio/portfolio.service.ts';
 import { InstrumentsRepository, OperationsRepository } from './modules/portfolio/cartera.repository.ts';
@@ -25,6 +27,7 @@ export function createServicesFromDb(
   opts: {
     provider?: MarketDataProvider;
     catalog?: InstrumentCatalog;
+    compositionSources?: CompositionSource[];
     vapid?: { publicKey: string | null; privateKey: string | null; subject: string };
     log?: (msg: string, err?: unknown) => void;
     market?: MarketService;
@@ -38,12 +41,16 @@ export function createServicesFromDb(
   const state = new StateRepository(db);
   // Sin proveedor propio (producción) onvista también hace de catálogo de productos; en los tests no se sale a internet.
   const onvista = opts.provider ? undefined : new OnvistaProvider();
+  const yahoo = opts.provider ? undefined : new YahooProvider();
   const market = opts.market ?? new MarketService(
-    opts.provider ?? new FallbackProvider([new YahooProvider(), new BorsaProvider(), new QuefondosProvider(), onvista!, new FtProvider()], log),
+    opts.provider ?? new FallbackProvider([yahoo!, new BorsaProvider(), new QuefondosProvider(), onvista!, new JustEtfProvider(), new FtProvider()], log),
     db,
     { quoteTtlMs: config.quoteTtlMs, targetsTtlMs: config.targetsTtlMs },
     log,
     opts.catalog ?? (onvista && mergeCatalogs([onvista, new EuronextCatalog()], log)),
+    opts.compositionSources ?? (yahoo
+      ? [new ExtraEtfComposition(), new OnvistaComposition(), new FtComposition(), new YahooComposition((symbol) => yahoo.topHoldings(symbol))]
+      : []),
   );
   const watchlist = new WatchlistService(lists, items, settings, market);
   const operations = new OperationsRepository(db);

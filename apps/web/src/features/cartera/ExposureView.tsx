@@ -1,0 +1,134 @@
+import { computeExposure, type ExposurePart, type ExposureRow } from '@watchlist/shared';
+import { useMemo } from 'react';
+import { usePortfolioComposition } from '../../api/hooks.ts';
+import { money, share } from '../../lib/format.ts';
+import type { CarteraModel } from './model.ts';
+import { DataBar, SortTable, type Column } from './SortTable.tsx';
+
+const eur = (v: number) => <span className="num">{v ? money(v, 'EUR', 2) : '–'}</span>;
+
+function Parts({ parts, onOpen }: { parts: ExposurePart[]; onOpen: (ticker: string) => void }) {
+  return (
+    <span className="exposure-parts">
+      {parts.map((p) => (
+        <button
+          key={`${p.ticker}-${p.weight ?? 'directo'}`}
+          type="button"
+          className="exposure-part"
+          title={`${p.name}: ${money(p.eur, 'EUR', 2)}${p.weight != null ? ` (${share(p.weight)} del fondo)` : ' en directo'}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen(p.ticker);
+          }}
+        >
+          <span className="ticker">{p.ticker}</span> <span className="num sub">{money(p.eur, 'EUR', 0)}</span>
+        </button>
+      ))}
+    </span>
+  );
+}
+
+/** Lo que se tiene de cada empresa sumando las acciones directas y las que llevan dentro los fondos y ETF. */
+export function ExposureView({ model, onOpen }: { model: CarteraModel; onOpen: (ticker: string) => void }) {
+  const compositions = usePortfolioComposition(model.valuation.open.length > 0);
+  const exposure = useMemo(() => computeExposure(model.valuation.open, compositions.data ?? {}), [model.valuation.open, compositions.data]);
+  const max = Math.max(0, ...exposure.rows.map((r) => r.totalEur));
+  const sum = (f: (r: ExposureRow) => number) => exposure.rows.reduce((s, r) => s + f(r), 0);
+
+  const columns: Column<ExposureRow>[] = [
+    {
+      id: 'name',
+      label: 'Empresa',
+      sort: (r) => r.name.toLowerCase(),
+      cell: (r) => (
+        <span className="stack">
+          <span className="name">{r.name}</span>
+          {r.isin && <span className="sub">{r.isin}</span>}
+        </span>
+      ),
+    },
+    { id: 'direct', label: 'En directo', align: 'right', sort: (r) => r.directEur, cell: (r) => eur(r.directEur), total: eur(sum((r) => r.directEur)) },
+    {
+      id: 'funds',
+      label: 'Vía fondos',
+      align: 'right',
+      title: 'Parte que te toca por los fondos y ETF que la llevan entre sus mayores posiciones',
+      sort: (r) => r.fundsEur,
+      cell: (r) => eur(r.fundsEur),
+      total: eur(sum((r) => r.fundsEur)),
+    },
+    {
+      id: 'total',
+      label: 'Total',
+      align: 'right',
+      sort: (r) => r.totalEur,
+      cell: (r) => (
+        <DataBar value={r.totalEur} max={max}>
+          <span className="num">{money(r.totalEur, 'EUR', 2)}</span>
+        </DataBar>
+      ),
+      total: eur(sum((r) => r.totalEur)),
+    },
+    {
+      id: 'weight',
+      label: '% cartera',
+      align: 'right',
+      sort: (r) => r.weight,
+      cell: (r) => <span className="num">{share(r.weight)}</span>,
+      total: <span className="num">{share(exposure.totalEur ? sum((r) => r.totalEur) / exposure.totalEur : 0)}</span>,
+    },
+    { id: 'parts', label: 'De dónde sale', cell: (r) => <Parts parts={r.parts} onOpen={onOpen} /> },
+  ];
+
+  if (!exposure.rows.length && !exposure.rest.length) return <p className="empty">No hay posiciones abiertas con precio.</p>;
+  return (
+    <div className="exposure">
+      <p className="muted exposure__note">
+        Suma lo que tienes en directo y lo que llevan dentro tus fondos y ETF. Las fuentes gratuitas solo publican las 10 mayores posiciones de cada
+        fondo, así que la parte «vía fondos» es un mínimo: el resto queda abajo, sin desglosar.
+        {compositions.isLoading && ' Cargando la composición de los fondos…'}
+        {compositions.isError && ' No se ha podido cargar la composición de los fondos.'}
+      </p>
+      <SortTable
+        rows={exposure.rows}
+        columns={columns}
+        rowKey={(r) => r.key}
+        storageKey="watchlist.cartera.orden.exposicion"
+        defaultSort={{ id: 'total', dir: 'desc' }}
+        className="cartera-compact cartera-exposure"
+      />
+      {exposure.rest.length > 0 && (
+        <>
+          <h3 className="renta__h">
+            Sin desglosar · {money(exposure.restEur, 'EUR', 2)} ({share(exposure.totalEur ? exposure.restEur / exposure.totalEur : 0)} de la cartera)
+          </h3>
+          <div className="table-wrap">
+            <table className="wl-table cartera-table">
+              <thead>
+                <tr>
+                  <th>Fondo</th>
+                  <th className="al-right">Importe</th>
+                  <th className="al-right">% del fondo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {exposure.rest.map((p) => (
+                  <tr key={p.ticker} className="row row--click" onClick={() => onOpen(p.ticker)}>
+                    <td>
+                      <span className="stack">
+                        <span className="name">{p.name}</span>
+                        <span className="sub">{p.weight == null ? 'Sin composición conocida' : 'Fuera de sus mayores posiciones'}</span>
+                      </span>
+                    </td>
+                    <td className="al-right num">{money(p.eur, 'EUR', 2)}</td>
+                    <td className="al-right num">{share(p.weight ?? 1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

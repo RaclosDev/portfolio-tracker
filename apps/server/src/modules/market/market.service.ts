@@ -1,10 +1,11 @@
-import { shiftDate, type AnalystTargets, type DailyHistory, type HistoryRange, type InstrumentHit, type Listing, type PricePoint, type Quote, type SymbolSearchResult } from '@watchlist/shared';
+import { shiftDate, type FundComposition, type AnalystTargets, type DailyHistory, type HistoryRange, type InstrumentHit, type Listing, type PricePoint, type Quote, type SymbolSearchResult } from '@watchlist/shared';
 import type { Db } from '../../db/database.ts';
 import { isinCandidates, isIsin } from './isin.ts';
 import { queryWords, rankByWords, sameName, wordPairs, wordScore } from './words.ts';
 import { isVenueSymbol } from './onvista.provider.ts';
 import { parseFtSymbol } from './ft.provider.ts';
 import type { CompanyProfile, InstrumentCatalog, MarketDataProvider } from './provider.ts';
+import type { CompositionRef, CompositionSource } from './composition.ts';
 
 type Kind = string; // 'quote' | TARGETS_KIND | 'history-<periodo>'
 /** Sube la versión cuando AnalystTargets gane campos: así no se sirve la caché antigua sin ellos. */
@@ -12,6 +13,10 @@ const TARGETS_KIND = 'targets-v2';
 const HISTORY_TTL_MS = 60 * 60_000;
 const EMPTY_HISTORY_TTL_MS = 5 * 60_000;
 const PROFILE_TTL_MS = 30 * 24 * 60 * 60_000;
+/** Las gestoras publican la composición una vez al mes: una semana de caché; un día si ninguna fuente la tenía. */
+const COMPOSITION_KIND = 'holdings-v1';
+const COMPOSITION_TTL_MS = 7 * 24 * 60 * 60_000;
+const NO_COMPOSITION_TTL_MS = 24 * 60 * 60_000;
 /** Los minigráficos usan observaciones diarias o mensuales: se renuevan cada 3 h. */
 const SPARK_TTL_MS = 3 * 60 * 60_000;
 /** Pausa entre históricos renovados en segundo plano, para no ir a ráfagas. */
@@ -83,6 +88,7 @@ export class MarketService {
     private opts: { quoteTtlMs: number; targetsTtlMs: number },
     private log: (msg: string, err?: unknown) => void = () => {},
     private catalog?: InstrumentCatalog,
+    private compositionSources: CompositionSource[] = [],
   ) {}
 
   get providerId() {
@@ -408,6 +414,41 @@ export class MarketService {
       this.onProviderError(err, `Sin ficha de ${symbol}`);
       return stored?.value ?? null;
     }
+  }
+
+  private compositionPending = new Map<string, Promise<FundComposition | null>>();
+
+  /** Mayores posiciones de un fondo o ETF, de la primera fuente que las tenga. null si ninguna lo conoce. */
+  getComposition(ref: CompositionRef): Promise<FundComposition | null> {
+    const key = (ref.isin ?? ref.symbol ?? '').toUpperCase();
+    if (!key || !this.compositionSources.length) return Promise.resolve(null);
+    const pending = this.compositionPending.get(key);
+    if (pending) return pending;
+    const request = this.loadComposition(key, ref).finally(() => this.compositionPending.delete(key));
+    this.compositionPending.set(key, request);
+    return request;
+  }
+
+  private async loadComposition(key: string, ref: CompositionRef): Promise<FundComposition | null> {
+    const stored = await this.load<FundComposition | null>(COMPOSITION_KIND, key);
+    if (stored && Date.now() - stored.fetchedAt < (stored.value ? COMPOSITION_TTL_MS : NO_COMPOSITION_TTL_MS)) return stored.value;
+    let failed = false;
+    for (const source of this.compositionSources) {
+      try {
+        const found = await source.getComposition(ref);
+        if (!found) continue;
+        const value: FundComposition = { ...found, source: source.id, fetchedAt: new Date().toISOString() };
+        await this.persist(COMPOSITION_KIND, key, value);
+        return value;
+      } catch (err) {
+        failed = true;
+        this.log(`Sin composición de ${key} en ${source.id}; se prueba la siguiente fuente`, err);
+      }
+    }
+    // Mejor la última conocida que nada; «no existe» solo se recuerda si todas las fuentes han contestado.
+    if (stored?.value) return stored.value;
+    if (!failed) await this.persist(COMPOSITION_KIND, key, null);
+    return null;
   }
 
   /** Guarda el último dato (si falla la base de datos, se sigue con la memoria). */

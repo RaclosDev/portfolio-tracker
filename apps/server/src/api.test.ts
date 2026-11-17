@@ -50,6 +50,13 @@ class FakeProvider implements MarketDataProvider {
   }
 }
 
+/** Solo conoce la composición de un ETF. */
+const compositionSource = {
+  id: 'prueba',
+  getComposition: async ({ isin }: { isin: string | null }) =>
+    isin === 'IE00B4L5Y983' ? { holdings: [{ name: 'BBB Inc', isin: null, ticker: 'BBB', weight: 0.25 }], asOf: '2026-10-31' } : null,
+};
+
 let provider: FakeProvider;
 let db: Db;
 let app: Awaited<ReturnType<typeof buildApp>>;
@@ -58,7 +65,7 @@ async function setup(auth?: AuthOptions) {
   db = openPGlite();
   await migrate(db);
   provider = new FakeProvider();
-  app = await buildApp(createServicesFromDb(db, { provider }), { auth });
+  app = await buildApp(createServicesFromDb(db, { provider, compositionSources: [compositionSource] }), { auth });
 }
 
 let cookie = '';
@@ -420,6 +427,18 @@ describe('cartera', () => {
     ]);
     expect(Object.keys(view.quotes)).toEqual(['AAA.MC']);
     expect(view.fx.EUR).toBe(1);
+  });
+
+  it('da la composición de los fondos en cartera, no la de las acciones ni la de lo ya vendido', async () => {
+    await send('POST', '/api/operations', { ...buy('AAA', 100, 800), instrument: { symbol: 'AAA.MC' } });
+    await send('POST', '/api/operations', { ...buy('MUNDO', 10, 1000), instrument: { symbol: 'XETRA:IE00B4L5Y983' } });
+    await send('POST', '/api/operations', { ...buy('OTRO', 10, 1000), instrument: { symbol: 'FT:LU0000000001:EUR' } });
+    await send('POST', '/api/operations', { ...buy('VIEJO', 10, 1000), instrument: { symbol: 'IE00B4L5Y983' } });
+    await send('POST', '/api/operations', { operation: { date: '2025-03-01', ticker: 'VIEJO', type: 'sell', shares: 10, amountEur: 1100 } });
+    const composition = (await get('/api/portfolio/composition')).json() as Record<string, { holdings: { name: string; weight: number }[]; source: string } | null>;
+    expect(Object.keys(composition).sort()).toEqual(['MUNDO', 'OTRO']);
+    expect(composition.MUNDO).toMatchObject({ holdings: [{ name: 'BBB Inc', weight: 0.25 }], asOf: '2026-10-31', source: 'prueba' });
+    expect(composition.OTRO).toBeNull();
   });
 
   it('no deja guardar ventas de más ni borrar una compra que ya se vendió', async () => {

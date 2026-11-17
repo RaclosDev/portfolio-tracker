@@ -1,7 +1,9 @@
 import {
   computeLedger,
   computePortfolioHistory,
+  isFundType,
   shiftDate,
+  type FundComposition,
   type DailyHistory,
   type PortfolioHistory,
   type PricePoint,
@@ -11,6 +13,7 @@ import {
   type Quote,
 } from '@watchlist/shared';
 import { MINOR_UNITS, type MarketService } from '../market/market.service.ts';
+import { isinInSymbol } from '../market/composition.ts';
 import type { SettingsRepository } from '../settings/settings.repository.ts';
 import type { InstrumentsRepository, OperationsRepository } from './cartera.repository.ts';
 
@@ -121,6 +124,31 @@ export class PortfolioService {
       generatedAt: new Date().toISOString(),
       throttledUntil: this.market.throttledUntilIso,
     };
+  }
+
+  /**
+   * Mayores posiciones de cada fondo o ETF que sigue en cartera, por ticker (null si ninguna fuente lo conoce).
+   * Las acciones no aparecen: solo lo que es un fondo o podría serlo (sin tipo conocido pero con ISIN).
+   */
+  async composition(): Promise<Record<string, FundComposition | null>> {
+    const [operations, instruments] = await Promise.all([this.operations.all(), this.instruments.all()]);
+    const open = new Set(computeLedger(operations).tickers.filter((t) => t.shares > 1e-9).map((t) => t.ticker));
+    const held = instruments.filter((i) => open.has(i.ticker));
+    const quotes = await this.market.getQuotes(held.flatMap((i) => (i.symbol ? [i.symbol] : [])));
+    const funds = held.flatMap((i) => {
+      const quote = i.symbol ? quotes.get(i.symbol) : undefined;
+      const isin = i.isin ?? quote?.isin ?? isinInSymbol(i.symbol);
+      const candidate = quote?.quoteType ? isFundType(quote.quoteType) : !!isin;
+      return candidate ? [{ ticker: i.ticker, ref: { isin: isin?.toUpperCase() ?? null, symbol: i.symbol ?? null } }] : [];
+    });
+    const out: Record<string, FundComposition | null> = {};
+    // De tres en tres: la primera vez cada fondo puede recorrer varias fuentes.
+    for (let i = 0; i < funds.length; i += 3) {
+      await Promise.all(funds.slice(i, i + 3).map(async (f) => {
+        out[f.ticker] = await this.market.getComposition(f.ref);
+      }));
+    }
+    return out;
   }
 
   /** Lanza un error 400 si el registro no cuadra (se vende más de lo que hay…). */
