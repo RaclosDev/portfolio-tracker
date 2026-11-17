@@ -71,8 +71,16 @@ export function quoteFromChart(symbol: string, chart: QuoteChart, now = new Date
 
 /** Cuánto vale una cotización sacada del gráfico (una consulta por valor: no se repite en cada refresco). */
 const CHART_QUOTE_TTL_MS = 2 * 60_000;
-/** Tras un fallo de la consulta de cotizaciones, cuánto se tarda en volver a probarla. */
-const QUOTE_RETRY_MS = 10 * 60_000;
+/**
+ * Tras un fallo de la credencial, cuánto se tarda en volver a pedirla. Se duplica en cada fallo seguido: insistir
+ * cada pocos minutos alarga el bloqueo de Yahoo.
+ */
+const CRUMB_RETRY_MS = 10 * 60_000;
+const CRUMB_RETRY_MAX_MS = 60 * 60_000;
+/** Yahoo rechaza la credencial a los clientes que no parecen un navegador. */
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
+
+type YahooClient = InstanceType<typeof YahooFinance>;
 
 /** Días hacia atrás e intervalo de cada periodo del gráfico. */
 const RANGES: Record<HistoryRange, { days: number; interval: '1d' | '1wk' }> = {
@@ -115,11 +123,42 @@ export const SECTOR_OVERRIDES: Record<string, string> = {
 
 export class YahooProvider implements MarketDataProvider {
   readonly id = 'yahoo';
-  private yf = new YahooFinance({ suppressNotices: ['yahooSurvey'],
-    fetch: (input, init) => fetch(input, { ...init,
-      signal: AbortSignal.any([AbortSignal.timeout(8_000), ...(init?.signal ? [init.signal] : [])]),
-    }),
-  });
+  private yf: YahooClient;
+  constructor(client?: YahooClient) {
+    this.yf = client ?? new YahooFinance({ suppressNotices: ['yahooSurvey'],
+      fetch: (input, init) => {
+        const headers = new Headers(init?.headers);
+        if (!headers.has('user-agent')) headers.set('User-Agent', BROWSER_UA);
+        return fetch(input, { ...init, headers,
+          signal: AbortSignal.any([AbortSignal.timeout(8_000), ...(init?.signal ? [init.signal] : [])]),
+        });
+      },
+    });
+  }
+
+  /**
+   * Consultas que piden la credencial («crumb») de Yahoo: consenso, ficha y composición. Si Yahoo la niega no se
+   * insiste hasta el siguiente reintento, y el error que sale no pausa la fuente: el gráfico y el buscador no la
+   * necesitan y siguen funcionando.
+   */
+  private async withCrumb<T>(run: () => Promise<T>): Promise<T> {
+    if (Date.now() < this.quoteBlockedUntil) throw new Error('Yahoo no da la credencial de sus consultas (crumb)');
+    try {
+      const result = await run();
+      this.crumbRetryMs = CRUMB_RETRY_MS;
+      return result;
+    } catch (err) {
+      if (!/crumb/i.test(String(err))) throw err;
+      this.blockCrumb(err);
+      throw new Error('Yahoo no da la credencial de sus consultas (crumb)', { cause: err });
+    }
+  }
+
+  private blockCrumb(err: unknown) {
+    this.quoteError = { at: new Date().toISOString(), message: errorSummary(err) };
+    this.quoteBlockedUntil = Date.now() + this.crumbRetryMs;
+    this.crumbRetryMs = Math.min(this.crumbRetryMs * 2, CRUMB_RETRY_MAX_MS);
+  }
 
   async getDailyHistory(symbol: string, from: string): Promise<DailyHistory> {
     const chart = await this.yf.chart(symbol, { period1: from, interval: '1d', events: 'split' }, LOOSE) as DailyChart;
@@ -141,7 +180,7 @@ export class YahooProvider implements MarketDataProvider {
   /** Mayores posiciones de un fondo o ETF (módulo topHoldings), tal como las da Yahoo. */
   async topHoldings(symbol: string): Promise<unknown> {
     try {
-      const res = (await this.yf.quoteSummary(symbol, { modules: ['topHoldings'] }, LOOSE)) as { topHoldings?: unknown };
+      const res = (await this.withCrumb(() => this.yf.quoteSummary(symbol, { modules: ['topHoldings'] }, LOOSE))) as { topHoldings?: unknown };
       return res.topHoldings ?? null;
     } catch (error) {
       // Una acción o un símbolo que Yahoo no conoce: no tiene composición, no es un fallo de la fuente.
@@ -151,7 +190,7 @@ export class YahooProvider implements MarketDataProvider {
   }
 
   async getProfile(symbol: string) {
-    const res = (await this.yf.quoteSummary(symbol, { modules: ['assetProfile', 'price'] }, LOOSE)) as {
+    const res = (await this.withCrumb(() => this.yf.quoteSummary(symbol, { modules: ['assetProfile', 'price'] }, LOOSE))) as {
       assetProfile?: { sector?: unknown };
       price?: { longName?: unknown; shortName?: unknown };
     };
@@ -167,11 +206,13 @@ export class YahooProvider implements MarketDataProvider {
     let res: Record<string, unknown>[];
     try {
       res = (await this.yf.quote(symbols, { return: 'array' }, LOOSE)) as Record<string, unknown>[];
+      this.crumbRetryMs = CRUMB_RETRY_MS;
     } catch (err) {
       this.quoteError = { at: new Date().toISOString(), message: errorSummary(err) };
       const quotes = await this.chartQuotes(symbols);
-      if (!quotes.length) throw err;
-      this.quoteBlockedUntil = Date.now() + QUOTE_RETRY_MS;
+      // Sin credencial y sin nada en el gráfico (símbolos que Yahoo no conoce): no es motivo para pausar la fuente.
+      if (!quotes.length && !/crumb/i.test(String(err))) throw err;
+      this.blockCrumb(err);
       console.warn(`[watchlist] Yahoo no da cotizaciones (${err instanceof Error ? err.message : err}): se usan las del gráfico`);
       return quotes;
     }
@@ -194,6 +235,7 @@ export class YahooProvider implements MarketDataProvider {
   }
 
   private quoteBlockedUntil = 0;
+  private crumbRetryMs = CRUMB_RETRY_MS;
   private quoteError: { at: string; message: string } | null = null;
   private chartError: { at: string; message: string } | null = null;
 
@@ -233,11 +275,11 @@ export class YahooProvider implements MarketDataProvider {
   }
 
   async getTargets(symbol: string) {
-    const res = (await this.yf.quoteSummary(
+    const res = (await this.withCrumb(() => this.yf.quoteSummary(
       symbol,
       { modules: ['financialData', 'calendarEvents', 'summaryDetail'] },
       LOOSE,
-    )) as {
+    ))) as {
       financialData?: Record<string, unknown>;
       calendarEvents?: { earnings?: { earningsDate?: unknown[] }; exDividendDate?: unknown };
       summaryDetail?: Record<string, unknown>;
