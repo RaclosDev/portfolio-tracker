@@ -96,9 +96,17 @@ export class OnvistaComposition implements CompositionSource {
 // ── FT Markets ──────────────────────────────────────────────────────────────
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 const ENTITIES: Record<string, string> = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', nbsp: ' ' };
+/** Quita las etiquetas hasta que no quede ninguna: una sola pasada deja «<script>» al limpiar «<scr<b>ipt>». */
+function stripTags(html: string): string {
+  let text = html;
+  for (let prev = ''; prev !== text; ) {
+    prev = text;
+    text = text.replace(/<[^>]*>/g, '');
+  }
+  return text.replace(/[<>]/g, '');
+}
 const decode = (html: string) =>
-  html
-    .replace(/<[^>]+>/g, '')
+  stripTags(html)
     .replace(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
     .replace(/&#x([0-9a-f]+);/gi, (_, n: string) => String.fromCodePoint(parseInt(n, 16)))
     .replace(/&([a-z]+);/gi, (m, n: string) => ENTITIES[n.toLowerCase()] ?? m)
