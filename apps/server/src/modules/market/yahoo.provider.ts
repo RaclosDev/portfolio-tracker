@@ -77,8 +77,11 @@ const CHART_QUOTE_TTL_MS = 2 * 60_000;
  */
 const CRUMB_RETRY_MS = 10 * 60_000;
 const CRUMB_RETRY_MAX_MS = 60 * 60_000;
-/** Yahoo rechaza la credencial a los clientes que no parecen un navegador. */
-const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
+/**
+ * Yahoo solo da la credencial a una lista de identificaciones de cliente admitidas (a las demás responde 429). La de
+ * la librería («yahoo-finance2/x») entra en esa lista desde unas redes y no desde otras: se envía siempre la de un navegador.
+ */
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36';
 
 type YahooClient = InstanceType<typeof YahooFinance>;
 
@@ -128,7 +131,7 @@ export class YahooProvider implements MarketDataProvider {
     this.yf = client ?? new YahooFinance({ suppressNotices: ['yahooSurvey'],
       fetch: (input, init) => {
         const headers = new Headers(init?.headers);
-        if (!headers.has('user-agent')) headers.set('User-Agent', BROWSER_UA);
+        headers.set('User-Agent', BROWSER_UA);
         return fetch(input, { ...init, headers,
           signal: AbortSignal.any([AbortSignal.timeout(8_000), ...(init?.signal ? [init.signal] : [])]),
         });
