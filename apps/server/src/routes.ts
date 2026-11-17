@@ -130,6 +130,8 @@ export async function registerRoutes(app: FastifyInstance) {
     const { force } = forceQuery.parse(req.query);
     return req.services.portfolio.view({ force: !!force });
   });
+  /** Qué llevan dentro los fondos y ETF de la cartera (sus mayores posiciones). */
+  app.get('/api/portfolio/composition', async (req) => req.services.portfolio.composition());
   /** Alta de una operación. Crea el valor si es nuevo; falla si el registro deja de cuadrar. */
   app.post('/api/operations', async (req, reply) => {
     const body = z

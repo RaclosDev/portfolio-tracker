@@ -2,11 +2,12 @@ import { OPERATION_LABELS, sortOperations, type HistoryRange, type Operation, ty
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useState, type FormEvent } from 'react';
 import { api } from '../../api/client.ts';
-import { useOperationMutations } from '../../api/hooks.ts';
+import { useOperationMutations, usePortfolioComposition } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
-import { money, num, pct, price, shortDate } from '../../lib/format.ts';
+import { money, num, pct, price, share, shortDate } from '../../lib/format.ts';
 import { HistoryChart, type RefLine } from '../detail/HistoryChart.tsx';
 import { signed, type CarteraModel } from './model.ts';
+import { DataBar } from './SortTable.tsx';
 import { QuoteSymbolField } from './QuoteSymbolField.tsx';
 
 /** Ficha de un valor de la cartera: datos editables, lotes FIFO abiertos, ventas, cobros y gráfico. */
@@ -47,9 +48,13 @@ export function TickerDialog({
     staleTime: 10 * 60_000,
   });
 
+  const composition = usePortfolioComposition(t ? t.shares > 0 : false).data?.[ticker];
+  const valueEur = row && 'valueEur' in row ? row.valueEur : null;
+
   if (!t) return null;
   const ops = sortOperations(model.view.operations.filter((o) => o.ticker === ticker)).reverse();
   const fx = row?.fxRate ?? 1;
+  const known = composition?.holdings.reduce((s, h) => s + h.weight, 0) ?? 0;
   const avgNative = t.shares > 0 ? (t.costEur / t.shares) * fx : null;
   const refs: RefLine[] = avgNative ? [{ label: 'Coste medio', value: avgNative, kind: 'price' }] : [];
   const sectors = [...new Set(model.view.instruments.map((i) => i.sector).filter((s): s is string => !!s))].sort();
@@ -105,6 +110,53 @@ export function TickerDialog({
 
       {sym && history.data && history.data.points.length > 1 && (
         <HistoryChart points={history.data.points} refs={refs} range={range} current={row?.price} currency={row?.currency} />
+      )}
+
+      {composition && composition.holdings.length > 0 && (
+        <>
+          <h3 className="renta__h">
+            Qué lleva dentro · {composition.holdings.length} mayores posiciones
+            <span className="sub">
+              {' '}
+              {composition.source}
+              {composition.asOf ? ` · ${shortDate(composition.asOf)}` : ''}
+            </span>
+          </h3>
+          <div className="table-wrap">
+            <table className="wl-table cartera-table fund-holdings">
+              <thead>
+                <tr>
+                  <th>Empresa</th>
+                  <th className="al-right">Peso</th>
+                  <th className="al-right" title="Lo que te toca de esa empresa por tener este fondo">
+                    Tu parte
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {composition.holdings.map((h) => (
+                  <tr key={h.isin ?? h.name}>
+                    <td>
+                      {h.name}
+                      {(h.ticker ?? h.isin) && <span className="sub"> {h.ticker ?? h.isin}</span>}
+                    </td>
+                    <td className="al-right">
+                      <DataBar value={h.weight} max={composition.holdings[0]!.weight}>
+                        <span className="num">{share(h.weight, 2)}</span>
+                      </DataBar>
+                    </td>
+                    <td className="al-right num">{valueEur != null ? money(valueEur * h.weight, 'EUR', 2) : '–'}</td>
+                  </tr>
+                ))}
+                <tr className="fund-holdings__rest">
+                  <td className="muted">Resto sin desglosar</td>
+                  <td className="al-right num">{share(Math.max(0, 1 - known), 2)}</td>
+                  <td className="al-right num">{valueEur != null ? money(valueEur * Math.max(0, 1 - known), 'EUR', 2) : '–'}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {t.openLots.length > 0 && (

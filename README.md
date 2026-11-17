@@ -67,7 +67,12 @@ La [CI](.github/workflows/desplegar.yml) comprueba lint, tipos, pruebas y compil
 
 ## Fuentes de cotización
 
-Se consulta Yahoo Finance y, para los valores sin precio y con cobertura alternativa, Borsa Italiana / FIDA, Quefondos / VDOS, onvista (bolsas alemanas como Xetra o Tradegate) y FT Markets, en ese orden. El buscador por nombre combina los catálogos de onvista y Euronext. Si ninguna responde, se muestra el último precio guardado como tal. Cada proveedor tiene su propia pausa ante límites de consultas.
+Se consulta Yahoo Finance y, para los valores sin precio y con cobertura alternativa, Borsa Italiana / FIDA, Quefondos / VDOS, onvista (bolsas alemanas como Xetra o Tradegate), justETF (ETF por ISIN, en euros) y FT Markets, en ese orden. El buscador por nombre combina los catálogos de onvista y Euronext. Si ninguna responde, se muestra el último precio guardado como tal. Cada proveedor tiene su propia pausa ante límites de consultas.
+
+### Composición de fondos y ETF
+
+La pestaña **Exposición** y la ficha de cada fondo usan sus mayores posiciones. Ninguna fuente gratuita publica la lista completa, así que se guardan las 10 primeras y el resto aparece como «sin desglosar»: la exposición a cada empresa a través de fondos es un mínimo. Se prueban en orden extraETF y onvista (por ISIN), FT Markets (fondos y ETF, incluidos los españoles) y Yahoo Finance (por su ticker); vale la primera que responde con datos coherentes. La composición se guarda una semana y, si todas las fuentes fallan, se muestra la última conocida.
+
 
 Borsa aporta el último valor liquidativo de fondos, con su fecha e ISIN; no proporciona una serie histórica desde esa ficha. Se puede buscar el nombre de la clase en «Cotización automática» y elegir el resultado de Borsa. Los identificadores `BORSA:2FADB…` se guardan sin necesitar claves de API. Como su buscador no indexa todos los ISIN, los vínculos verificados por ISIN están en `borsa.provider.ts` y se comprueban contra la ficha en cada actualización. No hay cobertura universal ni conversión automática entre clases de un fondo.
 

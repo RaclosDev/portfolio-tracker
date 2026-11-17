@@ -138,6 +138,18 @@ export class YahooProvider implements MarketDataProvider {
       .map((q) => ({ t: new Date(q.date).toISOString(), c: q.close! }));
   }
 
+  /** Mayores posiciones de un fondo o ETF (módulo topHoldings), tal como las da Yahoo. */
+  async topHoldings(symbol: string): Promise<unknown> {
+    try {
+      const res = (await this.yf.quoteSummary(symbol, { modules: ['topHoldings'] }, LOOSE)) as { topHoldings?: unknown };
+      return res.topHoldings ?? null;
+    } catch (error) {
+      // Una acción o un símbolo que Yahoo no conoce: no tiene composición, no es un fallo de la fuente.
+      if (/no fundamentals data|not found|404/i.test(String(error))) return null;
+      throw error;
+    }
+  }
+
   async getProfile(symbol: string) {
     const res = (await this.yf.quoteSummary(symbol, { modules: ['assetProfile', 'price'] }, LOOSE)) as {
       assetProfile?: { sector?: unknown };

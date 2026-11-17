@@ -58,7 +58,7 @@ Problemas del Excel que la app resuelve:
 | Notificaciones | **Web Push** (`web-push`, service worker) | Llegan al móvil y al PC sin instalar apps |
 | Alojamiento | **Render** (Node), dominio propio | Despliegue desde GitHub tras pasar los tests |
 | Validación | **Zod** (paquete `shared`) | Un único esquema valida formularios y API |
-| Datos de mercado | **yahoo-finance2** detrás de una interfaz `MarketDataProvider` | Gratis, sin API key, cubre acciones y ETF europeos/EE. UU., FX y consenso de analistas |
+| Datos de mercado | **yahoo-finance2** detrás de una interfaz `MarketDataProvider` | Gratis, sin API key, cubre acciones y ETF europeos/EE. UU., FX y consenso de analistas. Detrás, en orden: Borsa Italiana, Quefondos, onvista, justETF y FT Markets. La composición de fondos (`composition.ts`) sale de extraETF, onvista, FT Markets y Yahoo |
 | Frontend | **React 19 + Vite** | Estándar de la industria, arranque instantáneo |
 | Estado servidor | **TanStack Query** | Caché, refresco periódico y reintentos sin código propio |
 | Tests | **Vitest** | Misma config que Vite; los cálculos financieros están cubiertos |

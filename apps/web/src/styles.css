@@ -1353,6 +1353,17 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .registro-table .registro-mobile { display: inline; }
 }
 
+.exposure__note { margin: 0 0 10px; max-width: 90ch; font-size: var(--fs-sm); }
+.exposure-parts { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.exposure-part {
+  display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 6px; font: inherit; color: inherit; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+}
+.exposure-part:hover { border-color: var(--accent); }
+.fund-holdings__rest td { border-top: 1px solid var(--border); }
+.renta__h .sub { font-weight: 400; margin-left: 6px; }
+.fund-holdings .sub { margin-left: 6px; }
+
 .databar { position: relative; display: inline-flex; justify-content: flex-end; min-width: 110px; padding: 2px 4px; }
 .databar__fill {
   position: absolute; right: 0; top: 2px; bottom: 2px; border-radius: 3px;

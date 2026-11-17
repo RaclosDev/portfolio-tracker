@@ -59,6 +59,9 @@ export function pct(v: number | null | undefined, digits = 1) {
   }).format(v);
 }
 
+/** Porcentaje sin signo, para pesos y repartos: 12,3 % */
+export const share = (v: number | null | undefined, digits = 1) => pct(v, digits).replace('+', '');
+
 export function shortDate(iso: string | null | undefined) {
   if (!iso) return DASH;
   const [y, m, d] = iso.slice(0, 10).split('-');
