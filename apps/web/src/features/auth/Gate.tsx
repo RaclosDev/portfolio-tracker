@@ -169,6 +169,7 @@ function Login({ googleEnabled, registrationEnabled, onDone }: {
             setRegistering(!registering); setPassword(''); setConfirmation(''); setError(null);
           }}>{registering ? 'Inicia sesión' : 'Crear cuenta'}</button>
         </p>}
+        <a className="btn login__demo" href="/demo">Ver la demo sin registrarte</a>
         <p className="muted small">La sesión se recuerda en este dispositivo durante 6 meses.</p>
         <nav className="small login__legal" aria-label="Información de la aplicación">
           <a href="/privacidad.html">Privacidad</a><a href="/condiciones.html">Condiciones de uso</a>

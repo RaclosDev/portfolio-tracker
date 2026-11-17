@@ -58,12 +58,17 @@ export class ApiError extends Error {
   }
 }
 
+/** En `/demo` la app funciona con datos ficticios en el navegador y no llama al servidor. */
+export const DEMO = window.location.pathname.startsWith('/demo');
+
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
-  const res = await fetch(url, {
-    method,
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const res = DEMO
+    ? await (await import('../demo/backend.ts')).demoFetch(method, url, body)
+    : await fetch(url, {
+      method,
+      headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
   // Sesión caducada o cerrada en otro sitio: la app vuelve a la pantalla de entrada.

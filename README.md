@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/RaclosDev/portfolio-tracker/actions/workflows/desplegar.yml/badge.svg)](https://github.com/RaclosDev/portfolio-tracker/actions/workflows/desplegar.yml) [![CodeQL](https://github.com/RaclosDev/portfolio-tracker/actions/workflows/codeql.yml/badge.svg)](https://github.com/RaclosDev/portfolio-tracker/actions/workflows/codeql.yml) [![Licencia MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[Arquitectura](docs/arquitectura.md) · [Instalación y uso](docs/guia.md) · [Capturas reproducibles](docs/screenshots/README.md) · [Abrir Portfolio Tracker](https://cartera.raclos.es)
+[Arquitectura](docs/arquitectura.md) · [Instalación y uso](docs/guia.md) · [Capturas reproducibles](docs/screenshots/README.md) · [Abrir Portfolio Tracker](https://cartera.raclos.es) · [Demo con datos ficticios](https://cartera.raclos.es/demo)
 
 ## Qué resuelve
 

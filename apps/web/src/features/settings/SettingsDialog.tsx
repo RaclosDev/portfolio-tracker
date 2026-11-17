@@ -15,7 +15,7 @@ import {
 } from '@watchlist/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { api, reloadSession } from '../../api/client.ts';
+import { api, DEMO, reloadSession } from '../../api/client.ts';
 import { buildModel } from '../cartera/model.ts';
 import { useImportBackup, useListMutations, useUpdateSettings } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
@@ -624,9 +624,9 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
         )}
         <h4 className="settings-sub">Copia completa (JSON)</h4>
         <div className="row-actions">
-          <a className="btn" href="/api/backup" download>
+          {!DEMO && <a className="btn" href="/api/backup" download>
             Exportar JSON
-          </a>
+          </a>}
           <button type="button" className="btn" onClick={() => fileRef.current?.click()} disabled={importM.isPending}>
             Importar JSON…
           </button>
