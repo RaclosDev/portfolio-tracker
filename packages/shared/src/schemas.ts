@@ -197,10 +197,18 @@ export const settingsSchema = z.object({
 export type Settings = z.output<typeof settingsSchema>;
 export const DEFAULT_SETTINGS: Settings = settingsSchema.parse({});
 
+/**
+ * Para PUT y copias: solo los campos enviados. `settingsSchema.partial()` no sirve: sigue aplicando
+ * los valores por defecto, y un cambio parcial restablecería el resto de ajustes.
+ */
+export const settingsPatchSchema = z.object(
+  Object.fromEntries(Object.entries(settingsSchema.shape).map(([k, field]) => [k, field.unwrap().optional()])),
+) as unknown as z.ZodType<Partial<Settings>>;
+
 export const backupSchema = z.object({
   version: z.literal(1),
   exportedAt: z.string().optional(),
-  settings: z.preprocess(upgradeSettings, settingsSchema.partial()).optional(),
+  settings: z.preprocess(upgradeSettings, settingsPatchSchema).optional(),
   lists: z.array(
     z.object({
       name: z.string().min(1),

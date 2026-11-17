@@ -9,7 +9,7 @@ import {
   listInputSchema,
   operationInputSchema,
   portfolioHistoryQuerySchema,
-  settingsSchema,
+  settingsPatchSchema,
 } from '@watchlist/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -49,7 +49,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Ajustes
   app.get('/api/settings', async (req) => req.services.settings.get());
-  app.put('/api/settings', async (req) => req.services.settings.update(settingsSchema.partial().parse(req.body)));
+  app.put('/api/settings', async (req) => req.services.settings.update(settingsPatchSchema.parse(req.body)));
 
   // Listas
   app.get('/api/lists', async (req) => req.services.lists.all());
