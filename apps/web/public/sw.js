@@ -11,7 +11,7 @@ self.addEventListener('push', (event) => {
   } catch {
     data = { body: event.data ? event.data.text() : '' };
   }
-  const title = data.title || 'Watchlist';
+  const title = data.title || 'Portfolio Tracker';
   event.waitUntil(
     (async () => {
       // Una suscripción puede sobrevivir a un cambio de cuenta en el mismo navegador.

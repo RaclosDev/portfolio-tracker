@@ -35,7 +35,7 @@ export async function startServer() {
   });
   await app.listen({ host: config.host, port: config.port });
 
-  console.log(`\n  Watchlist en marcha → http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}`);
+  console.log(`\n  Portfolio Tracker en marcha → http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}`);
   console.log(`  Base de datos: ${config.databaseUrl ? 'PostgreSQL (DATABASE_URL)' : `PGlite en ${config.dataDir}`}`);
   if (!config.appPassword) console.log('  Sin APP_PASSWORD: no se pide contraseña (solo para desarrollo).');
   if (!services.push.enabled) console.log('  Sin claves VAPID: las notificaciones están desactivadas (npm run claves-push).');

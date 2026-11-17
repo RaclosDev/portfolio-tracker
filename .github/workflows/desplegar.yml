@@ -1,5 +1,5 @@
 # Comprueba cada cambio y, si todo está bien en main, despliega la web en Render.
-#  1. comprobar: tipos, tests y compilación. Si algo falla, no se despliega.
+#  1. comprobar: lint, tipos, tests y compilación. Si algo falla, no se despliega.
 #  2. desplegar: llama al «Deploy Hook» de Render (secreto RENDER_DEPLOY_HOOK del repositorio).
 #     Render descarga el último commit de main, lo compila y lo pone en marcha sin cortar el servicio.
 name: Comprobar y desplegar
@@ -23,6 +23,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - name: Lint
+        run: npm run lint
       - name: Tipos
         run: npm run typecheck
       - name: Tests
