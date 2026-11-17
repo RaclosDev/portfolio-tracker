@@ -57,7 +57,7 @@ export function App() {
   }, [listId]);
 
   useEffect(() => applyColors(settings.colors), [settings.colors]);
-  useEffect(() => applyAppearance(settings), [settings.theme, settings.density, settings.fontSize]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => applyAppearance(settings), [settings.skin, settings.theme, settings.density, settings.fontSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Página visible: una lista de vigilancia o la cartera real.
   const [page, setPage] = useState<Page>(() => (localStorage.getItem(LS_PAGE) === 'cartera' ? 'cartera' : 'lista'));

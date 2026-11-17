@@ -237,6 +237,14 @@ describe('ajustes', () => {
     expect(named.statusNames.veryNear).toBe('A tiro');
     expect(named.statusNames.far).toBe('Lejos'); // vacío: vuelve al de serie
     expect((await send('PUT', '/api/settings', { theme: 'rosa' })).statusCode).toBe(400);
+    expect(s.skin).toBe('classic'); // sin elegir skin, la de siempre
+    expect(((await send('PUT', '/api/settings', { skin: 'paper' })).json() as Settings).skin).toBe('paper');
+    expect((await send('PUT', '/api/settings', { skin: 'rosa' })).statusCode).toBe(400);
+    // Un cambio parcial no restablece el resto de ajustes.
+    await send('PUT', '/api/settings', { theme: 'dark', refreshSeconds: 120 });
+    const kept = (await send('PUT', '/api/settings', { skin: 'classic' })).json() as Settings;
+    expect(kept).toMatchObject({ skin: 'classic', theme: 'dark', refreshSeconds: 120 });
+    await send('PUT', '/api/settings', { theme: s.theme, refreshSeconds: s.refreshSeconds });
   });
 
   it('pasa los ajustes antiguos (cerca 5 % / lejos 15 %) a los cinco tramos con sus colores', async () => {

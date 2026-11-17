@@ -7,7 +7,10 @@ import { FeedbackHost } from './components/feedback.tsx';
 import { Gate } from './features/auth/Gate.tsx';
 import { registerServiceWorker } from './lib/push.ts';
 import '@fontsource-variable/inter';
+import '@fontsource/permanent-marker'; // solo se descargan si se elige la skin «Papel»
+import '@fontsource/anton';
 import './styles.css';
+import './skin-paper.css';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: true, retry: 1 } },
