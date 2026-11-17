@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { dailyHistoryFromChart, quoteFromChart } from './yahoo.provider.ts';
+import { describe, expect, it, vi } from 'vitest';
+import { FallbackProvider } from './fallback.provider.ts';
+import { dailyHistoryFromChart, quoteFromChart, YahooProvider } from './yahoo.provider.ts';
 
 describe('cierres para acciones históricas', () => {
   it('deshace splits posteriores al cierre sin aplicar dividendos ni duplicar el split de ese día', () => {
@@ -42,5 +43,35 @@ describe('cotización sacada del gráfico', () => {
   });
   it('sin precio no hay cotización', () => {
     expect(quoteFromChart('X', { meta: { currency: 'EUR' }, quotes: [] }, now)).toBeNull();
+  });
+});
+
+describe('Yahoo sin credencial', () => {
+  const denied = new Error('Failed to get crumb, status 429, statusText: Too Many Requests');
+  const chart = { meta: { regularMarketPrice: 10, currency: 'EUR', regularMarketTime: new Date() }, quotes: [] };
+  const client = () => ({
+    quote: vi.fn(async () => { throw denied; }),
+    quoteSummary: vi.fn(async () => { throw denied; }),
+    chart: vi.fn(async () => chart),
+  });
+
+  it('cotiza por el gráfico y deja de pedir la credencial hasta el reintento', async () => {
+    const yf = client();
+    const yahoo = new YahooProvider(yf as never);
+    expect(await yahoo.getQuotes(['SAN.MC'])).toMatchObject([{ symbol: 'SAN.MC', price: 10, fallback: true }]);
+    await expect(yahoo.getTargets('SAN.MC')).rejects.toThrow(/crumb/);
+    await yahoo.getQuotes(['ITX.MC']);
+    expect(yf.quote).toHaveBeenCalledTimes(1);
+    expect(yf.quoteSummary).not.toHaveBeenCalled();
+    expect(yahoo.diagnostics()).toMatchObject({ quoteError: { message: expect.stringContaining('429') } });
+  });
+
+  it('que el consenso se quede sin credencial no pausa las cotizaciones de Yahoo', async () => {
+    const yf = client();
+    const chain = new FallbackProvider([new YahooProvider(yf as never)]);
+    await expect(chain.getTargets('SAN.MC')).rejects.toThrow();
+    expect(chain.diagnostics().yahoo).toMatchObject({ pausedUntil: null });
+    expect(await chain.getQuotes(['SAN.MC'])).toMatchObject([{ symbol: 'SAN.MC', price: 10 }]);
+    expect(yf.quote).not.toHaveBeenCalled();
   });
 });
