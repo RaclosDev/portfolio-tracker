@@ -96,9 +96,11 @@ export function applyColors(colors: Partial<Colors> | undefined) {
   derive();
 }
 
-/** Tema, densidad y tamaño de letra (atributos data-* en <html> que usa styles.css). */
-export function applyAppearance(s: Pick<Settings, 'theme' | 'density' | 'fontSize'>) {
+/** Skin, tema, densidad y tamaño de letra (atributos data-* en <html> que usan styles.css y skin-paper.css). */
+export function applyAppearance(s: Pick<Settings, 'skin' | 'theme' | 'density' | 'fontSize'>) {
   const el = document.documentElement;
+  if (s.skin === 'paper') el.dataset.skin = s.skin;
+  else delete el.dataset.skin; // la clásica es styles.css tal cual
   if (s.theme === 'system') delete el.dataset.theme;
   else el.dataset.theme = s.theme;
   el.dataset.density = s.density;

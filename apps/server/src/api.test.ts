@@ -237,6 +237,10 @@ describe('ajustes', () => {
     expect(named.statusNames.veryNear).toBe('A tiro');
     expect(named.statusNames.far).toBe('Lejos'); // vacío: vuelve al de serie
     expect((await send('PUT', '/api/settings', { theme: 'rosa' })).statusCode).toBe(400);
+    expect(s.skin).toBe('classic'); // sin elegir skin, la de siempre
+    expect(((await send('PUT', '/api/settings', { skin: 'paper' })).json() as Settings).skin).toBe('paper');
+    expect((await send('PUT', '/api/settings', { skin: 'rosa' })).statusCode).toBe(400);
+    await send('PUT', '/api/settings', { skin: 'classic' });
   });
 
   it('pasa los ajustes antiguos (cerca 5 % / lejos 15 %) a los cinco tramos con sus colores', async () => {

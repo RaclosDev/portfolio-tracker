@@ -149,6 +149,7 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
   const [names, setNames] = useState<StatusNames>(settings.statusNames);
   const [tagNames, setTagNames] = useState<TagNames>(settings.tagNames ?? DEFAULT_TAG_NAMES);
   const [blink, setBlink] = useState(settings.blinkReached);
+  const [skin, setSkin] = useState(settings.skin ?? 'classic');
   const [theme, setTheme] = useState(settings.theme);
   const [density, setDensity] = useState(settings.density);
   const [fontSize, setFontSize] = useState(settings.fontSize);
@@ -167,7 +168,7 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
   // Vista previa en vivo del aspecto; si se cancela, se vuelve a lo guardado.
   const saved = useRef(settings);
   useEffect(() => applyColors(colors), [colors]);
-  useEffect(() => applyAppearance({ theme, density, fontSize }), [theme, density, fontSize]);
+  useEffect(() => applyAppearance({ skin, theme, density, fontSize }), [skin, theme, density, fontSize]);
   useEffect(
     () => () => {
       applyColors(saved.current.colors);
@@ -202,6 +203,7 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
       statusNames: cleanNames,
       tagNames: cleanTags,
       blinkReached: blink,
+      skin,
       theme,
       density,
       fontSize,
@@ -370,8 +372,14 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
       <>
         <h3>Tema y tamaño</h3>
         <p className="intro">Los cambios se ven al momento; si cancelas, se deshacen.</p>
+        <Row label="Estilo">
+          <select aria-label="Estilo" value={skin} onChange={(e) => setSkin(e.target.value as Settings['skin'])}>
+            <option value="classic">Clásico</option>
+            <option value="paper">Papel</option>
+          </select>
+        </Row>
         <Row label="Tema">
-          <select aria-label="Tema" value={theme} onChange={(e) => setTheme(e.target.value as Settings['theme'])}>
+          <select aria-label="Tema"value={theme} onChange={(e) => setTheme(e.target.value as Settings['theme'])}>
             <option value="system">Como el dispositivo</option>
             <option value="light">Claro</option>
             <option value="dark">Oscuro</option>

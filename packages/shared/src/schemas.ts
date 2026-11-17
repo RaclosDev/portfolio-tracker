@@ -183,8 +183,9 @@ export const settingsSchema = z.object({
   blinkReached: z.boolean().default(true),
   refreshSeconds: z.number().int().min(15).max(3600).default(60),
   colors: colorsSchema.default(DEFAULT_COLORS),
-  /** Aspecto */
-  theme: z.enum(['system', 'light', 'dark']).default('system'),
+  /** Aspecto: la skin (estilo visual) y, dentro de ella, claro u oscuro. */
+  skin: z.enum(['classic', 'paper']).default('classic'),
+  theme:z.enum(['system', 'light', 'dark']).default('system'),
   density: z.enum(['compact', 'normal', 'comfortable']).default('normal'),
   fontSize: z.enum(['small', 'normal', 'large']).default('normal'),
   /** Columnas ocultas de la tabla (ids). */
