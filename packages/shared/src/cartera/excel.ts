@@ -53,7 +53,7 @@ type Col = keyof typeof COLUMNS;
 
 /** Nº de la compra en una referencia de lote del Excel («C-2016/06/24-00033-TEF» → 33). */
 export function lotRefOf(v: Cell): number | null {
-  const m = typeof v === 'string' ? v.trim().match(/^C-[\d/]+-0*(\d+)-/i) : null;
+  const m = typeof v === 'string' ? v.trim().match(/^C-[\d/]+-(\d+)-/i) : null;
   return m ? Number(m[1]) : null;
 }
 

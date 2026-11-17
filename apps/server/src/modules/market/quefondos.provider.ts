@@ -13,7 +13,7 @@ const YAHOO_ISINS: Readonly<Record<string, string>> = {
 };
 const isinFor = (symbol: string) => YAHOO_ISINS[symbol] ?? (isIsin(symbol) ? symbol : null);
 const text = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;/g, ' ')
-  .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/\s+/g, ' ').trim();
+  .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
 const decimal = (value: string) => /^[+-]?\d+(?:\.\d{3})*(?:,\d+)?$/.test(value)
   ? Number(value.replace(/\./g, '').replace(',', '.')) : NaN;
 const date = (value: string, us = false) => {
