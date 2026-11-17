@@ -49,6 +49,8 @@ describe('composición de fondos', () => {
       asOf: '2026-09-30',
     });
     expect(parseFtHoldings('<html>sin tabla</html>')).toBeNull();
+    // Etiquetas anidadas para colar otra: no debe quedar ninguna en el nombre.
+    expect(parseFtHoldings(ftPage(ftRow('Acme <scr<b>ipt>alert(1)</scr</b>ipt>', 'ACME:NYQ', '2.00%')))?.holdings[0]!.name).not.toMatch(/[<>]/);
     expect(parseYahooHoldings({ holdings: [{ symbol: 'NVDA', holdingName: 'NVIDIA Corp', holdingPercent: 0.2019 }] })).toEqual({
       holdings: [{ name: 'NVIDIA Corp', isin: null, ticker: 'NVDA', weight: 0.2019 }], asOf: null,
     });
