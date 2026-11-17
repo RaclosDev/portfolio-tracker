@@ -71,6 +71,8 @@ export function Tour({ steps: allSteps, onClose }: { steps: TourStep[]; onClose:
     return () => cancelAnimationFrame(raf);
   }, [step]);
 
+  // Sin dependencias a propósito: se mide tras cada render y solo se guarda si el tamaño ha cambiado, así que no hay bucle.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const el = popRef.current;
     if (el && (el.offsetWidth !== popSize.w || el.offsetHeight !== popSize.h)) {
