@@ -45,7 +45,7 @@ export async function registerRoutes(app: FastifyInstance) {
     if (to > today) throw new HttpError(400, 'El histórico no admite fechas futuras');
     return req.services.portfolio.history(from, to);
   });
-  app.get('/api/health', async (req) => ({ ok: true, provider: req.services.market.providerId, version: config.version }));
+  app.get('/api/health', async (req) => ({ ok: true, provider: req.services.market.providerId, version: config.version, market: req.services.market.diagnostics() }));
 
   // Ajustes
   app.get('/api/settings', async (req) => req.services.settings.get());

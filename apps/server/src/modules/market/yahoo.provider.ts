@@ -1,6 +1,6 @@
 import type { DailyHistory, HistoryRange, PricePoint } from '@watchlist/shared';
 import YahooFinance from 'yahoo-finance2';
-import type { MarketDataProvider } from './provider.ts';
+import { errorSummary, type MarketDataProvider } from './provider.ts';
 
 const n = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const s = (v: unknown): string | null => (typeof v === 'string' && v.length ? v : null);
@@ -168,6 +168,7 @@ export class YahooProvider implements MarketDataProvider {
     try {
       res = (await this.yf.quote(symbols, { return: 'array' }, LOOSE)) as Record<string, unknown>[];
     } catch (err) {
+      this.quoteError = { at: new Date().toISOString(), message: errorSummary(err) };
       const quotes = await this.chartQuotes(symbols);
       if (!quotes.length) throw err;
       this.quoteBlockedUntil = Date.now() + QUOTE_RETRY_MS;
@@ -193,6 +194,16 @@ export class YahooProvider implements MarketDataProvider {
   }
 
   private quoteBlockedUntil = 0;
+  private quoteError: { at: string; message: string } | null = null;
+  private chartError: { at: string; message: string } | null = null;
+
+  diagnostics() {
+    return {
+      quotesByChartUntil: this.quoteBlockedUntil > Date.now() ? new Date(this.quoteBlockedUntil).toISOString() : null,
+      quoteError: this.quoteError,
+      chartError: this.chartError,
+    };
+  }
   private chartCache = new Map<string, { value: NonNullable<ReturnType<typeof quoteFromChart>>; expires: number }>();
 
   /** Cotizaciones por la vía del gráfico, de cuatro en cuatro. Si no sale ninguna y hubo errores, falla. */
@@ -211,7 +222,10 @@ export class YahooProvider implements MarketDataProvider {
           if (this.chartCache.size >= 1024) this.chartCache.delete(this.chartCache.keys().next().value!);
           this.chartCache.set(symbol, { value, expires: Date.now() + CHART_QUOTE_TTL_MS });
           out.push(value);
-        } catch (err) { failure ??= err; }
+        } catch (err) {
+          failure ??= err;
+          this.chartError = { at: new Date().toISOString(), message: errorSummary(err) };
+        }
       }
     }));
     if (!out.length && failure) throw failure;

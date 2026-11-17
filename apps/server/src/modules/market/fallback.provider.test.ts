@@ -24,6 +24,16 @@ describe('fuentes alternativas', () => {
     expect(second.getQuotes).toHaveBeenCalledWith(['B', 'C', 'D']);
     expect(third.getQuotes).toHaveBeenCalledWith(['C', 'D']);
   });
+  it('el diagnóstico cuenta el último fallo y la pausa de cada fuente, sin los símbolos de la URL', async () => {
+    const primary = provider('yahoo');
+    primary.getQuotes.mockRejectedValue(new Error('HTTP 429 Too Many Requests en https://query1.example/v7/quote?symbols=SECRETO&crumb=x'));
+    const chain = new FallbackProvider([primary, provider('borsa', [quote('A')])]);
+    await chain.getQuotes(['A']);
+    const state = chain.diagnostics() as Record<string, { pausedUntil: string | null; lastError: { message: string } | null }>;
+    expect(state.yahoo!.pausedUntil).not.toBeNull();
+    expect(state.yahoo!.lastError!.message).toBe('Error: HTTP 429 Too Many Requests en https://query1.example/v7/quote');
+    expect(state.borsa).toEqual({ pausedUntil: null, lastError: null });
+  });
   it('un 429 pausa solo la fuente afectada y permite seguir actualizando con otra', async () => {
     vi.useFakeTimers();
     const primary = provider('yahoo');

@@ -95,6 +95,11 @@ export class MarketService {
     return this.provider.id;
   }
 
+  /** Estado de las fuentes (pausas y últimos fallos) para diagnosticar desde /api/health. */
+  diagnostics() {
+    return { throttled: this.throttled, sources: this.provider.diagnostics?.() ?? null };
+  }
+
   private dailyPending = new Map<string, Promise<DailyHistory & { stale: boolean }>>();
 
   async getDailyHistory(symbol: string, from: string): Promise<DailyHistory & { stale: boolean }> {

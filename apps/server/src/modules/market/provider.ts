@@ -34,7 +34,13 @@ export interface MarketDataProvider {
   getDailyHistory?(symbol: string, from: string): Promise<DailyHistory>;
   /** Ficha de la empresa (sector en español). Opcional: sin ella la cartera queda «Sin sector». */
   getProfile?(symbol: string): Promise<CompanyProfile | null>;
+  /** Estado de la fuente para /api/health: último fallo y pausas. Sin datos de usuarios. */
+  diagnostics?(): Record<string, unknown>;
 }
+
+/** Texto corto de un error para el diagnóstico público: sin la consulta de las URL (lleva los símbolos pedidos). */
+export const errorSummary = (error: unknown) =>
+  (error instanceof Error ? `${error.name}: ${error.message}` : String(error)).replace(/\?[^\s"')]*/g, '').slice(0, 200);
 
 export interface CompanyProfile {
   name: string | null;

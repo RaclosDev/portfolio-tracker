@@ -1,5 +1,5 @@
 import type { AnalystTargets, DailyHistory, HistoryRange, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
-import type { CompanyProfile, MarketDataProvider } from './provider.ts';
+import { errorSummary, type CompanyProfile, type MarketDataProvider } from './provider.ts';
 import { isIsin } from './isin.ts';
 
 /** Yahoo no usa «:» en sus tickers: BORSA:…, XETRA:… y los ISIN son de las otras fuentes. */
@@ -9,6 +9,7 @@ const notYahoo = (symbol: string) => symbol.includes(':') || isIsin(symbol);
 export class FallbackProvider implements MarketDataProvider {
   readonly id: string;
   private pauses = new Map<string, { until: number; backoff: number }>();
+  private lastErrors = new Map<string, { at: string; message: string }>();
   constructor(private providers: MarketDataProvider[], private log: (message: string, error?: unknown) => void = () => {}) {
     this.id = providers.map(p => p.id).join('+');
   }
@@ -27,9 +28,21 @@ export class FallbackProvider implements MarketDataProvider {
       if (rateLimited || /\b5\d\d\b|timeout|timed out|fetch failed|ECONN/i.test(String(error))) {
         this.pauses.set(provider.id, { until: Date.now() + backoff, backoff });
       }
+      this.lastErrors.set(provider.id, { at: new Date().toISOString(), message: errorSummary(error) });
       this.log(`No responde ${provider.id}; se prueban las demás fuentes`, error);
       return undefined;
     }
+  }
+
+  diagnostics() {
+    return Object.fromEntries(this.providers.map((p) => {
+      const pause = this.pauses.get(p.id);
+      return [p.id, {
+        ...p.diagnostics?.(),
+        pausedUntil: pause && pause.until > Date.now() ? new Date(pause.until).toISOString() : null,
+        lastError: this.lastErrors.get(p.id) ?? null,
+      }];
+    }));
   }
 
   async getQuotes(symbols: string[]): Promise<Omit<Quote, 'stale'>[]> {
