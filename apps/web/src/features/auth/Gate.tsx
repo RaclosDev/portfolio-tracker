@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { ApiError, AUTH_CHANGED, SESSION_LOST, api, reloadSession } from '../../api/client.ts';
+import { Landing } from './Landing.tsx';
 
 /** Muestra la app solo con la sesión iniciada; si no, la pantalla de entrada. */
 export function Gate({ children }: { children: ReactNode }) {
@@ -103,13 +104,14 @@ function Login({ googleEnabled, registrationEnabled, onDone }: {
   };
 
   return (
-    <main className="login">
+    <Landing
+      canRegister={registrationEnabled}
+      onEnter={(register) => {
+        if (register !== registering) { setRegistering(register); setPassword(''); setConfirmation(''); setError(null); }
+      }}
+    >
       <form className="login__card" onSubmit={submit}>
-        <div className="brand">
-          <img src="/favicon.svg" alt="" width={28} height={28} />
-          <h1>Portfolio Tracker</h1>
-        </div>
-        <h2 className="login__title">{registering ? 'Crear cuenta' : 'Iniciar sesión'}</h2>
+        <h3 className="login__title">{registering ? 'Crear cuenta' : 'Iniciar sesión'}</h3>
         {!registering && <p className="muted small">Organiza tus listas de seguimiento y tu cartera en una cuenta privada.</p>}
         {registering && <p className="muted small">Tu cartera y tus listas serán privadas. Empieza con una cuenta vacía.</p>}
         <fieldset className="login__fields" disabled={busy}>
@@ -169,12 +171,8 @@ function Login({ googleEnabled, registrationEnabled, onDone }: {
             setRegistering(!registering); setPassword(''); setConfirmation(''); setError(null);
           }}>{registering ? 'Inicia sesión' : 'Crear cuenta'}</button>
         </p>}
-        <a className="btn login__demo" href="/demo">Ver la demo sin registrarte</a>
         <p className="muted small">La sesión se recuerda en este dispositivo durante 6 meses.</p>
-        <nav className="small login__legal" aria-label="Información de la aplicación">
-          <a href="/privacidad.html">Privacidad</a><a href="/condiciones.html">Condiciones de uso</a>
-        </nav>
       </form>
-    </main>
+    </Landing>
   );
 }
