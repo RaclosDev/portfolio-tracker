@@ -1,0 +1,31 @@
+name: Fallo
+description: Algo no funciona como debería.
+labels: ['bug']
+body:
+  - type: textarea
+    id: que-ocurre
+    attributes:
+      label: Qué ocurre
+      description: Qué has visto y qué esperabas ver.
+    validations:
+      required: true
+  - type: textarea
+    id: pasos
+    attributes:
+      label: Pasos para reproducirlo
+      placeholder: |
+        1. Entro en…
+        2. Pulso…
+        3. Aparece…
+    validations:
+      required: true
+  - type: input
+    id: entorno
+    attributes:
+      label: Dispositivo y navegador
+      placeholder: 'Windows 11, Chrome 142'
+  - type: textarea
+    id: extra
+    attributes:
+      label: Capturas o detalles
+      description: Sin datos personales.

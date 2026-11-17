@@ -9,8 +9,8 @@ const HOUR = 60 * 60_000;
 const FUND_IDS: Readonly<Record<string, string>> = { IE00B3VXGD32: '2FADB302467' };
 const fundCode = (symbol: string) => FUND_IDS[symbol] ?? /^BORSA:(2FADB\d+)$/.exec(symbol)?.[1];
 const text = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;/g, ' ')
-  .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
-  .replace(/&#(\d+);/g, (_, n: string) => String.fromCharCode(Number(n))).replace(/\s+/g, ' ').trim();
+  .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
+  .replace(/&#(\d+);/g, (_, n: string) => String.fromCharCode(Number(n))).replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
 const cells = (row: string) => [...row.matchAll(/<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi)].map(m => text(m[1]!));
 const decimal = (value: string) => /^[+-]?\d+(?:\.\d{3})*(?:,\d+)?$/.test(value)
   ? Number(value.replace(/\./g, '').replace(',', '.')) : NaN;
