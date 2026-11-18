@@ -57,7 +57,7 @@ export function createServicesFromDb(
   const watchlist = new WatchlistService(lists, items, settings, market);
   const operations = new OperationsRepository(db);
   const instruments = new InstrumentsRepository(db);
-  const portfolio = new PortfolioService(operations, instruments, settings, market);
+  const portfolio = new PortfolioService(operations, instruments, market);
   const backup = new BackupService(db);
   const push = opts.push ?? new PushService(db, opts.vapid ?? { publicKey: null, privateKey: null, subject: 'mailto:avisos@raclos.es' }, log);
   const alerts = new AlertsService(db, lists, settings, state, watchlist, push, backup, log);

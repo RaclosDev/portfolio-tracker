@@ -14,7 +14,6 @@ import {
 } from '@watchlist/shared';
 import { MINOR_UNITS, type MarketService } from '../market/market.service.ts';
 import { isinInSymbol } from '../market/composition.ts';
-import type { SettingsRepository } from '../settings/settings.repository.ts';
 import type { InstrumentsRepository, OperationsRepository } from './cartera.repository.ts';
 
 /** Fichas pedidas a Yahoo en cada carga como mucho (el resto, en las siguientes). */
@@ -35,7 +34,6 @@ export class PortfolioService {
   constructor(
     private operations: OperationsRepository,
     private instruments: InstrumentsRepository,
-    private settings: SettingsRepository,
     private market: MarketService,
   ) {}
 
@@ -99,17 +97,14 @@ export class PortfolioService {
   }
 
   async view({ force = false } = {}): Promise<CarteraView> {
-    const [operations, instruments, settings] = await Promise.all([
-      this.operations.all(),
-      this.instruments.all(),
-      this.settings.get(),
-    ]);
+    const [operations, instruments] = await Promise.all([this.operations.all(), this.instruments.all()]);
     // Precio solo de lo que sigue en cartera (lo cerrado no lo necesita).
     const ledger = computeLedger(operations);
     const open = new Set(ledger.tickers.filter((t) => t.shares > 1e-9).map((t) => t.ticker));
     const symbols = instruments.filter((i) => i.symbol && open.has(i.ticker)).map((i) => i.symbol!);
     const quotes = await this.market.getQuotes(symbols, { force });
-    const fx = await this.market.getFxRates(settings.baseCurrency, [
+    // La cartera va siempre en euros (costes, Renta): no depende de la divisa base de la lista.
+    const fx = await this.market.getFxRates('EUR', [
       ...[...quotes.values()].map((q) => q.currency),
       ...instruments.filter((i) => open.has(i.ticker)).map((i) => i.currency),
     ]);

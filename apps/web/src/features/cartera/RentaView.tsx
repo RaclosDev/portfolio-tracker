@@ -102,7 +102,7 @@ export function RentaView({ model }: { model: CarteraModel }) {
               value={-y.withholdingEs}
             />
             {y.foreignDeduction > 0 && <Line label="Deducción doble imposición (estimada)" value={-y.foreignDeduction} />}
-            <Line label={y.balanceEstimate >= 0 ? 'A pagar (estimado)' : 'A devolver (estimado)'} value={y.balanceEstimate} strong />
+            <Line label={y.balanceEstimate >= 0 ? 'A pagar (estimado)' : 'A devolver (estimado)'} value={Math.abs(y.balanceEstimate)} strong />
           </tbody>
         </table>
       </div>
