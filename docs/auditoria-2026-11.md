@@ -27,6 +27,13 @@ Se ha usado la app como un usuario: dar de alta compras y ventas en euros y en d
 | F10 | Al elegir un producto, la lista de bolsas tardaba 2–6 s en salir. | Se piden por adelantado las bolsas del producto resaltado; al elegirlo ya están. |
 | F11 | «Resultado del periodo» y el resumen diferían en unos céntimos: uno usaba cierres y el otro el precio en directo. | Si el periodo acaba hoy, el último punto usa el valor en directo del resumen. |
 | F12 | Una compra en dólares guardada con cambio 1 no avisaba de nada. | Aviso si el cambio se aleja más de un 5 % del de mercado de ese día. |
+| F13 | La Renta mostraba «A devolver −0,47 €» con el signo cambiado. | El importe a devolver sale en positivo. |
+| F14 | «Otra operación» en la ficha de un valor dejaba el bróker vacío. | Propone el último bróker usado, como «Comprar más» y «Vender». |
+| F15 | Si la divisa base de Ajustes no era el euro, la cartera y el cambio propuesto en las operaciones salían en esa divisa, y los costes fiscales en € quedaban mal. | La cartera y el cambio de las operaciones van siempre en euros, sea cual sea la divisa base de la lista. |
+
+Revisado sin fallos: venta con FIFO, dividendo neto, compensación y arrastre de pérdidas en la Renta, borrar con deshacer, alta en la lista por nombre, avisos, ajustes, vista previa de la importación (detecta fechas ambiguas y ventas sin acciones) y la vista en móvil.
+
+Detalles menores pendientes: el Registro redondea el precio a 2 decimales (20,345 → 20,35 €), el diálogo enseña «Divisa del precio» también en los dividendos y el campo Valor muestra el ticker de Yahoo (QUTM.DE) en lugar del nombre.
 
 ## 1. Registro y datos de entrada
 

@@ -223,7 +223,7 @@ export function TickerDialog({
             </button>
           </>
         )}
-        <button type="button" className="btn btn--small" onClick={() => onAddOperation({ ticker })}>
+        <button type="button" className="btn btn--small" onClick={() => onAddOperation({ ticker, broker: lastBroker })}>
           Otra operación
         </button>
       </div>

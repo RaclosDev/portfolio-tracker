@@ -105,8 +105,8 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
   const n = (s: string) => parseDecimal(s);
   // Cambio: el que escribas; si no, el implícito en el total en € del extracto; si no, el de mercado de ese día.
   const marketFx = useQuery({
-    queryKey: ['fx', currency, date],
-    queryFn: () => api.fx([currency], date),
+    queryKey: ['fx', 'EUR', currency, date],
+    queryFn: () => api.fx([currency], date, 'EUR'),
     enabled: foreign && trade && /^[A-Z]{3}$/.test(currency) && /^\d{4}-\d{2}-\d{2}$/.test(date),
     staleTime: 60 * 60_000,
   }).data?.[currency];
