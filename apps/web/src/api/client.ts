@@ -133,8 +133,8 @@ export const api = {
   search: (q: string) => request<SymbolSearchResult[]>('GET', `/api/market/search?q=${encodeURIComponent(q)}`),
   instruments: (q: string) => request<InstrumentHit[]>('GET', `/api/market/instruments?q=${encodeURIComponent(q)}`),
   listings: (isin: string) => request<Listing[]>('GET', `/api/market/listings?isin=${encodeURIComponent(isin)}`),
-  fx: (currencies: string[]) =>
-    request<Record<string, number>>('GET', `/api/market/fx?currencies=${encodeURIComponent(currencies.join(','))}`),
+  fx: (currencies: string[], date?: string) =>
+    request<Record<string, number>>('GET', `/api/market/fx?currencies=${encodeURIComponent(currencies.join(','))}${date ? `&date=${date}` : ''}`),
   quotes: (symbols: string[]) => request<Quote[]>('GET', `/api/market/quotes?symbols=${encodeURIComponent(symbols.join(','))}`),
   importRows: (listId: number, items: ImportRow[]) =>
     request<{ created: number; updated: number }>('POST', `/api/lists/${listId}/import`, { items }),

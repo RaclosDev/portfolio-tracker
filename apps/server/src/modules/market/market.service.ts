@@ -206,16 +206,25 @@ export class MarketService {
    * Tipos de cambio: unidades de cada divisa por 1 de `base`.
    * Para divisas en centésimas (GBp) aplica el factor ×100.
    */
-  async getFxRates(base: string, currencies: (string | null)[]): Promise<Record<string, number>> {
+  async getFxRates(base: string, currencies: (string | null)[], date?: string): Promise<Record<string, number>> {
     const rates: Record<string, number> = { [base]: 1 };
     const majors = new Set<string>();
     for (const c of currencies) if (c) majors.add(MINOR_UNITS[c]?.major ?? c);
     majors.delete(base);
-    const pairs = [...majors].map((c) => `${base}${c}=X`);
-    const quotes = await this.getQuotes(pairs);
-    for (const c of majors) {
-      const p = quotes.get(`${base}${c}=X`)?.price;
-      if (p) rates[c] = p;
+    if (date) {
+      // Cierre de ese día (o el último anterior: fines de semana y festivos).
+      await Promise.all([...majors].map(async (c) => {
+        const { points } = await this.getDailyHistory(`${base}${c}=X`, shiftDate(date, -10));
+        const p = points.filter((x) => x.t.slice(0, 10) <= date).at(-1)?.c;
+        if (p && p > 0) rates[c] = p;
+      }));
+    } else {
+      const pairs = [...majors].map((c) => `${base}${c}=X`);
+      const quotes = await this.getQuotes(pairs);
+      for (const c of majors) {
+        const p = quotes.get(`${base}${c}=X`)?.price;
+        if (p) rates[c] = p;
+      }
     }
     for (const c of currencies) {
       const minor = c ? MINOR_UNITS[c] : undefined;

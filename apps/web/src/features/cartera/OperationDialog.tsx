@@ -13,8 +13,8 @@ import {
   type Quote,
   type SymbolSearchResult,
 } from '@watchlist/shared';
-import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useState, type FormEvent } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { ApiError, api } from '../../api/client.ts';
 import { useOperationMutations } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
@@ -58,6 +58,9 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
     instruments.find((i) => i.ticker === (op?.ticker ?? draft?.ticker ?? '').trim().toUpperCase());
   const [type, setType] = useState<OperationType>(op?.type ?? draft?.type ?? 'buy');
   const [date, setDate] = useState(op?.date ?? draft?.date ?? localToday());
+
+  const dateRef = useRef({ date, type });
+  dateRef.current = { date, type };
   const [ticker, setTicker] = useState(op?.ticker ?? (draft?.symbol ? initial?.ticker : undefined) ?? draft?.ticker ?? '');
   const [symbol, setSymbol] = useState<string | null>(initial?.symbol ?? draft?.symbol ?? null);
   const [name, setName] = useState(initial?.name ?? draft?.name ?? null);
@@ -68,7 +71,9 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
   const [shares, setShares] = useState(str(op?.shares ?? draft?.shares));
   const [priceRaw, setPrice] = useState(str(op?.price ?? draft?.price));
   const [fees, setFees] = useState(str(op?.fees || null));
-  const [fx, setFx] = useState(str(op?.fxRate));
+  const [fx, setFxRaw] = useState(str(op?.fxRate));
+  const [fxTouched, setFxTouched] = useState(!!op);
+  const setFx = (v: string) => { setFxRaw(v); setFxTouched(v !== ''); };
   const [amount, setAmount] = useState(str(op?.amountEur));
   const [amountTouched, setAmountTouched] = useState(!!op);
   const [whEs, setWhEs] = useState(str(op?.withholdingEs));
@@ -80,6 +85,8 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
   const [transferRef, setTransferRef] = useState(op?.transferRef ?? '');
   const [review, setReview] = useState(op?.needsReview ?? false);
   const [error, setError] = useState<string | null>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => { if (error) errorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, [error]);
   // Cambios sin guardar: solo lo que escribe el usuario (el símbolo y la divisa también los rellena la búsqueda de cotización).
   const formState = JSON.stringify([type, date, ticker, shares, priceRaw, fees, fx, amount, whEs, whForeign, ratio, broker, notes, dayOrder, transferRef, review]);
   const [initialForm] = useState(formState);
@@ -96,7 +103,22 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
 
   // Importe en euros propuesto a partir de acciones, precio, comisiones y cambio (se puede corregir).
   const n = (s: string) => parseDecimal(s);
-  const fxN = foreign ? n(fx) : 1;
+  // Cambio: el que escribas; si no, el implícito en el total en € del extracto; si no, el de mercado de ese día.
+  const marketFx = useQuery({
+    queryKey: ['fx', currency, date],
+    queryFn: () => api.fx([currency], date),
+    enabled: foreign && trade && /^[A-Z]{3}$/.test(currency) && /^\d{4}-\d{2}-\d{2}$/.test(date),
+    staleTime: 60 * 60_000,
+  }).data?.[currency];
+  const impliedFx = (() => {
+    const sh = n(shares), pr = n(priceRaw), total = n(amount);
+    if (!foreign || !amountTouched || !sh || !pr || !total || total <= 0) return null;
+    const gross = sh * pr + (type === 'buy' || type === 'transfer_in' ? 1 : -1) * (n(fees) ?? 0);
+    return gross > 0 ? Math.round((gross / total) * 10000) / 10000 : null;
+  })();
+  const fxAuto = fxTouched ? null : (impliedFx ?? (marketFx ? Math.round(marketFx * 10000) / 10000 : null));
+  const fxShown = fxTouched ? fx : fxAuto != null ? str(fxAuto) : '';
+  const fxN = foreign ? n(fxShown) : 1;
   const suggested = trade ? tradeTotal(type === 'buy' || type === 'transfer_in' ? 'buy' : 'sell', n(shares), n(priceRaw), n(fees) ?? 0, currency, fxN) : null;
   const amountShown = amountTouched ? amount : suggested != null ? str(suggested) : amount;
   // ISIN para la ficha del valor, solo si aún no tiene uno.
@@ -108,6 +130,8 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
     if (quote) {
       setName((current) => current || quote.name);
       if (quote.currency) setCurrency(quote.currency);
+      // Precio de hoy como punto de partida en una compra o venta de hoy; en fechas pasadas no vale.
+      if (quote.price && dateRef.current.date === localToday() && ['buy', 'sell'].includes(dateRef.current.type)) setPrice((current) => current || str(quote.price));
     }
   }, []);
 
@@ -307,8 +331,16 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
                 {foreign && (
                   <div className="field">
                     <label htmlFor="op-fx">Cambio ({currency} por 1 €)</label>
-                    <input id="op-fx" inputMode="decimal" value={fx} onChange={(e) => setFx(e.target.value)} />
-                    <span className="field__help">Cambio aplicado por el bróker el día de la operación.</span>
+                    <input id="op-fx" inputMode="decimal" value={fxShown} onChange={(e) => setFx(e.target.value)} />
+                    <span className="field__help">
+                      {fxTouched
+                        ? 'Cambio aplicado por el bróker el día de la operación.'
+                        : impliedFx != null
+                          ? 'Calculado con el total en € que has puesto.'
+                          : fxAuto != null
+                            ? 'Cambio de mercado de ese día; pon el de tu bróker si lo tienes.'
+                            : 'Cambio aplicado por el bróker el día de la operación.'}
+                    </span>
                   </div>
                 )}
                 <div className="field">
@@ -324,7 +356,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
                   />
                   <span className="field__help">
                     {transfer ? 'Importe que pasa al fondo de destino' : type === 'buy' ? 'Con comisiones' : 'Ya sin comisiones'}, como en el extracto
-                    {amountTouched && suggested != null && n(amount) !== suggested && (
+                    {amountTouched && suggested != null && n(amount) !== suggested && (fxTouched || impliedFx == null) && (
                       <>
                         {' · '}
                         <button type="button" className="link" onClick={() => setAmountTouched(false)}>
@@ -420,7 +452,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
         </fieldset>
 
         {error && (
-          <p className="error-box" role="alert">
+          <p className="error-box" role="alert" ref={errorRef}>
             {error}
           </p>
         )}

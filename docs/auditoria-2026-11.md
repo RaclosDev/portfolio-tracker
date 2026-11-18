@@ -9,16 +9,36 @@ Revisión de toda la app mirando qué echaría en falta alguien que gestiona car
 - Precios con varias fuentes de respaldo: Financial Hub primero, luego Yahoo y el resto, y cada precio indica de qué fuente viene.
 - Tiene copias de seguridad, instantáneas y modo sin conexión.
 
-## Arreglado en esta revisión
+## Prueba funcional: qué fallaba y qué se ha arreglado
 
-- **Alta de operaciones por nombre** (P1). Antes había que escribir un ticker a mano antes de poder buscar, así que no se podía registrar una compra de algo que no estuviera ya en la lista. Ahora el primer campo de «Nueva operación» es **Valor**, que busca por nombre, ISIN o ticker. Al elegirlo se rellenan solos el ticker, el nombre, la divisa y el precio. El ticker se puede cambiar; si ya lo usa otro valor, se propone el símbolo completo.
+Se ha usado la app como un usuario: dar de alta compras y ventas en euros y en dólares, buscar valores, revisar la cartera, la Renta, la lista y los avisos.
+
+| # | Qué fallaba | Arreglo |
+|---|---|---|
+| F1 | Para registrar una compra había que escribir antes un ticker; no se podía buscar por nombre algo que no estuviera en la lista. | El primer campo de «Nueva operación» es **Valor** y busca por nombre, ISIN o ticker. Al elegirlo se rellenan el ticker, el nombre y la divisa. |
+| F2 | En una compra en dólares había que escribir el cambio a mano, aunque se hubiera puesto el total en €. | El cambio sale solo: el implícito en el total en € si lo pones, o el de mercado del día de la operación. Se puede corregir. |
+| F3 | Si faltaba un dato, el error salía fuera de la vista y «Guardar» parecía no hacer nada. | El aviso de error se desplaza a la vista. |
+| F4 | Al buscar «AAPL» salían antes ETF apalancados que Apple. | El ticker exacto va el primero, con su título. |
+| F5 | El precio había que escribirlo siempre. | En una compra o venta de hoy se propone el precio actual (en fechas pasadas no). |
+| F6 | No había forma rápida de vender o ampliar una posición. | La ficha de cada valor tiene «Comprar más» y «Vender»; «Vender» propone todas las acciones y el último bróker usado. |
+| F7 | Con menos de un año de historia, la TIR se anualizaba y exageraba el resultado (−17,7 % en vez de −15,3 %). | Por debajo de un año se muestra la rentabilidad desde el inicio, sin anualizar. |
+| F8 | La Renta vacía decía «No hay operaciones» aunque hubiera compras. | Explica que ahí saldrán las ventas y los cobros. |
+| F9 | El pie de página citaba fuentes de precios antiguas. | Ahora cita Financial Hub y las de respaldo. |
+
+### Pendiente de la prueba
+
+| # | Qué falla | Propuesta |
+|---|---|---|
+| F10 | Al elegir un producto, la lista de bolsas tarda 3–6 s en salir. | Pedir las bolsas en paralelo y guardarlas en caché por ISIN. |
+| F11 | «Resultado del periodo» y el resumen difieren en unos céntimos: uno usa cierres y el otro el precio en directo. | Usar el mismo precio en los dos, o indicarlo. |
+| F12 | Una compra en dólares guardada con cambio 1 (como la de NVDA en los datos de prueba) no avisa de nada. | Avisar si el cambio se aleja más de un 5 % del de mercado de ese día. |
 
 ## 1. Registro y datos de entrada
 
 | # | Prioridad | Qué falta | Por qué importa |
 |---|---|---|---|
 | 1.1 | P1 | **Importar los extractos de MyInvestor** (CSV de «Todas las transacciones») y de otros brókeres. | Hoy cada compra se mete a mano o se importa con una ayuda manual. Ese es el principal origen de errores. |
-| 1.2 | P1 | **Cambio de divisa propuesto automáticamente** en compras en USD, GBP, etc., tomado del cambio del día de la operación (la app ya tiene `/api/market/fx`). | Hoy hay que escribirlo a mano. Si se pone mal, el coste fiscal en euros sale mal. |
+| 1.2 | Hecho (F2) | **Cambio de divisa propuesto automáticamente** en compras en USD, GBP, etc., tomado del cambio del día de la operación (la app ya tiene `/api/market/fx`). | Hoy hay que escribirlo a mano. Si se pone mal, el coste fiscal en euros sale mal. |
 | 1.3 | P1 | **Efectivo por bróker** (saldo, ingresos y retiradas de dinero). | Sin él no hay patrimonio total ni peso real de cada posición, y la rentabilidad no separa lo que se aporta de lo que se gana. |
 | 1.4 | P2 | **Identificar cada valor por ISIN y bolsa**, no por el ticker que escribe el usuario. | El caso de TWN, CHIP y LSMC: un mismo ETF en dos bolsas acabó como dos valores distintos y hubo que fusionarlos a mano. |
 | 1.5 | P2 | Más tipos de operación: intereses de cuenta remunerada, comisiones de custodia, fusiones y canjes, escisiones y cambios de nombre. | Hoy hay que forzarlos con otros tipos, lo que descuadra el coste o la Renta. |
@@ -71,6 +91,6 @@ Revisión de toda la app mirando qué echaría en falta alguien que gestiona car
 
 ## Orden propuesto
 
-1. **Fase 1** (lo que cambia decisiones): efectivo y patrimonio total (1.3), TWR más comparación con el índice (2.1 y 2.2), avisos de concentración (3.1), cambio de divisa automático (1.2), importación de MyInvestor (1.1) y Financial Hub por ISIN (6.1).
+1. **Fase 1** (lo que cambia decisiones): efectivo y patrimonio total (1.3), TWR más comparación con el índice (2.1 y 2.2), avisos de concentración (3.1), importación de MyInvestor (1.1) y Financial Hub por ISIN (6.1).
 2. **Fase 2**: riesgo (3.2), costes (4.1), reparto por sector y país (3.3), simulador fiscal (5.1 y 5.2), salud de los datos (6.2) y atribución (2.3).
 3. **Fase 3**: identidad por ISIN (1.4), tipos de operación nuevos (1.5), rebalanceo (3.4), informes (7.1) y resumen llano (7.2).

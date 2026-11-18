@@ -23,7 +23,7 @@ export function RentaView({ model }: { model: CarteraModel }) {
   const [year, setYear] = useState(() => years.find((y) => y.year < new Date().getFullYear())?.year ?? years[0]?.year);
   const [busy, setBusy] = useState(false);
   const y: TaxYear | undefined = years.find((x) => x.year === year);
-  if (!y) return <p className="empty">No hay operaciones todavía.</p>;
+  if (!y) return <p className="empty">Todavía no hay nada que declarar: aquí saldrán las ganancias y pérdidas de las ventas y los dividendos y otros cobros de cada año.</p>;
   const name = (t: string) => model.names.get(t) ?? t;
   const carriedUsed = y.carriedUsed.reduce((s, c) => s + c.amount, 0);
 

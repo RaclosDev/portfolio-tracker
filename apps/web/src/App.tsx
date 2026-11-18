@@ -552,7 +552,7 @@ export function App() {
           </>
         )}
         <p className="footnote">
-          Cotizaciones: Yahoo Finance, Borsa Italiana / FIDA, Quefondos / VDOS, onvista y FT Markets. Composición de fondos: Financial Hub. Consenso: Yahoo Finance. Los datos pueden tener retraso.
+          Cotizaciones y composición de fondos: Financial Hub; de respaldo, Yahoo Finance, Borsa Italiana / FIDA, Quefondos / VDOS, onvista, justETF y FT Markets. Consenso: Yahoo Finance. Los datos pueden tener retraso.
           {!onPortfolio && <span className="watchlist-desktop-hint"> Doble clic en una fila para editarla.</span>}
         </p>
       </main>
