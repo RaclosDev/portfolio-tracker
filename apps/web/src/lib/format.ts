@@ -11,13 +11,21 @@ function nf(key: string, opts: Intl.NumberFormatOptions) {
 /** Marca de dato vacío en tablas (guion corto). */
 const DASH = '–';
 
+/** Decimales que trae un número (máx. 6): 20.345 → 3. */
+const decimals = (v: number) => {
+  const s = String(Number(v.toFixed(6)));
+  const i = s.indexOf('.');
+  return i < 0 ? 0 : s.length - i - 1;
+};
+
 /**
  * Precio con decimales adaptados a su magnitud (2,485 vs 276,47). Con `currency` (la de la cotización)
  * añade su símbolo: 276,47 $, 2,485 €. Las libras en peniques (GBp) llevan «p».
+ * Nunca redondea: si el precio trae más decimales (20,345 · 1,2345), se muestran todos (hasta 6, para no enseñar ruido de coma flotante).
  */
 export function price(v: number | null | undefined, currency?: string | null) {
   if (v == null) return DASH;
-  const digits = Math.abs(v) < 10 ? 3 : 2;
+  const digits = Math.max(Math.abs(v) < 10 ? 3 : 2, decimals(v));
   const opts = { minimumFractionDigits: 2, maximumFractionDigits: digits };
   if (!currency) return nf(`p${digits}`, opts).format(v);
   if (currency === 'GBp') return `${nf(`p${digits}`, opts).format(v)} p`;
@@ -122,4 +130,9 @@ export function daysUntil(iso: string | null | undefined, today = new Date()) {
   if (!iso) return null;
   const t = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
   return Math.round((Date.parse(iso.slice(0, 10)) - t) / 86_400_000);
+}
+
+/** Acciones o participaciones con todos sus decimales (hasta 6): 100 · 12,3456. */
+export function qty(v: number | null | undefined) {
+  return v == null ? DASH : num(v, decimals(v));
 }

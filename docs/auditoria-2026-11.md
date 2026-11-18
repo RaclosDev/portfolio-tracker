@@ -33,7 +33,7 @@ Se ha usado la app como un usuario: dar de alta compras y ventas en euros y en d
 
 Revisado sin fallos: venta con FIFO, dividendo neto, compensación y arrastre de pérdidas en la Renta, borrar con deshacer, alta en la lista por nombre, avisos, ajustes, vista previa de la importación (detecta fechas ambiguas y ventas sin acciones) y la vista en móvil.
 
-Detalles menores pendientes: el Registro redondea el precio a 2 decimales (20,345 → 20,35 €), el diálogo enseña «Divisa del precio» también en los dividendos y el campo Valor muestra el ticker de Yahoo (QUTM.DE) en lugar del nombre.
+Detalles menores, ya resueltos: los precios y las participaciones se muestran con todos sus decimales (20,345 €, 12,3456), sin redondear; «Divisa del precio» solo sale en las operaciones con precio, no en dividendos ni primas; y el campo Valor guarda a propósito el ticker exacto de la bolsa (QUTM.DE), con el nombre completo justo debajo.
 
 ## 1. Registro y datos de entrada
 
