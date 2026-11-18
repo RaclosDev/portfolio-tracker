@@ -1,4 +1,4 @@
-import { itemInputSchema, localToday, MAX_BUY_LEVELS, roundUpShares, type ItemInput, type Settings, type WatchlistRow } from '@watchlist/shared';
+import { displayTicker, isinInSymbol, itemInputSchema, localToday, tickerFromSymbol, MAX_BUY_LEVELS, roundUpShares, type ItemInput, type Settings, type WatchlistRow } from '@watchlist/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { ApiError, api } from '../../api/client.ts';
@@ -6,7 +6,7 @@ import { useDeleteItem, useSaveItem } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
 import { toast } from '../../components/feedback.tsx';
 import { MINOR_CURRENCY, money, num, parseDecimal, pct, price, shortDate } from '../../lib/format.ts';
-import { tickerFromSymbol, type OperationDraft } from '../cartera/OperationDialog.tsx';
+import type { OperationDraft } from '../cartera/OperationDialog.tsx';
 import { SymbolPicker } from './SymbolPicker.tsx';
 
 interface Props {
@@ -36,6 +36,8 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
   const item = row?.item;
   const [symbol, setSymbol] = useState(item?.symbol ?? '');
   const [checkedSymbol, setCheckedSymbol] = useState(item?.symbol ?? '');
+  const [ticker, setTicker] = useState(item ? displayTicker(item) : '');
+  const [isin, setIsin] = useState(item?.isin ?? '');
   const [name, setName] = useState(item?.name ?? '');
   const [levels, setLevels] = useState<string[]>(
     Array.from({ length: MAX_BUY_LEVELS }, (_, i) => str(item?.buyPrices[i])),
@@ -52,7 +54,7 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
   const [muted, setMuted] = useState<string>(item?.mutedUntil ?? '');
   const [error, setError] = useState<string | null>(null);
   // Hay cambios sin guardar si el formulario difiere de como se abrió (para no perderlos al cerrar sin querer).
-  const formState = JSON.stringify([symbol, name, levels, brokerTarget, brokerName, invest, shares, orderActive, orderPrice, orderUntil, notes, muted]);
+  const formState = JSON.stringify([symbol, ticker, isin, name, levels, brokerTarget, brokerName, invest, shares, orderActive, orderPrice, orderUntil, notes, muted]);
   const [initialForm] = useState(formState);
   const dirty = formState !== initialForm;
 
@@ -96,6 +98,8 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
     const data: ItemInput = {
       listId,
       symbol: symbol.trim(),
+      ticker: ticker.trim() || (symbol.trim() ? tickerFromSymbol(symbol) : null),
+      isin: isin.trim() || quote?.isin || isinInSymbol(symbol) || null,
       name: name.trim() || null,
       buyPrices,
       brokerTarget: parseDecimal(brokerTarget),
@@ -108,7 +112,7 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
       notes: notes.trim() || null,
       mutedUntil: (muted || null) as ItemInput['mutedUntil'],
     };
-    if (!data.symbol) return setError('Indica el símbolo.');
+    if (!data.symbol) return setError('Busca y elige el valor.');
     // Al editar se envían solo los campos cambiados: si otra persona tocó el valor mientras esta ventana
     // estaba abierta (p. ej. quitó la orden), sus cambios no se pisan con los datos viejos de aquí.
     const payload = item
@@ -172,8 +176,9 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
               onClick={() =>
                 onBought({
                   type: 'buy',
-                  ticker: tickerFromSymbol(item.symbol),
+                  ticker: displayTicker(item),
                   symbol: item.symbol,
+                  isin: item.isin ?? quote?.isin ?? null,
                   name: item.name,
                   shares: row?.metrics.shares ?? undefined,
                   price: row?.metrics.entryPrice ?? undefined,
@@ -198,7 +203,7 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
         <fieldset className="form__section">
           <legend>Valor</legend>
           <div className="field field--wide">
-            <label htmlFor="symbol">Símbolo (Yahoo Finance)</label>
+            <label htmlFor="symbol">Buscar el valor (nombre, ISIN o ticker)</label>
             <SymbolPicker
               value={symbol}
               autoFocus={!item}
@@ -206,12 +211,14 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
               onPick={(r) => {
                 setSymbol(r.symbol);
                 setCheckedSymbol(r.symbol);
+                setTicker(tickerFromSymbol(r.symbol));
+                setIsin(r.isin ?? isinInSymbol(r.symbol) ?? '');
                 if (!name) setName(r.name);
               }}
             />
             <div className="field__help" aria-live="polite">
               {quoteQ.isFetching && 'Comprobando…'}
-              {quoteQ.isError && <span className="error-text">No se encuentra este símbolo.</span>}
+              {quoteQ.isError && <span className="error-text">No se encuentra su cotización.</span>}
               {quote && (
                 <>
                   {quote.name} · <strong>{price(quote.price)} {quote.currency}</strong>
@@ -220,10 +227,18 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
               )}
               {!quoteQ.isFetching && !quote && !quoteQ.isError && symbol && symbol !== checkedSymbol && (
                 <button type="button" className="link" onClick={() => setCheckedSymbol(symbol.trim().toUpperCase())}>
-                  Comprobar símbolo
+                  Comprobar cotización
                 </button>
               )}
             </div>
+          </div>
+          <div className="field">
+            <label htmlFor="item-ticker">Ticker</label>
+            <input id="item-ticker" value={ticker} onChange={(e) => setTicker(e.target.value.toUpperCase())} placeholder={symbol ? tickerFromSymbol(symbol) : 'Se rellena al elegir el valor'} />
+          </div>
+          <div className="field">
+            <label htmlFor="item-isin">ISIN</label>
+            <input id="item-isin" value={isin} onChange={(e) => setIsin(e.target.value.toUpperCase())} placeholder={quote?.isin ?? isinInSymbol(symbol) ?? 'Se rellena al elegir el valor'} maxLength={12} />
           </div>
           <div className="field field--wide">
             <label htmlFor="name">Nombre (opcional)</label>

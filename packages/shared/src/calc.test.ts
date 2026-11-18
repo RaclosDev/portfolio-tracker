@@ -7,6 +7,8 @@ const item = (over: Partial<Item> = {}): Item => ({
   id: 1,
   listId: 1,
   symbol: 'MCD',
+  ticker: null,
+  isin: null,
   name: null,
   buyPrices: [212.5, 196],
   brokerTarget: null,

@@ -5,6 +5,8 @@ interface ItemRow {
   id: number;
   list_id: number;
   symbol: string;
+  ticker: string | null;
+  isin: string | null;
   name: string | null;
   buy_prices: number[];
   broker_target: number | null;
@@ -24,6 +26,8 @@ const toItem = (r: ItemRow): Item => ({
   id: r.id,
   listId: r.list_id,
   symbol: r.symbol,
+  ticker: r.ticker,
+  isin: r.isin,
   name: r.name,
   buyPrices: r.buy_prices,
   brokerTarget: r.broker_target,
@@ -42,11 +46,11 @@ const toItem = (r: ItemRow): Item => ({
 /** Columnas y valores en el mismo orden ($1, $2…). */
 const COLUMNS = [
   'list_id', 'symbol', 'name', 'buy_prices', 'broker_target', 'broker_name', 'invest_amount',
-  'shares_override', 'order_active', 'order_price', 'order_until', 'notes', 'muted_until',
+  'shares_override', 'order_active', 'order_price', 'order_until', 'notes', 'muted_until', 'ticker', 'isin',
 ] as const;
 const values = (d: ItemData) => [
   d.listId, d.symbol, d.name, JSON.stringify(d.buyPrices), d.brokerTarget, d.brokerName, d.investAmount,
-  d.sharesOverride, d.orderActive, d.orderPrice, d.orderUntil, d.notes, d.mutedUntil,
+  d.sharesOverride, d.orderActive, d.orderPrice, d.orderUntil, d.notes, d.mutedUntil, d.ticker, d.isin,
 ];
 const placeholder = (c: string, i: number) => (c === 'buy_prices' ? `$${i + 1}::jsonb` : `$${i + 1}`);
 

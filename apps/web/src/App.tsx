@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, type WatchlistRow } from '@watchlist/shared';
+import { DEFAULT_SETTINGS, displayTicker, type WatchlistRow } from '@watchlist/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { api, DEMO } from './api/client.ts';
@@ -17,6 +17,7 @@ import { applyAppearance, applyColors } from './lib/theme.ts';
 import { usePrompt } from './components/usePrompt.tsx';
 import { Icon } from './components/Icon.tsx';
 import { PushBanner } from './components/PushBanner.tsx';
+import { QuoteSources } from './components/QuoteSources.tsx';
 import { UpdateBanner } from './components/UpdateBanner.tsx';
 
 // Lo que no hace falta para pintar la lista va en trozos aparte, que se descargan al usarlos.
@@ -155,7 +156,7 @@ export function App() {
     const q = search.trim().toLowerCase();
     return tagged
       .filter(filterRow(filter))
-      .filter((r) => !q || `${r.item.symbol} ${r.item.name ?? ''} ${r.item.notes ?? ''}`.toLowerCase().includes(q));
+      .filter((r) => !q || `${r.item.symbol} ${displayTicker(r.item)} ${r.item.isin ?? r.quote?.isin ?? ''} ${r.item.name ?? ''} ${r.item.notes ?? ''}`.toLowerCase().includes(q));
   }, [tagged, filter, search]);
   const currencies = useMemo(
     () => [...new Set((view?.rows ?? []).map((r) => r.quote?.currency).filter((c): c is string => !!c))].sort(),
@@ -226,6 +227,8 @@ export function App() {
   const fetching = onPortfolio ? pf.isFetching || pfRefreshing : wl.isFetching || refresh.isPending;
   const generatedAt = onPortfolio ? pf.data?.generatedAt : view?.generatedAt;
   const refetchFailed = onPortfolio ? pf.isRefetchError : wl.isRefetchError;
+  const shownQuotes = onPortfolio ? Object.values(pf.data?.quotes ?? {}) : (view?.rows.map((r) => r.quote) ?? []);
+  const sources = fetching || refetchFailed ? null : <QuoteSources quotes={shownQuotes} />;
   const updateLabel = fetching ? 'Actualizando…'
     : refetchFailed ? `Sin conexión con el servidor · precios de ${timeAgo(generatedAt, now)}`
     : anyStale ? 'Sin conexión: datos guardados'
@@ -397,6 +400,7 @@ export function App() {
           >
             {updateLabel}
           </span>
+          {sources}
           <button
             type="button"
             className="btn"
@@ -441,7 +445,7 @@ export function App() {
         {listError && <p className="error-box" role="alert">{listError}</p>}
         {throttleMin != null && (
           <p className="notice" role="status">
-            Yahoo ha pedido ir más despacio. Mientras tanto ves los últimos precios guardados; se vuelve a consultar en{' '}
+            La fuente de precios ha pedido ir más despacio. Mientras tanto ves los últimos precios guardados; se vuelve a consultar en{' '}
             {throttleMin} min.
           </p>
         )}
@@ -458,7 +462,7 @@ export function App() {
           </Suspense>
         ) : (
           <>
-            {view && <Highlights rows={view.rows} base={base} onLocate={locateRow} quoteInfo={<>{updateLabel} {fxBadges}</>} />}
+            {view && <Highlights rows={view.rows} base={base} onLocate={locateRow} quoteInfo={<>{updateLabel} {sources} {fxBadges}</>} />}
 
             <div className="toolbar watchlist-toolbar">
               <div className="watchlist-desktop-filters">{filterControls}</div>
@@ -548,7 +552,7 @@ export function App() {
           </>
         )}
         <p className="footnote">
-          Cotizaciones: Yahoo Finance, Borsa Italiana / FIDA, Quefondos / VDOS, onvista y FT Markets. Consenso: Yahoo Finance. Los datos pueden tener retraso.
+          Cotizaciones: Yahoo Finance, Borsa Italiana / FIDA, Quefondos / VDOS, onvista y FT Markets. Composición de fondos: Financial Hub. Consenso: Yahoo Finance. Los datos pueden tener retraso.
           {!onPortfolio && <span className="watchlist-desktop-hint"> Doble clic en una fila para editarla.</span>}
         </p>
       </main>

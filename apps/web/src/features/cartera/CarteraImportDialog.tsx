@@ -1,7 +1,7 @@
 import {
   computeLedger, detectImportColumns, detectImportHeader, discoverImportInstruments, IMPORT_FIELDS,
   importMappingProblems, importOperationType, importOptionsSchema, instrumentInputSchema,
-  normalizeImportText, operationFingerprint, OPERATION_LABELS, OPERATION_TYPES, previewImport,
+  normalizeImportText, operationFingerprint, tickerFromSymbol, OPERATION_LABELS, OPERATION_TYPES, previewImport,
   type CarteraView, type ImportField, type ImportInstrument, type ImportOptions, type OperationType,
 } from '@watchlist/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -193,7 +193,7 @@ export function CarteraImportDialog({ view, onClose }: { view: CarteraView; onCl
         </>}
         {step === 'preview' && <>
           <h3>Valores del archivo</h3>
-          <p className="muted small">Revisa identificadores y divisas. Un ISIN puede servir de identificador. La cotización es opcional: deja el símbolo vacío si el valor no está en Yahoo; sus operaciones se guardarán igualmente.</p>
+          <p className="muted small">Revisa identificadores y divisas. Un ISIN puede servir de identificador. La cotización es opcional: déjala vacía si no se encuentra; sus operaciones se guardarán igualmente.</p>
           <details className="import-instruments" open={instruments.some((i) => !i.ticker || i.problem)}><summary>Revisar {instruments.length === 1 ? 'el valor y su cotización' : `${instruments.length} valores y sus cotizaciones`}</summary>
             {instruments.map((i, index) => <fieldset key={i.key} className="import-instrument"><legend>{i.name || i.key}</legend><div className="grid-3">
               <div className="field"><label htmlFor={`existing-${index}`}>Vincular a un valor de mi cartera</label><select id={`existing-${index}`} className="select" value={view.instruments.some((k) => k.ticker === i.ticker) ? i.ticker : ''} onChange={(e) => {
@@ -202,9 +202,9 @@ export function CarteraImportDialog({ view, onClose }: { view: CarteraView; onCl
               }}><option value="">Valor nuevo</option>{view.instruments.map((k) => <option key={k.ticker} value={k.ticker}>{k.name || k.ticker} · {k.ticker}</option>)}</select></div>
               <div className="field"><label htmlFor={`ticker-${index}`}>Identificador en la cartera</label><input id={`ticker-${index}`} value={i.ticker} maxLength={32} onChange={(e) => changeInstrument(i.key, { ticker: e.target.value.trim().toUpperCase() })} /></div>
               <div className="field"><label htmlFor={`currency-${index}`}>Divisa del valor</label><input id={`currency-${index}`} value={i.currency} maxLength={3} onChange={(e) => changeInstrument(i.key, { currency: e.target.value.toUpperCase() })} /></div>
-            </div><div className="field field--wide"><label htmlFor={`quote-${index}`}>Cotización en Yahoo (opcional)</label><SymbolPicker inputId={`quote-${index}`} value={i.symbol ?? ''} onChange={(symbol) => changeInstrument(i.key, { symbol: symbol || null })} onPick={(result) => {
+            </div><div className="field field--wide"><label htmlFor={`quote-${index}`}>Cotización (opcional)</label><SymbolPicker inputId={`quote-${index}`} value={i.symbol ?? ''} onChange={(symbol) => changeInstrument(i.key, { symbol: symbol || null })} onPick={(result) => {
               const known = view.instruments.find((k) => k.symbol === result.symbol);
-              changeInstrument(i.key, known ?? { symbol: result.symbol, ticker: i.ticker || result.symbol, name: i.name || result.name });
+              changeInstrument(i.key, known ?? { symbol: result.symbol, ticker: i.ticker || tickerFromSymbol(result.symbol), name: i.name || result.name });
             }} /></div>{i.problem && <p className="error-box">{i.problem}</p>}</fieldset>)}
           </details>
           <h3>Operaciones que se añadirán</h3>

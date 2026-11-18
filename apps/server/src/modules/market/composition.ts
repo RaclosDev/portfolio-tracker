@@ -1,4 +1,4 @@
-import type { FundComposition, FundHolding } from '@watchlist/shared';
+import { isinInSymbol, type FundComposition, type FundHolding } from '@watchlist/shared';
 import { isIsin } from './isin.ts';
 
 /*
@@ -26,9 +26,7 @@ const MAX_FULL_HOLDINGS = 2000;
 const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const isinOrNull = (v: unknown) => (typeof v === 'string' && isIsin(v) ? v.trim().toUpperCase() : null);
 
-/** ISIN que va dentro de un símbolo («XETRA:IE00B4L5Y983», «FT:IE00B03HCZ61:EUR» o el ISIN solo). */
-export const isinInSymbol = (symbol: string | null | undefined) =>
-  symbol?.toUpperCase().split(':').find((part) => isIsin(part)) ?? null;
+export { isinInSymbol };
 
 /** Descarta pesos imposibles y repetidos; null si lo que queda no parece una composición (suma más del 100 %). */
 export function cleanHoldings(raw: FundHolding[], asOf: string | null = null, max = MAX_HOLDINGS): SourceComposition | null {
@@ -129,7 +127,7 @@ export class FinancialHubComposition implements CompositionSource {
    * Fondo por ticker cuando no hay ISIN: solo cotizaciones con ese ticker exacto, preferidas las de su bolsa y
    * su divisa. Un mismo ticker puede ser de fondos distintos en bolsas distintas: si no queda uno solo, nada.
    */
-  private async fundIdByTicker(symbol: string | null): Promise<string | null> {
+  private async tickerHit(symbol: string | null): Promise<FhHit | null> {
     const t = tickerOf(symbol);
     if (!t) return null;
     const found = (await this.json(`/search?q=${encodeURIComponent(t.root)}&identifierLookup=true&types=fund,etf`)) as { data?: FhHit[] } | null;
@@ -140,13 +138,18 @@ export class FinancialHubComposition implements CompositionSource {
       const narrowed = want ? hits.filter((h) => str(h.matchedChild?.[field])?.toUpperCase() === want) : [];
       if (narrowed.length) hits = narrowed;
     }
-    const ids = new Set(hits.map((h) => String(h.id)));
-    return ids.size === 1 ? [...ids][0]! : null;
+    return new Set(hits.map((h) => String(h.id))).size === 1 ? hits[0]! : null;
+  }
+
+  /** ISIN de la clase que cotiza con ese símbolo (SEC0 en Xetra → IE000I8KRLL9); null si no es un fondo o ETF conocido. */
+  async isinOf(symbol: string): Promise<string | null> {
+    const hit = await this.tickerHit(symbol);
+    return isinOrNull(hit?.matchedChild?.isin) ?? isinOrNull(hit?.primary?.isin);
   }
 
   async getComposition({ isin, symbol }: CompositionRef) {
     const code = isin ?? isinInSymbol(symbol);
-    const id = code ? await this.fundId(code.toUpperCase()) : await this.fundIdByTicker(symbol);
+    const id = code ? await this.fundId(code.toUpperCase()) : await this.tickerHit(symbol).then((h) => (h ? String(h.id) : null));
     if (!id) return null;
     // Por páginas de 500 (el máximo de la API), siguiendo nextCursor, que va por peso de mayor a menor.
     const pages: unknown[] = [];

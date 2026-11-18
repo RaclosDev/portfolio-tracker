@@ -138,6 +138,14 @@ describe('composición de fondos', () => {
     expect(await fh.getComposition({ isin: null, symbol: 'SEMI' })).toBeNull();
   });
 
+  it('Financial Hub da el ISIN de la clase que cotiza con un ticker', async () => {
+    const fh = new FinancialHubComposition(vi.fn<typeof fetch>(async () => json({ data: [
+      { type: 'etf', id: '12746', primary: { isin: 'IE000I8KRLL9' }, matchedChild: { symbol: 'SEC0', exchange: 'XETR', currency: 'EUR', isin: 'IE000I8KRLL9' } },
+    ] })));
+    expect(await fh.isinOf('FT:SEC0:GER:EUR')).toBe('IE000I8KRLL9');
+    expect(await fh.isinOf('NVDA')).toBeNull();
+  });
+
   it('cada fuente pide solo lo que puede resolver', async () => {
     const fetcher = vi.fn<typeof fetch>(async () => json([{ name: 'Apple', isin: 'US0378331005', weight: 5 }]));
     expect(await new ExtraEtfComposition(fetcher).getComposition({ isin: null, symbol: 'IWDA.AS' })).toBeNull();

@@ -60,6 +60,8 @@ export interface SymbolSearchResult {
   name: string;
   exchange: string | null;
   type: string | null;
+  /** Si se conoce (al elegir el producto por su ISIN). */
+  isin?: string | null;
 }
 
 /** Un producto (acción, ETF, fondo…) identificado por su ISIN, sin elegir aún la bolsa. */

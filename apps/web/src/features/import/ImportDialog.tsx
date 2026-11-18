@@ -113,7 +113,7 @@ export function ImportDialog({ fileName, sheets, lists, defaultListId, defaultIn
       onDone(
         target,
         `Importados ${res.created + res.updated} valores: ${res.created} nuevos y ${res.updated} actualizados.` +
-          (missing ? ` ${missing} no se importaron porque no se encuentran en Yahoo.` : ''),
+          (missing ? ` ${missing} no se importaron porque no se encuentra su cotización.` : ''),
       );
     } catch (err) {
       setError(
@@ -135,7 +135,7 @@ export function ImportDialog({ fileName, sheets, lists, defaultListId, defaultIn
         <>
           <span className="muted small">
             {ready && `${toImport.length} de ${rows.length} valores listos`}
-            {quotesQ.isFetching && 'Comprobando los tickers en Yahoo…'}
+            {quotesQ.isFetching && 'Comprobando las cotizaciones…'}
           </span>
           <span className="spacer" />
           <button type="button" className="btn" onClick={onClose}>
@@ -218,7 +218,7 @@ export function ImportDialog({ fileName, sheets, lists, defaultListId, defaultIn
           </p>
           {missing > 0 && (
             <p className="notice" role="status">
-              {missing === 1 ? '1 ticker no se encuentra' : `${missing} tickers no se encuentran`} en Yahoo. Corrígelos en la
+              {missing === 1 ? '1 ticker no se encuentra' : `${missing} tickers no se encuentran`} en ninguna fuente de cotizaciones. Corrígelos en la
               tabla (p. ej. ITX.MC) o se quedarán fuera.
             </p>
           )}
@@ -227,7 +227,7 @@ export function ImportDialog({ fileName, sheets, lists, defaultListId, defaultIn
               <thead>
                 <tr>
                   <th>Ticker</th>
-                  <th>En Yahoo</th>
+                  <th>Cotización</th>
                   <th className="al-right">Compras</th>
                   <th className="al-right">Objetivo</th>
                   <th className="al-right">Invertir</th>

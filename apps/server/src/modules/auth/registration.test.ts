@@ -36,7 +36,8 @@ async function ownerLogin() {
 }
 const backup = async (cookie: string) => (await request(cookie, 'GET', '/api/backup')).json<Backup>();
 
-describe('registro público y datos por cuenta', () => {
+// Hashea contraseñas en cada registro: en el CI puede pasar de los 5 s por defecto.
+describe('registro público y datos por cuenta', { timeout: 20_000 }, () => {
   it('conserva los datos previos y separa listas, operaciones, ajustes y copias incluso con los mismos IDs', async () => {
     const owner = await ownerLogin();
     await services.lists.rename(1, 'Lista privada original');

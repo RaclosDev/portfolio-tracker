@@ -62,7 +62,7 @@ export const TOUR_STEPS: TourStep[] = [
           puedes forzarla con <strong>Actualizar</strong>.
         </p>
         <p className="muted">
-          Las bolsas europeas en Yahoo suelen ir unos 15 min retrasadas. El consenso de analistas se renueva cada 12 h.
+          Las bolsas europeas suelen ir unos 15 min retrasadas. El consenso de analistas se renueva cada 12 h.
         </p>
       </>
     ),

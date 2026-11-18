@@ -108,6 +108,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.post('/api/items', async (req, reply) => {
     const data = itemInputSchema.parse(req.body);
     if (!(await req.services.lists.byId(data.listId))) throw notFound('Lista');
+    data.isin ??= await req.services.isinOf(data.symbol);
     reply.code(201);
     return req.services.items.create(data);
   });
@@ -117,7 +118,11 @@ export async function registerRoutes(app: FastifyInstance) {
     if (!current) throw notFound('Valor');
     const patch = itemPatchSchema.parse(req.body);
     const { id: _id, createdAt, updatedAt, ...rest } = current;
-    return req.services.items.update(id, itemInputSchema.parse({ ...rest, ...patch }));
+    const data = itemInputSchema.parse({ ...rest, ...patch });
+    // Al cambiar de cotización, el ISIN anterior ya no vale si no se manda otro.
+    if (patch.symbol && patch.symbol !== current.symbol && patch.isin === undefined) data.isin = null;
+    data.isin ??= await req.services.isinOf(data.symbol);
+    return req.services.items.update(id, data);
   });
   app.delete('/api/items/:id', async (req, reply) => {
     const { id } = idParam.parse(req.params);

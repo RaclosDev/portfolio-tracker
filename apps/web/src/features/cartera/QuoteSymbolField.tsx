@@ -31,13 +31,13 @@ export function QuoteSymbolField({ inputId, value, onChange, onPick, onQuote }: 
       onPick?.(r);
     }} />
     <div className="field__help" role="status">
-      {symbol && checked !== symbol && <button type="button" className="link" onClick={() => setChecked(symbol)}>Comprobar símbolo</button>}
+      {symbol && checked !== symbol && <button type="button" className="link" onClick={() => setChecked(symbol)}>Comprobar cotización</button>}
       {symbol && checked === symbol && <>
         {result.isFetching ? 'Comprobando…' : result.isError ? 'No se han podido consultar los precios. Prueba de nuevo más tarde.' : quote?.price != null
           ? `${quote.name ?? symbol} · ${price(quote.price, quote.currency)}${quote.asOf ? ` · VL ${shortDate(quote.asOf)}` : ''}${quote.source ? ` · ${quote.source}` : ''}${quote.isin ? ` · ${quote.isin}` : ''}${quote.stale ? ' (último precio guardado)' : ''}`
           : result.isSuccess ? 'Las fuentes disponibles no devuelven precio. Revisa el código o busca por nombre.' : ''}
       </>}
     </div>
-    <span className="field__help">Primero se consulta Yahoo y después las fuentes alternativas con cobertura. En fondos, comprueba el ISIN, la clase y la divisa. Puedes dejarlo vacío para guardar sin cotización.</span>
+    <span className="field__help">Busca por nombre, ISIN o ticker y elige la bolsa. En fondos, comprueba el ISIN, la clase y la divisa. Puedes dejarlo vacío para guardar sin cotización.</span>
   </>;
 }

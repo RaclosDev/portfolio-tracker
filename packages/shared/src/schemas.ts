@@ -17,6 +17,9 @@ export const itemInputSchema = z.object({
     .min(1)
     .max(32)
     .transform((s) => s.toUpperCase()),
+  /** Ticker con el que se enseña (SEC0); si falta, se saca del símbolo de cotización. */
+  ticker: z.string().trim().max(32).transform((s) => s.toUpperCase() || null).nullable().default(null),
+  isin: z.string().trim().max(12).transform((s) => s.toUpperCase() || null).nullable().default(null),
   name: z.string().trim().max(120).nullable().default(null),
   buyPrices: z.array(price).max(MAX_BUY_LEVELS).default([]),
   brokerTarget: price.nullable().default(null),
@@ -42,6 +45,8 @@ export const itemPatchSchema = z.object({
     .min(1)
     .max(32)
     .transform((s) => s.toUpperCase()),
+  ticker: itemInputSchema.shape.ticker.removeDefault(),
+  isin: itemInputSchema.shape.isin.removeDefault(),
   name: z.string().trim().max(120).nullable(),
   buyPrices: z.array(price).max(MAX_BUY_LEVELS),
   brokerTarget: price.nullable(),
