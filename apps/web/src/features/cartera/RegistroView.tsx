@@ -1,7 +1,7 @@
 import { KNOWN_BROKERS, OPERATION_LABELS, OPERATION_TYPES, sortOperations, type Operation, type OperationType } from '@watchlist/shared';
 import { useMemo, useState } from 'react';
 import { useOperationMutations } from '../../api/hooks.ts';
-import { money, num, price, shortDate } from '../../lib/format.ts';
+import { money, num, qty, price, shortDate } from '../../lib/format.ts';
 import type { CarteraModel } from './model.ts';
 
 const PAGE = 200;
@@ -188,7 +188,7 @@ export function RegistroView({
                   <span className={`optype optype--${o.type}`}>{OPERATION_LABELS[o.type]}</span>
                   {o.type === 'split' && <span className="sub"> ×{num(o.splitRatio, 2)}</span>}
                 </td>
-                <td className="al-right num">{o.shares ? num(o.shares, Number.isInteger(o.shares) ? 0 : 3) : ''}</td>
+                <td className="al-right num">{o.shares ? qty(o.shares) : ''}</td>
                 <td className="al-right num">{o.price ? price(o.price, currencies.get(o.ticker) ?? 'EUR') : ''}</td>
                 <td className="al-right num col-amount">{o.amountEur ? money(o.amountEur, 'EUR', 2) : o.fees ? `−${money(o.fees, 'EUR', 2)}` : ''}</td>
                 <td className="al-right num small">

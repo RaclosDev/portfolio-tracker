@@ -155,7 +155,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
     e.preventDefault();
     setError(null);
     if (!t) return setError('Busca el valor por nombre, ISIN o ticker, o escribe su ticker.');
-    if (!/^[A-Za-z]{3}$/.test(currency)) return setError('Indica la divisa del precio (EUR, USD, GBP…).');
+    if ((trade || type === 'scrip') && !/^[A-Za-z]{3}$/.test(currency)) return setError('Indica la divisa del precio (EUR, USD, GBP…).');
     if (!quoteVerified && !withoutQuote) return setError('Comprueba la cotización o marca que quieres guardar sin precio actualizado.');
     if (trade && foreign && (fxN == null || fxN <= 0)) return setError(`Indica el cambio de la operación: cuántos ${currency} equivalían a 1 €.`);
     if (dayOrder.trim() && !/^[1-9]\d?$/.test(dayOrder.trim())) return setError('El orden en el día debe ser un número del 1 al 99.');
@@ -294,12 +294,12 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
               <span className="field__help">{known ? (known.name ?? known.symbol ?? ' ') : t ? 'Valor nuevo' : 'Se rellena al elegir el valor'}</span>
             </div>
           </div>
-          <div className="field">
+          {(trade || type === 'scrip') && <div className="field">
             <label htmlFor="op-currency">Divisa del precio</label>
             <input id="op-currency" list="op-currencies" maxLength={3} value={currency} onChange={(e) => { setCurrency(e.target.value.toUpperCase()); setFx(''); }} />
             <datalist id="op-currencies">{['EUR', 'USD', 'GBP', 'CHF', 'JPY', 'CAD'].map((c) => <option key={c} value={c} />)}</datalist>
             <span className="field__help">Se obtiene de la cotización. Comprueba que coincide con la clase y el mercado de tu compra.</span>
-          </div>
+          </div>}
         </fieldset>
 
         {transfer && <div className="field">

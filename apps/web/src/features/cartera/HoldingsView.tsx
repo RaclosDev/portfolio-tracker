@@ -1,7 +1,7 @@
 import type { ClosedRow, HoldingRow } from '@watchlist/shared';
 import { useSparklines1y } from '../../api/hooks.ts';
 import { Icon } from '../../components/Icon.tsx';
-import { MINOR_CURRENCY, money, num, pct, price, shortDate } from '../../lib/format.ts';
+import { MINOR_CURRENCY, money, num, qty, pct, price, shortDate } from '../../lib/format.ts';
 import { Sparkline } from '../watchlist/Sparkline.tsx';
 import { signed, type CarteraModel } from './model.ts';
 import { DataBar, SortTable, type Column } from './SortTable.tsx';
@@ -50,7 +50,7 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
       sort: (r) => r.ledger.shares,
       cell: (r) => (
         <div className="stack stack--right">
-          <span className="num">{num(r.ledger.shares, Number.isInteger(r.ledger.shares) ? 0 : 3)}</span>
+          <span className="num">{qty(r.ledger.shares)}</span>
           <span className="sub">
             {Object.entries(r.ledger.sharesByBroker)
               .filter(([, n]) => n > 1e-9)

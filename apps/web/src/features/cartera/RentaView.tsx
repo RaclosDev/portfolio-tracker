@@ -1,7 +1,7 @@
 import { OPERATION_LABELS, type TaxYear } from '@watchlist/shared';
 import { useState, type ReactNode } from 'react';
 import { exportRenta } from '../../lib/excel.ts';
-import { money, num, shortDate } from '../../lib/format.ts';
+import { money, qty, shortDate } from '../../lib/format.ts';
 import { signed, type CarteraModel } from './model.ts';
 
 const eur = (v: number | null | undefined) => money(v, 'EUR', 2);
@@ -154,7 +154,7 @@ export function RentaView({ model }: { model: CarteraModel }) {
                   </td>
                   <td className="num">{shortDate(s.date)}</td>
                   <td className="num small">{[...new Set(s.matches.map((m) => shortDate(m.buyDate)))].join(', ')}</td>
-                  <td className="al-right num">{num(s.shares, Number.isInteger(s.shares) ? 0 : 3)}</td>
+                  <td className="al-right num">{qty(s.shares)}</td>
                   <td className="al-right num">{eur(s.proceedsEur)}</td>
                   <td className="al-right num">{eur(s.taxCostEur)}</td>
                   <td className={`al-right num delta ${signed(s.taxGainEur)}`}>{eur(s.taxGainEur)}</td>

@@ -4,7 +4,7 @@ import { useCallback, useState, type FormEvent } from 'react';
 import { api } from '../../api/client.ts';
 import { useOperationMutations, usePortfolioComposition } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
-import { money, num, pct, price, share, shortDate } from '../../lib/format.ts';
+import { money, qty, pct, price, share, shortDate } from '../../lib/format.ts';
 import { HistoryChart, type RefLine } from '../detail/HistoryChart.tsx';
 import { signed, type CarteraModel } from './model.ts';
 import { DataBar } from './SortTable.tsx';
@@ -90,7 +90,7 @@ export function TickerDialog({
       <section className="highlights ticker-hl" aria-label="Resumen del valor">
         <div className="hl-cell">
           <p className="hl-label">Acciones</p>
-          <p className="hl-figure num">{num(t.shares, Number.isInteger(t.shares) ? 0 : 3)}</p>
+          <p className="hl-figure num">{qty(t.shares)}</p>
         </div>
         <div className="hl-cell">
           <p className="hl-label">Coste medio</p>
@@ -194,7 +194,7 @@ export function TickerDialog({
                   <tr key={l.id}>
                     <td className="num">{shortDate(l.date)}</td>
                     <td>{l.broker ?? '–'}</td>
-                    <td className="al-right num">{num(l.shares, Number.isInteger(l.shares) ? 0 : 3)}</td>
+                    <td className="al-right num">{qty(l.shares)}</td>
                     <td className="al-right num">{money(l.costEur, 'EUR', 2)}</td>
                     <td className="al-right num" title={l.deferredLossEur ? `Incluye ${money(l.deferredLossEur, 'EUR', 2)} de pérdida aplazada` : undefined}>
                       {money(l.taxCostEur, 'EUR', 2)}
@@ -262,7 +262,7 @@ export function TickerDialog({
                     {o.dayOrder != null && <span className="sub" title="Orden en el día"> ·{o.dayOrder}</span>}
                   </td>
                   <td>{OPERATION_LABELS[o.type]}</td>
-                  <td className="al-right num">{o.shares ? num(o.shares, Number.isInteger(o.shares) ? 0 : 3) : ''}</td>
+                  <td className="al-right num">{o.shares ? qty(o.shares) : ''}</td>
                   <td className="al-right num">{o.price ? price(o.price, row?.currency ?? inst?.currency ?? 'EUR') : ''}</td>
                   <td className="al-right num">{o.amountEur ? money(o.amountEur, 'EUR', 2) : ''}</td>
                   <td className={`al-right num delta ${signed(sale?.gainEur)}`}>{sale ? money(sale.gainEur, 'EUR', 2) : ''}</td>
