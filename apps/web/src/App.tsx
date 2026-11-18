@@ -17,6 +17,7 @@ import { applyAppearance, applyColors } from './lib/theme.ts';
 import { usePrompt } from './components/usePrompt.tsx';
 import { Icon } from './components/Icon.tsx';
 import { PushBanner } from './components/PushBanner.tsx';
+import { QuoteSources } from './components/QuoteSources.tsx';
 import { UpdateBanner } from './components/UpdateBanner.tsx';
 
 // Lo que no hace falta para pintar la lista va en trozos aparte, que se descargan al usarlos.
@@ -226,6 +227,8 @@ export function App() {
   const fetching = onPortfolio ? pf.isFetching || pfRefreshing : wl.isFetching || refresh.isPending;
   const generatedAt = onPortfolio ? pf.data?.generatedAt : view?.generatedAt;
   const refetchFailed = onPortfolio ? pf.isRefetchError : wl.isRefetchError;
+  const shownQuotes = onPortfolio ? Object.values(pf.data?.quotes ?? {}) : (view?.rows.map((r) => r.quote) ?? []);
+  const sources = fetching || refetchFailed ? null : <QuoteSources quotes={shownQuotes} />;
   const updateLabel = fetching ? 'Actualizando…'
     : refetchFailed ? `Sin conexión con el servidor · precios de ${timeAgo(generatedAt, now)}`
     : anyStale ? 'Sin conexión: datos guardados'
@@ -397,6 +400,7 @@ export function App() {
           >
             {updateLabel}
           </span>
+          {sources}
           <button
             type="button"
             className="btn"
@@ -458,7 +462,7 @@ export function App() {
           </Suspense>
         ) : (
           <>
-            {view && <Highlights rows={view.rows} base={base} onLocate={locateRow} quoteInfo={<>{updateLabel} {fxBadges}</>} />}
+            {view && <Highlights rows={view.rows} base={base} onLocate={locateRow} quoteInfo={<>{updateLabel} {sources} {fxBadges}</>} />}
 
             <div className="toolbar watchlist-toolbar">
               <div className="watchlist-desktop-filters">{filterControls}</div>

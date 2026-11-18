@@ -1419,3 +1419,8 @@ th.col-name { z-index: 2; background: var(--surface-2); }
   .renta-summary, .wl-table { font-size: var(--fs-2xs); }
   body { background: #fff; }
 }
+
+/* De dónde vienen los precios, junto a «Actualizado…» */
+.quote-sources { display: inline-flex; gap: 3px; cursor: help; }
+.quote-source { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 3px; border-radius: 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); background: color-mix(in oklab, var(--text-2), transparent 88%); }
+@media (max-width: 700px) { .topbar .quote-sources { display: none; } }
