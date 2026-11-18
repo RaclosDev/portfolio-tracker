@@ -16,6 +16,7 @@ import { EuronextCatalog } from './modules/market/euronext.catalog.ts';
 import { JustEtfProvider } from './modules/market/justetf.provider.ts';
 import { ExtraEtfComposition, FinancialHubComposition, FtComposition, OnvistaComposition, YahooComposition, type CompositionSource } from './modules/market/composition.ts';
 import { FallbackProvider } from './modules/market/fallback.provider.ts';
+import { FinancialHubProvider } from './modules/market/financialhub.provider.ts';
 import { PortfolioService } from './modules/portfolio/portfolio.service.ts';
 import { InstrumentsRepository, OperationsRepository } from './modules/portfolio/cartera.repository.ts';
 import { SettingsRepository, StateRepository } from './modules/settings/settings.repository.ts';
@@ -44,7 +45,7 @@ export function createServicesFromDb(
   const yahoo = opts.provider ? undefined : new YahooProvider();
   const financialHub = opts.provider ? undefined : new FinancialHubComposition();
   const market = opts.market ?? new MarketService(
-    opts.provider ?? new FallbackProvider([yahoo!, new BorsaProvider(), new QuefondosProvider(), onvista!, new JustEtfProvider(), new FtProvider()], log),
+    opts.provider ?? new FallbackProvider([new FinancialHubProvider(), yahoo!, new BorsaProvider(), new QuefondosProvider(), onvista!, new JustEtfProvider(), new FtProvider()], log),
     db,
     { quoteTtlMs: config.quoteTtlMs, targetsTtlMs: config.targetsTtlMs },
     log,
