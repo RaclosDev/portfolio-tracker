@@ -5,8 +5,10 @@ import { api } from '../../api/client.ts';
 import { price, shortDate } from '../../lib/format.ts';
 import { SymbolPicker } from '../items/SymbolPicker.tsx';
 
-export function QuoteSymbolField({ inputId, value, onChange, onPick, onQuote }: {
+export function QuoteSymbolField({ inputId, label = 'Cotización automática (opcional)', autoFocus, value, onChange, onPick, onQuote }: {
   inputId: string;
+  label?: string;
+  autoFocus?: boolean;
   value: string;
   onChange: (symbol: string) => void;
   onPick?: (result: SymbolSearchResult) => void;
@@ -24,8 +26,8 @@ export function QuoteSymbolField({ inputId, value, onChange, onPick, onQuote }: 
   const quote = checked === symbol ? result.data?.find((q) => q.symbol === symbol) : undefined;
   useEffect(() => { onQuote?.(quote?.price != null ? quote : null); }, [quote, onQuote]);
   return <>
-    <label htmlFor={inputId}>Cotización automática (opcional)</label>
-    <SymbolPicker inputId={inputId} value={value} onChange={onChange} onPick={(r) => {
+    <label htmlFor={inputId}>{label}</label>
+    <SymbolPicker inputId={inputId} autoFocus={autoFocus} value={value} onChange={onChange} onPick={(r) => {
       onChange(r.symbol);
       setChecked(r.symbol);
       onPick?.(r);
