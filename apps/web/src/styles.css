@@ -624,6 +624,7 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .badge--btn:hover { filter: brightness(1.15); text-decoration: underline; }
 
 .tag-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.cartera-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
 .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
 .segmented button { display: inline-flex; align-items: center; border: 0; background: transparent; padding: 6px 10px; font-size: var(--fs-xs); cursor: pointer; color: var(--text-2); }
 .segmented button + button { border-left: 1px solid var(--border); }

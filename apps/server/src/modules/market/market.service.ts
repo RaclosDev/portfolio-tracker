@@ -1,4 +1,4 @@
-import { shiftDate, type FundComposition, type AnalystTargets, type DailyHistory, type HistoryRange, type InstrumentHit, type Listing, type PricePoint, type Quote, type SymbolSearchResult } from '@watchlist/shared';
+import { isFundType, shiftDate, type FundComposition, type AnalystTargets, type DailyHistory, type HistoryRange, type InstrumentHit, type Listing, type PricePoint, type Quote, type SymbolSearchResult } from '@watchlist/shared';
 import type { Db } from '../../db/database.ts';
 import { isinCandidates, isIsin } from './isin.ts';
 import { queryWords, rankByWords, sameName, wordPairs, wordScore } from './words.ts';
@@ -244,6 +244,13 @@ export class MarketService {
    * que más palabras de la búsqueda tienen en el nombre.
    */
   async instruments(query: string): Promise<InstrumentHit[]> {
+    // Un símbolo con prefijo (FT:SEC0:GER:EUR, XETRA:IE00…) no es un nombre: buscarlo por palabras da productos
+    // que solo comparten «GER» o «EUR». Si lleva el ISIN se busca por él; si no, no hay producto que proponer.
+    if (/^[A-Z]+:\S+$/i.test(query.trim())) {
+      const isin = query.toUpperCase().split(':').find((part) => isIsin(part));
+      if (!isin) return [];
+      query = isin;
+    }
     const [catalog, tickers] = await Promise.all([
       this.catalog
         ? this.catalog.findInstruments(query).catch((err) => (this.log(`No se pudo buscar el producto «${query}»`, err), []))
@@ -253,7 +260,7 @@ export class MarketService {
     const fromTickers = tickers.flatMap((r) => {
       const isin = /^(?:FT:)?([A-Z]{2}[A-Z0-9]{9}\d)[.:][A-Z]+$/.exec(r.symbol)?.[1];
       // Yahoo marca estos símbolos de Stuttgart como fondo aunque sean ETC o acciones: mejor sin tipo que uno falso.
-      return isin && isIsin(isin) ? [{ isin, name: r.name, type: null }] : [];
+      return isin && isIsin(isin) ? [{ isin, name: r.name, type: r.symbol.startsWith('FT:') ? r.type : null }] : [];
     });
     const words = queryWords(query);
     const byIsin = new Map<string, InstrumentHit>();
@@ -283,18 +290,27 @@ export class MarketService {
    * de producto (Yahoo no encuentra por ISIN, p. ej., SGBS.MI ni GZURD.XD).
    */
   async listings(isin: string): Promise<Listing[]> {
+    let product: InstrumentHit | undefined;
     const [direct, figi, named] = await Promise.all([
       this.provider.search(isin).catch(() => [] as SymbolSearchResult[]),
       this.isinYahoo(isin),
-      this.instruments(isin).then(async ([product]) =>
-        product ? (await this.byName(product.name).catch(() => [])).filter((r) => sameName(r.name, product.name)) : [],
-      ),
+      this.instruments(isin).then(async ([hit]) => {
+        product = hit;
+        return hit ? (await this.byName(hit.name).catch(() => [])).filter((r) => sameName(r.name, hit.name)) : [];
+      }),
     ]);
     const bySymbol = new Map<string, SymbolSearchResult>();
     for (const r of [...direct, ...figi, ...named]) if (!bySymbol.has(r.symbol)) bySymbol.set(r.symbol, r);
     const found = [...bySymbol.values()].slice(0, 24);
     const quotes = await this.getQuotes(found.map((r) => r.symbol));
     return found
+      .filter((r) => {
+        const q = quotes.get(r.symbol);
+        // Con el mismo nombre es el mismo producto aunque la fuente lo clasifique distinto (un ETC como acción).
+        // Tampoco se duda de lo que traduce OpenFIGI, que va por ISIN y bolsa.
+        const trusted = figi.some((f) => f.symbol === r.symbol) || (!!product && (sameName(r.name, product.name) || (!!q?.name && sameName(q.name, product.name))));
+        return trusted || sameKind(product?.type ?? null, q?.quoteType ?? null, r.symbol.toUpperCase().startsWith(isin.toUpperCase()));
+      })
       .map((r) => {
         const q = quotes.get(r.symbol);
         const priceOnly = isVenueSymbol(r.symbol) || q?.source === 'onvista';
@@ -306,6 +322,7 @@ export class MarketService {
           priceOnly,
         };
       })
+      .filter(pricedLikeTheRest())
       .sort((a, b) => Number(a.priceOnly) - Number(b.priceOnly) || Number(b.price !== null) - Number(a.price !== null));
   }
 
@@ -480,4 +497,36 @@ export class MarketService {
       return undefined;
     }
   }
+}
+
+/**
+ * Las fuentes devuelven a veces por un ISIN algo que no es ese producto: una acción entre las bolsas de un ETF
+ * (o al revés). Los símbolos que llevan el propio ISIN se libran: Yahoo marca como fondo todo lo de Stuttgart.
+ */
+function sameKind(productType: string | null, quoteType: string | null, hasIsin: boolean): boolean {
+  if (!productType || !quoteType || hasIsin) return true;
+  const equity = (t: string) => t.toUpperCase() === 'EQUITY';
+  return !((isFundType(productType) && equity(quoteType)) || (equity(productType) && isFundType(quoteType)));
+}
+
+/**
+ * El mismo producto vale casi lo mismo en todas las bolsas de una divisa. Un precio que se aparta más de un 8 % de la
+ * mediana de su divisa es otro valor o un precio viejo que la fuente no marca (p. ej. 1NVDA.MI): se quita.
+ */
+function pricedLikeTheRest() {
+  let medians: Map<string, number> | null = null;
+  return (l: Listing, _i: number, all: Listing[]) => {
+    if (!medians) {
+      medians = new Map();
+      const byCurrency = new Map<string, number[]>();
+      for (const x of all) if (x.price !== null && x.currency) byCurrency.set(x.currency, [...(byCurrency.get(x.currency) ?? []), x.price]);
+      for (const [currency, prices] of byCurrency) {
+        if (prices.length < 3) continue;
+        prices.sort((a, b) => a - b);
+        medians.set(currency, prices[Math.floor(prices.length / 2)]!);
+      }
+    }
+    const median = l.currency ? medians.get(l.currency) : undefined;
+    return l.price === null || !median || Math.abs(l.price / median - 1) <= 0.08;
+  };
 }

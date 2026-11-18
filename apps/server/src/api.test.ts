@@ -353,6 +353,25 @@ describe('buscador en dos pasos', () => {
     catalog.findInstruments.mockRejectedValue(new Error('HTTP 503'));
     expect((await get('/api/market/instruments?q=oro')).json()).toEqual([]);
   });
+  it('un símbolo con prefijo no se busca por palabras, y de las bolsas se quita lo que no es el producto', async () => {
+    const catalog = { findInstruments: vi.fn(async (q: string) => q === ISIN ? [{ isin: ISIN, name: 'Swiss Gold', type: 'ETF' }] : [{ isin: 'DE000A0Q4RZ9', name: 'Otro ETF GER EUR', type: 'ETF' }]) };
+    const prices = [quote('SGBS.MI', 336.5, 'EUR'), quote('GZUR.DE', 336.2, 'EUR'), quote('SGBS.PA', 336, 'EUR'), quote('1SGBS.MI', 410, 'EUR'),
+      { ...quote('FT:DECK:NYQ', 81, 'USD'), name: 'Deckers Outdoor Corporation' }].map((q) => ({ ...q, name: q.symbol.startsWith('FT:') ? q.name : 'Swiss Gold' }));
+    const venues: MarketDataProvider = { id: 'bolsas',
+      getQuotes: async (symbols) => prices.filter((q) => symbols.includes(q.symbol)),
+      getTargets: async () => null, getHistory: async () => [],
+      search: async (q) => q === ISIN ? [...prices.map((p) => ({ symbol: p.symbol, name: p.name, exchange: 'Bolsa', type: 'ETF' }))] : [] };
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response('[]')));
+    await app.close();
+    app = await buildApp(createServicesFromDb(db, { provider: venues, catalog }));
+    // FT:SEC0:GER:EUR no lleva ISIN: no hay producto que proponer (antes salían los que tenían «GER» o «EUR» en el nombre).
+    expect((await get('/api/market/instruments?q=FT:SEC0:GER:EUR')).json()).toEqual([]);
+    expect((await get(`/api/market/instruments?q=XETRA:${ISIN}`)).json()).toEqual([{ isin: ISIN, name: 'Swiss Gold', type: 'ETF' }]);
+    const listings = (await get(`/api/market/listings?isin=${ISIN}`)).json();
+    vi.unstubAllGlobals();
+    // Fuera la acción colada entre las bolsas de un ETF y el precio que no cuadra con el resto de su divisa.
+    expect(listings.map((l: { symbol: string }) => l.symbol)).toEqual(['SGBS.MI', 'GZUR.DE', 'SGBS.PA']);
+  });
   it('un nombre largo sin resultados se busca por parejas de palabras y ordena por coincidencias', async () => {
     const search = vi.fn<MarketDataProvider['search']>(async (q) => q === 'swiss gold' ? [
       { symbol: 'ZGLD.SW', name: 'Swisscanto Gold ETF', exchange: 'Swiss', type: 'ETF' },

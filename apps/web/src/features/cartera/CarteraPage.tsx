@@ -1,11 +1,12 @@
-import type { Operation } from '@watchlist/shared';
+import { DEFAULT_TAG_NAMES, instrumentKind, type Operation } from '@watchlist/shared';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { money, pct } from '../../lib/format.ts';
 import { tabListKeys } from '../../lib/tabs.ts';
 import { PortfolioCharts } from './PortfolioCharts.tsx';
 import { ExposureView } from './ExposureView.tsx';
 import { ClosedView, HoldingsView } from './HoldingsView.tsx';
-import { signed, type CarteraModel } from './model.ts';
+import { buildModel, signed, type CarteraModel } from './model.ts';
+import { TagFilters, type TypeFilter } from '../watchlist/TagFilters.tsx';
 import { OperationDialog, type OperationDraft } from './OperationDialog.tsx';
 import { RegistroView } from './RegistroView.tsx';
 import { RentaView } from './RentaView.tsx';
@@ -198,8 +199,39 @@ interface Props {
   onDraftUsed?: () => void;
 }
 
+const FILTERS_KEY = 'cartera.filtros';
+
 /** Cartera real a partir del registro de operaciones (FIFO), con resumen, cerradas, registro y Renta. */
-export function CarteraPage({ model, isPending, error, onRetry, draft, onDraftUsed }: Props) {
+export function CarteraPage({ model: full, isPending, error, onRetry, draft, onDraftUsed }: Props) {
+  // Filtros de tipo y divisa: valen para todas las pestañas menos Renta (se declara todo) y se recuerdan.
+  const [filters, setFilters] = useState<{ type: TypeFilter; currency: string }>(() => {
+    try {
+      const f = JSON.parse(localStorage.getItem(FILTERS_KEY) ?? '{}') as { type?: TypeFilter; currency?: string };
+      return { type: f.type ?? 'all', currency: f.currency ?? 'all' };
+    } catch {
+      return { type: 'all', currency: 'all' };
+    }
+  });
+  useEffect(() => localStorage.setItem(FILTERS_KEY, JSON.stringify(filters)), [filters]);
+  const tagged = useMemo(() => {
+    const used = new Set(full?.view.operations.map((o) => o.ticker));
+    return (full?.view.instruments ?? []).filter((i) => used.has(i.ticker)).map((i) => {
+      const quote = i.symbol ? full!.view.quotes[i.symbol] : undefined;
+      return { ticker: i.ticker, kind: instrumentKind(i, quote?.quoteType), currency: quote?.currency ?? i.currency };
+    });
+  }, [full]);
+  const currencies = useMemo(() => [...new Set(tagged.map((t) => t.currency))].sort(), [tagged]);
+  const filtered = filters.type !== 'all' || filters.currency !== 'all';
+  const model = useMemo(() => {
+    if (!full || !filtered) return full;
+    const keep = new Set(
+      tagged
+        .filter((t) => (filters.type === 'all' || t.kind === filters.type) && (filters.currency === 'all' || t.currency === filters.currency))
+        .map((t) => t.ticker),
+    );
+    return buildModel({ ...full.view, operations: full.view.operations.filter((o) => keep.has(o.ticker)) });
+  }, [full, filtered, filters, tagged]);
+
   const [tab, setTab] = useState<Tab>(() => TABS.find((item) => item.id === localStorage.getItem(TAB_KEY))?.id ?? 'resumen');
   useEffect(() => localStorage.setItem(TAB_KEY, tab), [tab]);
   const [ticker, setTicker] = useState<string | null>(null);
@@ -220,8 +252,8 @@ export function CarteraPage({ model, isPending, error, onRetry, draft, onDraftUs
         {onRetry && <button type="button" className="btn" onClick={onRetry}>Reintentar</button>}
       </div>
     );
-  if (isPending || !model) return <p className="muted center">Cargando la cartera…</p>;
-  const empty = model.view.operations.length === 0;
+  if (isPending || !model || !full) return <p className="muted center">Cargando la cartera…</p>;
+  const empty = full.view.operations.length === 0;
   const reviewCount = model.view.operations.filter((o) => o.needsReview).length;
 
   return (
@@ -265,17 +297,34 @@ export function CarteraPage({ model, isPending, error, onRetry, draft, onDraftUs
         )}
       </div>
 
-      {model.ledger.issues.length > 0 && (
+      {!empty && tab !== 'renta' && (
+        <div className="cartera-filters no-print">
+          <TagFilters
+            type={filters.type}
+            onType={(type) => setFilters((f) => ({ ...f, type }))}
+            currency={filters.currency}
+            currencies={currencies}
+            onCurrency={(currency) => setFilters((f) => ({ ...f, currency }))}
+            names={{ ...DEFAULT_TAG_NAMES, equity: 'Acciones', etf: 'ETF' }}
+          />
+          {filtered && (
+            <button type="button" className="btn btn--ghost" onClick={() => setFilters({ type: 'all', currency: 'all' })}>
+              Quitar filtros
+            </button>
+          )}
+        </div>
+      )}
+      {full.ledger.issues.length > 0 && (
         <div className="error-box">
           El registro no cuadra:{' '}
-          {model.ledger.issues
+          {full.ledger.issues
             .slice(0, 3)
             .map((i) => `${i.ticker} ${i.date}: ${i.message}`)
             .join(' · ')}
         </div>
       )}
-      {model.ledger.inTransitEur > 0 && <p className="muted">
-        Hay {money(model.ledger.inTransitEur, 'EUR', 2)} en traspasos pendientes de entrada. Este importe está incluido en el valor de la cartera.
+      {full.ledger.inTransitEur > 0 && <p className="muted">
+        Hay {money(full.ledger.inTransitEur, 'EUR', 2)} en traspasos pendientes de entrada. Este importe está incluido en el valor de la cartera.
       </p>}
 
       <div role="tabpanel" id="cartera-panel" aria-labelledby={`cartera-tab-${tab}`}>
@@ -291,6 +340,8 @@ export function CarteraPage({ model, isPending, error, onRetry, draft, onDraftUs
             </button>
           </div>
         </div>
+      ) : filtered && tab !== 'renta' && model.view.operations.length === 0 ? (
+        <p className="muted center">Ningún valor de la cartera encaja con estos filtros.</p>
       ) : (
         <>
           {tab === 'resumen' && <ResumenView model={model} />}
@@ -298,14 +349,14 @@ export function CarteraPage({ model, isPending, error, onRetry, draft, onDraftUs
           {tab === 'exposicion' && <ExposureView model={model} onOpen={setTicker} />}
           {tab === 'cerradas' && <ClosedView model={model} onOpen={setTicker} />}
           {tab === 'registro' && <RegistroView model={model} onImport={() => setImporting(true)} onEdit={(op) => setEditing({ op })} />}
-          {tab === 'renta' && <RentaView model={model} />}
+          {tab === 'renta' && <RentaView model={full} />}
         </>
       )}
       </div>
 
       {ticker && !editing && (
         <TickerDialog
-          model={model}
+          model={full}
           ticker={ticker}
           onClose={() => setTicker(null)}
           onEditOperation={(op) => setEditing({ op })}
@@ -316,14 +367,15 @@ export function CarteraPage({ model, isPending, error, onRetry, draft, onDraftUs
         <OperationDialog
           operation={editing.op}
           draft={editing.draft}
-          instruments={model.view.instruments}
-          brokers={model.brokers}
+          // Un valor sin operaciones (se borraron) no manda: su símbolo guardado puede ser de otra cosa.
+          instruments={full.view.instruments.filter((i) => full.view.operations.some((o) => o.ticker === i.ticker))}
+          brokers={full.brokers}
           onClose={() => setEditing(null)}
         />
       )}
       {importing && (
         <Suspense fallback={null}>
-          <CarteraImportDialog view={model.view} onClose={() => setImporting(false)} />
+          <CarteraImportDialog view={full.view} onClose={() => setImporting(false)} />
         </Suspense>
       )}
     </div>

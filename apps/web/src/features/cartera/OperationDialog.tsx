@@ -46,15 +46,24 @@ const str = (v: number | null | undefined) => (v == null ? '' : String(v).replac
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /** Ticker que se propone para un símbolo de Yahoo (TEF.MC → TEF, GRF-P.MC → GRF.P). */
-export const tickerFromSymbol = (symbol: string) => symbol.toUpperCase().replace(/\.MC$/, '').replace(/-P$/, '.P');
+export const tickerFromSymbol = (symbol: string) => {
+  const s = symbol.trim().toUpperCase();
+  // Símbolo de FT con bolsa y divisa (FT:SEC0:GER:EUR): el ticker es su código, SEC0.
+  const ft = /^FT:([A-Z0-9.-]+):[A-Z]{3}(?::[A-Z]{3})?$/.exec(s);
+  if (ft && !/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(ft[1]!)) return ft[1]!;
+  return s.replace(/\.MC$/, '').replace(/-P$/, '.P');
+};
 
 /** Alta y edición de una operación del registro (compra, venta, dividendo…). */
 export function OperationDialog({ operation: op, draft, instruments, brokers, onClose }: Props) {
   const { save, remove } = useOperationMutations();
-  const initial = instruments.find((i) => i.ticker === (op?.ticker ?? draft?.ticker ?? '').trim().toUpperCase());
+  // Un borrador con símbolo («Lo he comprado») es del valor que ya se tiene con ese símbolo, se llame como se llame su ticker.
+  const initial =
+    (!op && draft?.symbol ? instruments.find((i) => i.symbol?.toUpperCase() === draft.symbol!.toUpperCase()) : undefined) ??
+    instruments.find((i) => i.ticker === (op?.ticker ?? draft?.ticker ?? '').trim().toUpperCase());
   const [type, setType] = useState<OperationType>(op?.type ?? draft?.type ?? 'buy');
   const [date, setDate] = useState(op?.date ?? draft?.date ?? localToday());
-  const [ticker, setTicker] = useState(op?.ticker ?? draft?.ticker ?? '');
+  const [ticker, setTicker] = useState(op?.ticker ?? (draft?.symbol ? initial?.ticker : undefined) ?? draft?.ticker ?? '');
   const [symbol, setSymbol] = useState<string | null>(initial?.symbol ?? draft?.symbol ?? null);
   const [name, setName] = useState(initial?.name ?? draft?.name ?? null);
   const [currency, setCurrency] = useState(initial?.currency ?? draft?.currency ?? 'EUR');
