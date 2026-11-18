@@ -1,10 +1,9 @@
-import type { TagNames, WatchlistRow } from '@watchlist/shared';
+import { kindOfQuoteType, type InstrumentKind, type TagNames, type WatchlistRow } from '@watchlist/shared';
 
-export type TypeFilter = 'all' | 'EQUITY' | 'ETF';
+export type TypeFilter = 'all' | 'EQUITY' | 'ETF' | 'FUND';
 
-/** Tipo de valor según el mercado: acción (EQUITY), ETF u otro. */
-export const rowType = (r: WatchlistRow): 'EQUITY' | 'ETF' | 'OTHER' =>
-  r.quote?.quoteType === 'ETF' ? 'ETF' : r.quote?.quoteType === 'EQUITY' ? 'EQUITY' : 'OTHER';
+/** Tipo de valor según el mercado: acción, ETF, fondo u otro. */
+export const rowType = (r: WatchlistRow): InstrumentKind => kindOfQuoteType(r.quote?.quoteType) ?? 'OTHER';
 
 interface Props {
   type: TypeFilter;
@@ -21,6 +20,7 @@ export function TagFilters({ type, onType, currency, currencies, onCurrency, nam
     { id: 'all', label: 'Todos' },
     { id: 'EQUITY', label: names.equity, title: 'Solo acciones' },
     { id: 'ETF', label: names.etf, title: 'Solo ETF' },
+    { id: 'FUND', label: 'Fondos', title: 'Solo fondos de inversión' },
   ];
   return (
     <div className="tag-filters">

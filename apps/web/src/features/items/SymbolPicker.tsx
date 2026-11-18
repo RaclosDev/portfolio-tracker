@@ -107,7 +107,6 @@ export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'sy
           setOpen(true);
           setActive(0);
         }}
-        onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => (setOpen(false), setProduct(null)), 150)}
         onKeyDown={(e) => {
           // Escape en las bolsas vuelve a los productos; en la lista de productos, la cierra.
@@ -118,6 +117,8 @@ export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'sy
             setActive(0);
             return;
           }
+          // La lista se abre al escribir o con la flecha: al entrar en un campo ya relleno no hay nada que elegir.
+          if (!open && e.key === 'ArrowDown') return (e.preventDefault(), setOpen(true));
           if (!showList) return;
           if (e.key === 'ArrowDown') {
             e.preventDefault();
