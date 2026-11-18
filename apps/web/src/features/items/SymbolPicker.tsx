@@ -1,5 +1,5 @@
 import type { InstrumentHit, Listing, SymbolSearchResult } from '@watchlist/shared';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useState } from 'react';
 import { api } from '../../api/client.ts';
 import { price } from '../../lib/format.ts';
@@ -12,6 +12,8 @@ function useDebounced<T>(value: T, ms: number) {
   }, [value, ms]);
   return v;
 }
+
+const LISTINGS_STALE = 5 * 60_000;
 
 interface Props {
   inputId?: string;
@@ -57,8 +59,9 @@ export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'sy
     queryKey: ['listings', product?.isin],
     queryFn: () => api.listings(product!.isin),
     enabled: open && !!product,
-    staleTime: 60_000,
+    staleTime: LISTINGS_STALE,
   });
+  const queryClient = useQueryClient();
 
   const options: Option[] = product
     ? [{ kind: 'back', key: 'back' }, ...(listings.data ?? []).map((listing) => ({ kind: 'listing' as const, key: `l:${listing.symbol}`, listing }))]
@@ -73,6 +76,15 @@ export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'sy
           ...all.filter((r) => !exact(r)).map(ticker),
         ];
       })();
+  // Las bolsas tardan un par de segundos en frío: se piden ya para el producto resaltado (o el primero), antes de elegirlo.
+  const highlighted = options[active];
+  const firstProduct = options.find((o) => o.kind === 'product');
+  const highlightedIsin = highlighted?.kind === 'product' ? highlighted.hit.isin : firstProduct?.kind === 'product' ? firstProduct.hit.isin : null;
+  useEffect(() => {
+    if (!highlightedIsin) return;
+    const t = setTimeout(() => void queryClient.prefetchQuery({ queryKey: ['listings', highlightedIsin], queryFn: () => api.listings(highlightedIsin), staleTime: LISTINGS_STALE }), 150);
+    return () => clearTimeout(t);
+  }, [highlightedIsin, queryClient]);
   const fetching = product ? listings.isFetching : tickers.isFetching || products.isFetching;
   const noResults = searching && !fetching && tickers.isFetched && options.length === 0;
   const showList = open && (options.length > 0 || noResults);
