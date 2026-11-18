@@ -16,6 +16,9 @@ describe('exposición real', () => {
     expect(companyKey('Taiwan Semiconductor Manufacturing Co Ltd ADR')).toBe(companyKey('TSMC'));
     expect(companyKey('Industria de Diseño Textil, S.A.')).toBe('industria de diseno textil');
     expect(companyKey('Apple Inc.')).not.toBe(companyKey('Applied Materials Inc.'));
+    expect(companyKey('Eli Lilly and Co')).toBe(companyKey('Eli Lilly'));
+    expect(companyKey('Amazon.com Inc')).toBe(companyKey('Amazon'));
+    expect(companyKey('Johnson & Johnson')).toBe('johnson johnson');
   });
 
   it('suma lo directo y lo que llevan los fondos, y deja aparte lo que no desglosan', () => {
