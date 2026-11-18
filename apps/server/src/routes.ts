@@ -260,8 +260,9 @@ export async function registerRoutes(app: FastifyInstance) {
     return [...(await req.services.market.getQuotes(list)).values()];
   });
   app.get('/api/market/fx', async (req) => {
-    const { currencies } = z.object({ currencies: z.string().min(1).max(100) }).parse(req.query);
-    return req.services.market.getFxRates((await req.services.settings.get()).baseCurrency, currencies.split(','));
+    const { currencies, date } = z.object({ currencies: z.string().min(1).max(100), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).parse(req.query);
+    const today = new Date().toISOString().slice(0, 10);
+    return req.services.market.getFxRates((await req.services.settings.get()).baseCurrency, currencies.split(','), date && date < today ? date : undefined);
   });
   // Históricos para la ficha de detalle y minigráficos de la tabla
   app.get('/api/market/history/:symbol', async (req) => {

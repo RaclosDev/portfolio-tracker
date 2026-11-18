@@ -49,7 +49,13 @@ function Totals({ model }: { model: CarteraModel }) {
         title="Resultado económico acumulado: latente + ganancias en ventas + cobros"
       />
       <Figure label="Valor actual en acciones" value={money(complete ? s.valueEur : null, 'EUR', 2)} title="Posiciones abiertas a precio de mercado. No incluye saldo en efectivo" />
-      <Figure label="TIR anual · desde el inicio" value={pct(s.xirr, 2)} delta={s.xirr} title="Rentabilidad anualizada del dinero invertido según las fechas de compras, ventas y cobros, y el valor actual de las acciones" />
+      {s.flowDays != null && s.flowDays < 365 && s.xirr != null ? (
+        // Con menos de un año no se anualiza (norma de presentación de rentabilidades): se enseña la del periodo.
+        <Figure label="Rentabilidad (TIR) · desde el inicio" value={pct((1 + s.xirr) ** (s.flowDays / 365) - 1, 2)} sub="sin anualizar" delta={s.xirr}
+          title="Rentabilidad del dinero invertido según las fechas de compras, ventas y cobros, y el valor actual. Con menos de un año de historia no se anualiza" />
+      ) : (
+        <Figure label="TIR anual · desde el inicio" value={pct(s.xirr, 2)} delta={s.xirr} title="Rentabilidad anualizada del dinero invertido según las fechas de compras, ventas y cobros, y el valor actual de las acciones" />
+      )}
       <Figure label="Cotización de hoy" value={money(complete ? s.dayChangeEur : null, 'EUR', 2)} sub={pct(complete ? s.dayChangePct : null, 2)} delta={s.dayChangeEur}
         title="Variación de precio de las acciones que tienes ahora, al cambio actual. No es el resultado diario de la cuenta ni incluye ventas o cobros de hoy" />
       {s.missing.length > 0 && (
@@ -360,7 +366,7 @@ export function CarteraPage({ model: full, isPending, error, onRetry, draft, onD
           ticker={ticker}
           onClose={() => setTicker(null)}
           onEditOperation={(op) => setEditing({ op })}
-          onAddOperation={(t) => setEditing({ op: null, draft: { ticker: t } })}
+          onAddOperation={(draft) => setEditing({ op: null, draft })}
         />
       )}
       {editing && (

@@ -49,6 +49,8 @@ export interface CarteraSummary {
   missing: string[];
   /** Rentabilidad anual (TIR) del dinero invertido, con el valor de hoy como si se vendiera. */
   xirr: number | null;
+  /** Días desde el primer movimiento de dinero: con menos de un año, la TIR no se debe anualizar. */
+  flowDays: number | null;
   /** Total invertido en compras desde el principio. */
   boughtEur: number;
 }
@@ -176,6 +178,7 @@ export function valueCartera(args: {
       totalEur: unrealizedEur + realizedEur + dividendsEur + otherIncomeEur,
       missing,
       xirr: missing.length ? null : xirr(flows),
+      flowDays: flows.length > 1 ? Math.round((Date.parse(today) - Math.min(...flows.map((f) => Date.parse(f.date)))) / DAY) : null,
       boughtEur: all.reduce((s, t) => s + t.boughtEur, 0),
     },
     bySector: [...sectors].map(([sector, v]) => ({ sector, valueEur: v })).sort((a, b) => b.valueEur - a.valueEur),

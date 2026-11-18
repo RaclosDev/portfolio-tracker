@@ -9,6 +9,7 @@ import { HistoryChart, type RefLine } from '../detail/HistoryChart.tsx';
 import { signed, type CarteraModel } from './model.ts';
 import { DataBar } from './SortTable.tsx';
 import { QuoteSymbolField } from './QuoteSymbolField.tsx';
+import type { OperationDraft } from './OperationDialog.tsx';
 
 /** Ficha de un valor de la cartera: datos editables, lotes FIFO abiertos, ventas, cobros y gráfico. */
 /** Posiciones del fondo que se ven sin desplegar la lista entera. */
@@ -25,7 +26,7 @@ export function TickerDialog({
   ticker: string;
   onClose: () => void;
   onEditOperation: (op: Operation) => void;
-  onAddOperation: (ticker: string) => void;
+  onAddOperation: (draft: OperationDraft) => void;
 }) {
   const t = model.ledger.byTicker.get(ticker);
   const row = [...model.valuation.open, ...model.valuation.closed].find((r) => r.ticker === ticker);
@@ -57,6 +58,7 @@ export function TickerDialog({
 
   if (!t) return null;
   const ops = sortOperations(model.view.operations.filter((o) => o.ticker === ticker)).reverse();
+  const lastBroker = ops.find((o) => o.broker)?.broker ?? null;
   const fx = row?.fxRate ?? 1;
   const known = composition?.holdings.reduce((s, h) => s + h.weight, 0) ?? 0;
   const avgNative = t.shares > 0 ? (t.costEur / t.shares) * fx : null;
@@ -211,8 +213,18 @@ export function TickerDialog({
           Operaciones ({ops.length})
         </h3>
         <span className="spacer" />
-        <button type="button" className="btn btn--small" onClick={() => onAddOperation(ticker)}>
-          Añadir operación
+        {t.shares > 0 && (
+          <>
+            <button type="button" className="btn btn--small" onClick={() => onAddOperation({ ticker, type: 'buy', broker: lastBroker })}>
+              Comprar más
+            </button>
+            <button type="button" className="btn btn--small" onClick={() => onAddOperation({ ticker, type: 'sell', shares: t.shares, broker: lastBroker })}>
+              Vender
+            </button>
+          </>
+        )}
+        <button type="button" className="btn btn--small" onClick={() => onAddOperation({ ticker })}>
+          Otra operación
         </button>
       </div>
       <div className="table-wrap ticker-ops">

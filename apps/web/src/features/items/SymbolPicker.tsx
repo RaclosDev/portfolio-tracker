@@ -62,12 +62,18 @@ export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'sy
 
   const options: Option[] = product
     ? [{ kind: 'back', key: 'back' }, ...(listings.data ?? []).map((listing) => ({ kind: 'listing' as const, key: `l:${listing.symbol}`, listing }))]
-    : [
-        ...(products.data ?? []).map((hit) => ({ kind: 'product' as const, key: `p:${hit.isin}`, hit })),
-        ...(tickers.data ?? []).map((result) => ({ kind: 'ticker' as const, key: `t:${result.symbol}`, result })),
-      ];
+    : (() => {
+        // Si escribes un ticker exacto (AAPL, SAN.MC), ese va el primero, antes que los productos que lo mencionan.
+        const exact = (r: SymbolSearchResult) => [r.symbol, r.symbol.replace(/\..*$/, '')].some((s) => s.toUpperCase() === q.toUpperCase());
+        const ticker = (result: SymbolSearchResult) => ({ kind: 'ticker' as const, key: `t:${result.symbol}`, result });
+        const all = tickers.data ?? [];
+        return [
+          ...all.filter(exact).map(ticker),
+          ...(products.data ?? []).map((hit) => ({ kind: 'product' as const, key: `p:${hit.isin}`, hit })),
+          ...all.filter((r) => !exact(r)).map(ticker),
+        ];
+      })();
   const fetching = product ? listings.isFetching : tickers.isFetching || products.isFetching;
-  const firstTicker = options.findIndex((o) => o.kind === 'ticker');
   const noResults = searching && !fetching && tickers.isFetched && options.length === 0;
   const showList = open && (options.length > 0 || noResults);
   const noListings = !!product && !listings.isFetching && options.length === 1;
@@ -83,8 +89,10 @@ export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'sy
 
   const heading = (o: Option, i: number) => {
     if (product) return null;
-    if (i === 0 && o.kind === 'product') return 'Productos: elige uno para ver dónde cotiza';
-    if (i === firstTicker && firstTicker > 0) return 'Tickers';
+    const prev = options[i - 1];
+    if (o.kind === 'product' && prev?.kind !== 'product') return 'Productos: elige uno para ver dónde cotiza';
+    if (o.kind === 'ticker' && prev?.kind === 'product') return 'Tickers';
+    if (o.kind === 'ticker' && i === 0 && options.some((x) => x.kind === 'product')) return 'Ticker exacto';
     return null;
   };
 
