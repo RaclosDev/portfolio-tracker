@@ -2,11 +2,11 @@ import type { FundComposition, FundHolding } from '@watchlist/shared';
 import { isIsin } from './isin.ts';
 
 /*
- * Composición de fondos y ETF: qué empresas llevan dentro y con qué peso. Ninguna fuente gratuita da la lista
- * completa, así que se guardan las mayores posiciones (las 10 primeras) que publica cada una. Se prueban en orden
- * y vale la primera que responde con datos coherentes:
- *   extraETF (ETF por ISIN, la más al día) → onvista (ETF y fondos por ISIN) → FT Markets (fondos y ETF, incluidos
- *   los españoles; sin ISIN los encuentra por el ticker o el código de Morningstar) → Yahoo (por su ticker).
+ * Composición de fondos y ETF: qué empresas llevan dentro y con qué peso. Se prueban en orden y vale la primera
+ * que responde con datos coherentes:
+ *   Financial Hub (cartera completa de Morningstar, fondos y ETF por ISIN) → extraETF (ETF por ISIN) → onvista
+ *   (ETF y fondos por ISIN) → FT Markets (fondos y ETF; sin ISIN los encuentra por el ticker o el código de
+ *   Morningstar) → Yahoo (por su ticker). Salvo Financial Hub, todas dan solo las 10 mayores posiciones.
  */
 export interface CompositionRef {
   isin: string | null;
@@ -21,6 +21,8 @@ export interface CompositionSource {
 
 const BROWSER = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36' };
 const MAX_HOLDINGS = 25;
+/** Con la cartera completa: un MSCI World son ~1.300 posiciones; de las 2.000 en adelante cada una pesa ~0 %. */
+const MAX_FULL_HOLDINGS = 2000;
 const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const isinOrNull = (v: unknown) => (typeof v === 'string' && isIsin(v) ? v.trim().toUpperCase() : null);
 
@@ -29,7 +31,7 @@ export const isinInSymbol = (symbol: string | null | undefined) =>
   symbol?.toUpperCase().split(':').find((part) => isIsin(part)) ?? null;
 
 /** Descarta pesos imposibles y repetidos; null si lo que queda no parece una composición (suma más del 100 %). */
-export function cleanHoldings(raw: FundHolding[], asOf: string | null = null): SourceComposition | null {
+export function cleanHoldings(raw: FundHolding[], asOf: string | null = null, max = MAX_HOLDINGS): SourceComposition | null {
   const seen = new Set<string>();
   const holdings: FundHolding[] = [];
   for (const h of raw) {
@@ -39,7 +41,7 @@ export function cleanHoldings(raw: FundHolding[], asOf: string | null = null): S
     holdings.push({ ...h, weight: Math.round(h.weight * 1e6) / 1e6 });
   }
   holdings.sort((a, b) => b.weight - a.weight);
-  const top = holdings.slice(0, MAX_HOLDINGS);
+  const top = holdings.slice(0, max);
   if (!top.length || top.reduce((s, h) => s + h.weight, 0) > 1.02) return null;
   return { holdings: top, asOf: asOf && /^\d{4}-\d{2}-\d{2}$/.test(asOf) ? asOf : null };
 }
@@ -49,6 +51,75 @@ async function get(fetcher: typeof fetch, url: string, accept: string, source: s
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`${source} HTTP ${res.status}`);
   return res;
+}
+
+// ── Financial Hub ───────────────────────────────────────────────────────────
+const FH_API = 'https://api.financial-hub.es';
+const FH_PAGE = 500;
+const FH_HEADERS = { Accept: 'application/json', 'User-Agent': 'watchlist (uso personal)' };
+interface FhHit { type?: unknown; id?: unknown; primary?: { isin?: unknown } | null; matchedChild?: { isin?: unknown } | null }
+
+/**
+ * Posiciones de `/funds/{id}/portfolio/holdings` (pesos en %, una o varias páginas). Cuentan acciones (E…), bonos
+ * (B…) y fondos cerrados cotizados (FC, p. ej. los trusts de Sprott): la liquidez, las divisas a plazo, los derivados
+ * y los fondos monetarios no son empresas y quedan como parte sin desglosar. Una misma empresa puede venir en varias
+ * líneas; se suman.
+ */
+export function parseFinancialHub(...pages: unknown[]): SourceComposition | null {
+  const blocks = pages as ({ data?: unknown; portfolioDate?: unknown } | null)[];
+  if (!blocks[0] || !Array.isArray(blocks[0].data)) return null;
+  const byKey = new Map<string, FundHolding>();
+  for (const row of blocks.flatMap((b) => (Array.isArray(b?.data) ? b.data : [])) as Record<string, unknown>[]) {
+    const name = str(row?.name);
+    const type = str(row?.holdingType)?.toUpperCase() ?? '';
+    if (!name || typeof row.weight !== 'number' || row.weight <= 0 || !/^(E|B|FC)/.test(type)) continue;
+    const isin = isinOrNull(row.isin);
+    const key = isin ?? name.toLowerCase();
+    const prev = byKey.get(key);
+    if (prev) prev.weight += row.weight / 100;
+    else byKey.set(key, { name, isin, ticker: null, weight: row.weight / 100 });
+  }
+  return cleanHoldings([...byKey.values()], str(blocks[0].portfolioDate), MAX_FULL_HOLDINGS);
+}
+
+/** API pública de Financial Hub (sin clave, con límites bajos): el ISIN lleva al fondo y el fondo a su cartera. */
+export class FinancialHubComposition implements CompositionSource {
+  readonly id = 'Financial Hub';
+  constructor(private fetcher: typeof fetch = fetch) {}
+
+  private async json(path: string): Promise<unknown> {
+    const res = await this.fetcher(`${FH_API}${path}`, { headers: FH_HEADERS, signal: AbortSignal.timeout(15_000) });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`${this.id} HTTP ${res.status}`);
+    return res.json();
+  }
+
+  /** Fondo que tiene esa clase: el ISIN puede ser el de la clase principal o el de otra (matchedChild). */
+  private async fundId(isin: string): Promise<string | null> {
+    const found = (await this.json(`/search?q=${isin}&identifierLookup=true&types=fund,etf`)) as { data?: FhHit[] } | null;
+    const hit = (found?.data ?? []).find(
+      (h) => (h?.type === 'fund' || h?.type === 'etf') && [h.primary?.isin, h.matchedChild?.isin].some((v) => isinOrNull(v) === isin),
+    );
+    return hit && /^\d+$/.test(String(hit.id)) ? String(hit.id) : null;
+  }
+
+  async getComposition({ isin, symbol }: CompositionRef) {
+    const code = isin ?? isinInSymbol(symbol);
+    const id = code && (await this.fundId(code.toUpperCase()));
+    if (!id) return null;
+    // Por páginas de 500 (el máximo de la API), siguiendo nextCursor, que va por peso de mayor a menor.
+    const pages: unknown[] = [];
+    let cursor: string | null = null;
+    do {
+      const page = (await this.json(
+        `/funds/${id}/portfolio/holdings?pageSize=${FH_PAGE}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+      )) as { nextCursor?: unknown } | null;
+      if (!page) break;
+      pages.push(page);
+      cursor = str(page.nextCursor);
+    } while (cursor && pages.length * FH_PAGE < MAX_FULL_HOLDINGS);
+    return parseFinancialHub(...pages);
+  }
 }
 
 // ── extraETF ────────────────────────────────────────────────────────────────

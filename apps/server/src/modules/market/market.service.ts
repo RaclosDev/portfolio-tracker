@@ -14,7 +14,8 @@ const HISTORY_TTL_MS = 60 * 60_000;
 const EMPTY_HISTORY_TTL_MS = 5 * 60_000;
 const PROFILE_TTL_MS = 30 * 24 * 60 * 60_000;
 /** Las gestoras publican la composición una vez al mes: una semana de caché; un día si ninguna fuente la tenía. */
-const COMPOSITION_KIND = 'holdings-v1';
+// v2: con Financial Hub llega la cartera completa; las guardadas antes solo tenían las 10 mayores.
+const COMPOSITION_KIND = 'holdings-v2';
 const COMPOSITION_TTL_MS = 7 * 24 * 60 * 60_000;
 const NO_COMPOSITION_TTL_MS = 24 * 60 * 60_000;
 /** Los minigráficos usan observaciones diarias o mensuales: se renuevan cada 3 h. */
@@ -440,7 +441,7 @@ export class MarketService {
 
   private compositionPending = new Map<string, Promise<FundComposition | null>>();
 
-  /** Mayores posiciones de un fondo o ETF, de la primera fuente que las tenga. null si ninguna lo conoce. */
+  /** Composición de un fondo o ETF, de la primera fuente que la tenga. null si ninguna lo conoce. */
   getComposition(ref: CompositionRef): Promise<FundComposition | null> {
     const key = (ref.isin ?? ref.symbol ?? '').toUpperCase();
     if (!key || !this.compositionSources.length) return Promise.resolve(null);

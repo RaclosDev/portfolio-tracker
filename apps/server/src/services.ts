@@ -14,7 +14,7 @@ import { OnvistaProvider } from './modules/market/onvista.provider.ts';
 import { FtProvider } from './modules/market/ft.provider.ts';
 import { EuronextCatalog } from './modules/market/euronext.catalog.ts';
 import { JustEtfProvider } from './modules/market/justetf.provider.ts';
-import { ExtraEtfComposition, FtComposition, OnvistaComposition, YahooComposition, type CompositionSource } from './modules/market/composition.ts';
+import { ExtraEtfComposition, FinancialHubComposition, FtComposition, OnvistaComposition, YahooComposition, type CompositionSource } from './modules/market/composition.ts';
 import { FallbackProvider } from './modules/market/fallback.provider.ts';
 import { PortfolioService } from './modules/portfolio/portfolio.service.ts';
 import { InstrumentsRepository, OperationsRepository } from './modules/portfolio/cartera.repository.ts';
@@ -49,7 +49,7 @@ export function createServicesFromDb(
     log,
     opts.catalog ?? (onvista && mergeCatalogs([onvista, new EuronextCatalog()], log)),
     opts.compositionSources ?? (yahoo
-      ? [new ExtraEtfComposition(), new OnvistaComposition(), new FtComposition(), new YahooComposition((symbol) => yahoo.topHoldings(symbol))]
+      ? [new FinancialHubComposition(), new ExtraEtfComposition(), new OnvistaComposition(), new FtComposition(), new YahooComposition((symbol) => yahoo.topHoldings(symbol))]
       : []),
   );
   const watchlist = new WatchlistService(lists, items, settings, market);

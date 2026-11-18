@@ -10,7 +10,7 @@ export interface FundHolding {
   weight: number;
 }
 
-/** Mayores posiciones de un fondo o ETF. Las fuentes gratuitas publican las 10 primeras, no la lista completa. */
+/** Posiciones de un fondo o ETF: la cartera completa (Financial Hub) o solo las mayores (las demás fuentes). */
 export interface FundComposition {
   holdings: FundHolding[];
   /** Fecha de la composición (AAAA-MM-DD) si la fuente la indica. */

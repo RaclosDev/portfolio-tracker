@@ -56,7 +56,7 @@ export function ExposureView({ model, onOpen }: { model: CarteraModel; onOpen: (
       id: 'funds',
       label: 'Vía fondos',
       align: 'right',
-      title: 'Parte que te toca por los fondos y ETF que la llevan entre sus mayores posiciones',
+      title: 'Parte que te toca por los fondos y ETF que la llevan en cartera',
       sort: (r) => r.fundsEur,
       cell: (r) => eur(r.fundsEur),
       total: eur(sum((r) => r.fundsEur)),
@@ -88,8 +88,8 @@ export function ExposureView({ model, onOpen }: { model: CarteraModel; onOpen: (
   return (
     <div className="exposure">
       <p className="muted exposure__note">
-        Suma lo que tienes en directo y lo que llevan dentro tus fondos y ETF. Las fuentes gratuitas solo publican las 10 mayores posiciones de cada
-        fondo, así que la parte «vía fondos» es un mínimo: el resto queda abajo, sin desglosar.
+        Suma lo que tienes en directo y lo que llevan dentro tus fondos y ETF. De la mayoría se conoce la cartera completa; de los que solo
+        se conocen sus mayores posiciones, la parte «vía fondos» es un mínimo. Lo que no se desglosa (liquidez, divisas o lo que falta) queda abajo.
         {compositions.isLoading && ' Cargando la composición de los fondos…'}
         {compositions.isError && ' No se ha podido cargar la composición de los fondos.'}
       </p>
@@ -124,7 +124,7 @@ export function ExposureView({ model, onOpen }: { model: CarteraModel; onOpen: (
                         <span className="sub">
                           {p.weight == null
                             ? compositions.isLoading ? 'Cargando su composición…' : 'Sin composición conocida'
-                            : `Fuera de sus mayores posiciones · ${origin(compositions.data?.[p.ticker])}`}
+                            : `Sin desglosar · ${origin(compositions.data?.[p.ticker])}`}
                         </span>
                       </span>
                     </td>
