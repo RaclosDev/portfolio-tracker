@@ -11,6 +11,7 @@ import {
   type OperationInput,
   type OperationType,
   type Quote,
+  type SymbolSearchResult,
 } from '@watchlist/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState, type FormEvent } from 'react';
@@ -20,6 +21,7 @@ import { Dialog } from '../../components/Dialog.tsx';
 import { toast } from '../../components/feedback.tsx';
 import { money, parseDecimal } from '../../lib/format.ts';
 import { QuoteSymbolField } from './QuoteSymbolField.tsx';
+import { proposeTicker } from './proposeTicker.ts';
 import { tradeTotal } from './tradeTotal.ts';
 
 /** Datos con los que abrir el alta (p. ej. «Lo he comprado» desde la lista de vigilancia). */
@@ -109,10 +111,24 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
     }
   }, []);
 
+  // Al elegir el valor en el buscador: si ya lo tienes, es ese; si es nuevo, se propone su ticker (salvo que hayas escrito uno).
+  const pickValue = (r: SymbolSearchResult) => {
+    const s = r.symbol.trim().toUpperCase();
+    const owned = instruments.find((i) => i.symbol?.toUpperCase() === s || (!!r.isin && i.isin === r.isin && !i.symbol));
+    if (owned) {
+      setTicker(owned.ticker);
+      setName(owned.name ?? r.name);
+      if (owned.currency) setCurrency(owned.currency);
+      return;
+    }
+    setName(r.name);
+    if (!t || known) setTicker(proposeTicker(s, instruments));
+  };
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!t) return setError('Indica el ticker.');
+    if (!t) return setError('Busca el valor por nombre, ISIN o ticker, o escribe su ticker.');
     if (!/^[A-Za-z]{3}$/.test(currency)) return setError('Indica la divisa del precio (EUR, USD, GBP…).');
     if (!quoteVerified && !withoutQuote) return setError('Comprueba la cotización o marca que quieres guardar sin precio actualizado.');
     if (trade && foreign && (fxN == null || fxN <= 0)) return setError(`Indica el cambio de la operación: cuántos ${currency} equivalían a 1 €.`);
@@ -197,10 +213,25 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
       <form id="op-form" className="form" onSubmit={submit} noValidate>
         <fieldset className="form__section">
           <legend>Operación</legend>
+          <div className="field field--wide">
+            <QuoteSymbolField
+              inputId="op-symbol"
+              label="Valor"
+              autoFocus={!op && !draft}
+              value={quoteSymbol}
+              onChange={(value) => { setSymbol(value); setName(null); setVerifiedSymbol(null); setWithoutQuote(false); }}
+              onPick={pickValue}
+              onQuote={acceptQuote}
+            />
+            {t && !quoteVerified && <label className="check">
+              <input type="checkbox" checked={withoutQuote} onChange={(e) => setWithoutQuote(e.target.checked)} />
+              Guardar sin precio actualizado (no se podrá valorar esta posición)
+            </label>}
+          </div>
           <div className="grid-3">
             <div className="field">
               <label htmlFor="op-type">Tipo</label>
-              <select id="op-type" className="select" value={type} onChange={(e) => setType(e.target.value as OperationType)} data-autofocus>
+              <select id="op-type" className="select" value={type} onChange={(e) => setType(e.target.value as OperationType)} data-autofocus={op ? true : undefined}>
                 {OPERATION_TYPES.map((k) => (
                   <option key={k} value={k}>
                     {OPERATION_LABELS[k]}
@@ -213,16 +244,19 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
               <input id="op-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
             <div className="field">
-              <label htmlFor="op-ticker">Ticker</label>
+              <label htmlFor="op-ticker">Ticker en tu cartera</label>
               <input id="op-ticker" list="op-tickers" value={ticker} onChange={(e) => {
                 setTicker(e.target.value);
                 const next = instruments.find((i) => i.ticker === e.target.value.trim().toUpperCase());
-                setSymbol(next?.symbol ?? null);
-                setName(next?.name ?? null);
-                setCurrency(next?.currency ?? 'EUR');
-                setVerifiedSymbol(null);
-                setWithoutQuote(false);
-                setFx('');
+                // Al elegir uno que ya tienes se trae su cotización; un ticker nuevo conserva la que se haya buscado.
+                if (next || instruments.some((i) => i.symbol && i.symbol === symbol)) {
+                  setSymbol(next?.symbol ?? null);
+                  setName(next?.name ?? null);
+                  setCurrency(next?.currency ?? 'EUR');
+                  setVerifiedSymbol(null);
+                  setWithoutQuote(false);
+                  setFx('');
+                }
               }} autoComplete="off" />
               <datalist id="op-tickers">
                 {instruments.map((i) => (
@@ -231,18 +265,9 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
                   </option>
                 ))}
               </datalist>
-              <span className="field__help">{known ? (known.name ?? known.symbol ?? ' ') : t ? 'Valor nuevo' : ' '}</span>
+              <span className="field__help">{known ? (known.name ?? known.symbol ?? ' ') : t ? 'Valor nuevo' : 'Se rellena al elegir el valor'}</span>
             </div>
           </div>
-          {t && (
-            <div className="field field--wide">
-              <QuoteSymbolField inputId="op-symbol" value={quoteSymbol} onChange={(value) => { setSymbol(value); setName(null); setVerifiedSymbol(null); setWithoutQuote(false); }} onPick={(r) => setName(r.name)} onQuote={acceptQuote} />
-              {!quoteVerified && <label className="check">
-                <input type="checkbox" checked={withoutQuote} onChange={(e) => setWithoutQuote(e.target.checked)} />
-                Guardar sin precio actualizado (no se podrá valorar esta posición)
-              </label>}
-            </div>
-          )}
           <div className="field">
             <label htmlFor="op-currency">Divisa del precio</label>
             <input id="op-currency" list="op-currencies" maxLength={3} value={currency} onChange={(e) => { setCurrency(e.target.value.toUpperCase()); setFx(''); }} />
