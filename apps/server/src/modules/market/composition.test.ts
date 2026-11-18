@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { migrate, openPGlite } from '../../db/database.ts';
 import {
-  cleanHoldings, ExtraEtfComposition, FtComposition, isinInSymbol, OnvistaComposition, parseExtraEtf, parseFtHoldings,
-  parseOnvistaHoldings, parseYahooHoldings, YahooComposition, type CompositionSource,
+  cleanHoldings, ExtraEtfComposition, FinancialHubComposition, FtComposition, isinInSymbol, OnvistaComposition, parseExtraEtf, parseFtHoldings,
+  parseFinancialHub, parseOnvistaHoldings, parseYahooHoldings, YahooComposition, type CompositionSource,
 } from './composition.ts';
 import { MarketService } from './market.service.ts';
 import type { MarketDataProvider } from './provider.ts';
@@ -54,6 +54,63 @@ describe('composición de fondos', () => {
     expect(parseYahooHoldings({ holdings: [{ symbol: 'NVDA', holdingName: 'NVIDIA Corp', holdingPercent: 0.2019 }] })).toEqual({
       holdings: [{ name: 'NVIDIA Corp', isin: null, ticker: 'NVDA', weight: 0.2019 }], asOf: null,
     });
+  });
+
+  it('lee la cartera completa de Financial Hub, sin liquidez ni divisas y sumando líneas repetidas', () => {
+    const row = (name: string, weight: number | null, holdingType: string, isin: string | null = null) => ({ name, weight, holdingType, isin });
+    expect(parseFinancialHub({ portfolioDate: '2026-11-12', data: [
+      row('Advanced Micro Devices Inc', 10.48, 'E', 'US0079031078'),
+      row('Taiwan Semiconductor Manufacturing Co Ltd', 8, 'E', 'TW0002330008'),
+      row('Taiwan Semiconductor Manufacturing Co Ltd', 0.5, 'ER', 'TW0002330008'),
+      row('USD - Spendable Cash', 0.88, 'C'),
+      row('TWD/USD Purchased', 0.17, 'CU'),
+      row('BlackRock ICS USD Liquidity Agency Inc', 0.13, 'FM', 'IE00B50QMP13'),
+      row('US Treasury 4% 2030', 1.2, 'BT', 'US91282CJL54'),
+      row('Sprott Physical Silver Trust', 4.26, 'FC', 'CA85207K1075'),
+      row('Futuros Divisas Eur/Usd', 0.01, 'CL'),
+      row('Sin peso', null, 'E'),
+    ] })).toEqual({
+      holdings: [
+        { name: 'Advanced Micro Devices Inc', isin: 'US0079031078', ticker: null, weight: 0.1048 },
+        { name: 'Taiwan Semiconductor Manufacturing Co Ltd', isin: 'TW0002330008', ticker: null, weight: 0.085 },
+        { name: 'Sprott Physical Silver Trust', isin: 'CA85207K1075', ticker: null, weight: 0.0426 },
+        { name: 'US Treasury 4% 2030', isin: 'US91282CJL54', ticker: null, weight: 0.012 },
+      ],
+      asOf: '2026-11-12',
+    });
+    // Pasa de las 25 que se guardan de las demás fuentes y junta las páginas.
+    const many = (from: number) => Array.from({ length: 400 }, (_, i) => row(`Empresa ${from + i}`, 0.1, 'E'));
+    expect(parseFinancialHub({ portfolioDate: '2026-11-12', data: many(0) }, { data: many(400) })?.holdings).toHaveLength(800);
+    expect(parseFinancialHub({ data: [] })).toBeNull();
+    expect(parseFinancialHub({ error: { code: 'NOT_FOUND' } })).toBeNull();
+  });
+
+  it('Financial Hub busca el fondo por el ISIN de cualquiera de sus clases y luego pide su cartera', async () => {
+    const urls: string[] = [];
+    const fetcher = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      urls.push(url.replace('https://api.financial-hub.es', ''));
+      if (url.includes('/search')) {
+        return json({ data: [
+          { type: 'stock', id: '1', primary: { isin: 'LU0996182563' } },
+          { type: 'fund', id: '200', primary: { isin: 'LU0996181599' }, matchedChild: { isin: 'LU0996182563' } },
+        ] });
+      }
+      if (!url.includes('cursor=')) return json({ portfolioDate: '2026-11-10', nextCursor: 'a/b=', data: [{ name: 'Apple Inc', isin: 'US0378331005', holdingType: 'E', weight: 5.7 }] });
+      return json({ portfolioDate: '2026-11-10', nextCursor: null, data: [{ name: 'Microsoft Corp', isin: 'US5949181045', holdingType: 'E', weight: 4.1 }] });
+    });
+    const fh = new FinancialHubComposition(fetcher);
+    expect((await fh.getComposition({ isin: null, symbol: 'XETRA:LU0996182563' }))?.holdings.map((h) => h.name)).toEqual(['Apple Inc', 'Microsoft Corp']);
+    expect(urls).toEqual([
+      '/search?q=LU0996182563&identifierLookup=true&types=fund,etf',
+      '/funds/200/portfolio/holdings?pageSize=500',
+      '/funds/200/portfolio/holdings?pageSize=500&cursor=a%2Fb%3D',
+    ]);
+    expect(await fh.getComposition({ isin: null, symbol: 'IWDA.AS' })).toBeNull();
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    const none = new FinancialHubComposition(vi.fn<typeof fetch>(async () => json({ data: [{ type: 'etf', id: '9', primary: { isin: 'IE00B4L5Y983' } }] })));
+    expect(await none.getComposition({ isin: 'IE00B3XXRP09', symbol: null })).toBeNull();
+    await expect(new FinancialHubComposition(vi.fn<typeof fetch>(async () => json({}, 429))).getComposition({ isin: 'IE00B4L5Y983', symbol: null })).rejects.toThrow(/429/);
   });
 
   it('cada fuente pide solo lo que puede resolver', async () => {

@@ -11,6 +11,9 @@ import { DataBar } from './SortTable.tsx';
 import { QuoteSymbolField } from './QuoteSymbolField.tsx';
 
 /** Ficha de un valor de la cartera: datos editables, lotes FIFO abiertos, ventas, cobros y gráfico. */
+/** Posiciones del fondo que se ven sin desplegar la lista entera. */
+const HOLDINGS_SHOWN = 25;
+
 export function TickerDialog({
   model,
   ticker,
@@ -49,6 +52,7 @@ export function TickerDialog({
   });
 
   const composition = usePortfolioComposition(t ? t.shares > 0 : false).data?.[ticker];
+  const [allHoldings, setAllHoldings] = useState(false);
   const valueEur = row && 'valueEur' in row ? row.valueEur : null;
 
   if (!t) return null;
@@ -115,7 +119,7 @@ export function TickerDialog({
       {composition && composition.holdings.length > 0 && (
         <>
           <h3 className="renta__h">
-            Qué lleva dentro · {composition.holdings.length} mayores posiciones
+            Qué lleva dentro · {composition.holdings.length} posiciones
             <span className="sub">
               {' '}
               {composition.source}
@@ -134,7 +138,7 @@ export function TickerDialog({
                 </tr>
               </thead>
               <tbody>
-                {composition.holdings.map((h) => (
+                {(allHoldings ? composition.holdings : composition.holdings.slice(0, HOLDINGS_SHOWN)).map((h) => (
                   <tr key={h.isin ?? h.name}>
                     <td>
                       {h.name}
@@ -148,6 +152,15 @@ export function TickerDialog({
                     <td className="al-right num">{valueEur != null ? money(valueEur * h.weight, 'EUR', 2) : '–'}</td>
                   </tr>
                 ))}
+                {!allHoldings && composition.holdings.length > HOLDINGS_SHOWN && (
+                  <tr>
+                    <td colSpan={3}>
+                      <button type="button" className="link-btn" onClick={() => setAllHoldings(true)}>
+                        Ver las {composition.holdings.length} posiciones
+                      </button>
+                    </td>
+                  </tr>
+                )}
                 <tr className="fund-holdings__rest">
                   <td className="muted">Resto sin desglosar</td>
                   <td className="al-right num">{share(Math.max(0, 1 - known), 2)}</td>
