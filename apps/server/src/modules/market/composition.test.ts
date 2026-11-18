@@ -84,6 +84,28 @@ describe('composición de fondos', () => {
       'funds/tearsheet/holdings?s=IE00B4L5Y983%3AEUR', 'searchapi/searchsecurities?query=IE00B4L5Y983', 'etfs/tearsheet/holdings?s=SWDA%3ALSE%3AGBX',
     ]);
   });
+
+  it('FT encuentra sin ISIN el fondo por su código de Morningstar y el ETF por su ticker y su bolsa', async () => {
+    const urls: string[] = [];
+    const fetcher = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      urls.push(url.split('/data/')[1]!);
+      if (url.includes('query=0P00016YQ5')) return json({ data: { security: [{ symbol: 'ES0112611001:EUR', assetClass: 'Funds' }, { symbol: 'ES0114764030:EUR', assetClass: 'Funds' }] } });
+      if (url.includes('query=VUSA')) return json({ data: { security: [{ symbol: 'VUSA:LSE:GBP', assetClass: 'ETFs' }, { symbol: 'VUSAX:AEX:EUR', assetClass: 'ETFs' }, { symbol: 'VUSA:AEX:EUR', assetClass: 'ETFs' }] } });
+      if (url.includes('searchsecurities')) return json({ data: { security: [{ symbol: 'SAN:MCE', assetClass: 'Equities' }] } });
+      return new Response(ftPage(ftRow('Barrick Mining Corporation', 'ABX:TOR', '6.39%')));
+    });
+    const ft = new FtComposition(fetcher);
+    expect((await ft.getComposition({ isin: null, symbol: '0P00016YQ5.F' }))?.holdings[0]).toMatchObject({ name: 'Barrick Mining Corporation', weight: 0.0639 });
+    expect(await ft.getComposition({ isin: null, symbol: 'VUSA.AS' })).not.toBeNull();
+    expect(await ft.getComposition({ isin: null, symbol: 'SAN.MC' })).toBeNull();
+    expect(await ft.getComposition({ isin: null, symbol: 'XETRA:SIN-ISIN' })).toBeNull();
+    expect(urls).toEqual([
+      'searchapi/searchsecurities?query=0P00016YQ5', 'funds/tearsheet/holdings?s=ES0112611001%3AEUR',
+      'searchapi/searchsecurities?query=VUSA', 'etfs/tearsheet/holdings?s=VUSA%3AAEX%3AEUR',
+      'searchapi/searchsecurities?query=SAN',
+    ]);
+  });
 });
 
 // Cada caso abre su propia base PGlite: con toda la batería en paralelo tarda más que el límite por defecto.

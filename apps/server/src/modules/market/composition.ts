@@ -6,7 +6,7 @@ import { isIsin } from './isin.ts';
  * completa, así que se guardan las mayores posiciones (las 10 primeras) que publica cada una. Se prueban en orden
  * y vale la primera que responde con datos coherentes:
  *   extraETF (ETF por ISIN, la más al día) → onvista (ETF y fondos por ISIN) → FT Markets (fondos y ETF, incluidos
- *   los españoles) → Yahoo (por su ticker, para lo que no tiene ISIN).
+ *   los españoles; sin ISIN los encuentra por el ticker o el código de Morningstar) → Yahoo (por su ticker).
  */
 export interface CompositionRef {
   isin: string | null;
@@ -133,6 +133,10 @@ export function parseFtHoldings(html: string): SourceComposition | null {
   return cleanHoldings(holdings, asOf);
 }
 
+/** Bolsa de FT que corresponde al sufijo del ticker de Yahoo. */
+const FT_EXCHANGE: Record<string, string> = { AS: 'AEX', L: 'LSE', DE: 'GER', MI: 'MIL', PA: 'PAR', SW: 'SWX', MC: 'MCE' };
+interface FtSecurity { symbol?: unknown; assetClass?: unknown }
+
 export class FtComposition implements CompositionSource {
   readonly id = 'FT Markets';
   constructor(private fetcher: typeof fetch = fetch) {}
@@ -142,12 +146,37 @@ export class FtComposition implements CompositionSource {
     return res ? parseFtHoldings(await res.text()) : null;
   }
 
+  private async search(query: string): Promise<FtSecurity[]> {
+    const res = await get(this.fetcher, `https://markets.ft.com/data/searchapi/searchsecurities?query=${encodeURIComponent(query)}`, 'application/json', this.id);
+    const data = res ? ((await res.json()) as { data?: { security?: FtSecurity[] } }) : null;
+    return Array.isArray(data?.data?.security) ? data.data.security : [];
+  }
+
   /** Los ETF se piden con su símbolo de bolsa (SWDA:LSE:GBX), que da el buscador de FT a partir del ISIN. */
   private async etfSymbol(isin: string): Promise<string | null> {
-    const res = await get(this.fetcher, `https://markets.ft.com/data/searchapi/searchsecurities?query=${isin}`, 'application/json', this.id);
-    const data = res ? ((await res.json()) as { data?: { security?: { symbol?: unknown; assetClass?: unknown }[] } }) : null;
-    const list = Array.isArray(data?.data?.security) ? data.data.security : [];
-    return str(list.find((s) => s?.assetClass === 'ETFs')?.symbol);
+    return str((await this.search(isin)).find((s) => s?.assetClass === 'ETFs')?.symbol);
+  }
+
+  /**
+   * Sin ISIN, a partir del ticker de Yahoo: el buscador de FT reconoce el código de Morningstar de un fondo
+   * («0P00016YQ5.F») y el ticker de un ETF («VUSA.AS»). Así la composición no depende de Yahoo.
+   */
+  private async byTicker(symbol: string): Promise<SourceComposition | null> {
+    const [root = '', suffix] = symbol.toUpperCase().split('.');
+    if (!/^[A-Z0-9]{2,12}$/.test(root)) return null;
+    const list = await this.search(root);
+    if (/^0P[0-9A-Z]{8}$/.test(root)) {
+      // La búsqueda es aproximada: solo vale el primer resultado, que es el del código exacto.
+      const first = list[0]?.assetClass === 'Funds' ? str(list[0].symbol) : null;
+      return first ? this.page('funds', first) : null;
+    }
+    const symbols = (assetClass: string) => list.flatMap((s) => (s?.assetClass === assetClass && str(s.symbol) ? [str(s.symbol)!] : []));
+    const etfs = symbols('ETFs').filter((s) => s.startsWith(`${root}:`));
+    const exchange = suffix ? FT_EXCHANGE[suffix] : undefined;
+    const etf = (exchange && etfs.find((s) => s.split(':')[1] === exchange)) || etfs[0];
+    if (etf) return this.page('etfs', etf);
+    const fund = symbols('Funds').find((s) => s === root);
+    return fund ? this.page('funds', fund) : null;
   }
 
   async getComposition({ isin, symbol }: CompositionRef) {
@@ -157,7 +186,10 @@ export class FtComposition implements CompositionSource {
       const direct = (await this.page('etfs', own)) ?? (await this.page('funds', own));
       if (direct || !isin) return direct;
     }
-    if (!isin) return own ? this.page('funds', own) : null;
+    if (!isin) {
+      if (own) return this.page('funds', own);
+      return symbol && !symbol.includes(':') ? this.byTicker(symbol) : null;
+    }
     const currency = (ownIsin && own!.split(':')[1]) || 'EUR';
     const fund = await this.page('funds', `${isin}:${currency}`);
     if (fund) return fund;

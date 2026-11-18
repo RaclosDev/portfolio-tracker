@@ -51,7 +51,7 @@ export interface Exposure {
 const NOISE = new Set([
   'inc', 'incorporated', 'corp', 'corporation', 'co', 'company', 'ltd', 'limited', 'plc', 'sa', 'se', 'nv', 'ag', 'spa',
   'asa', 'ab', 'oyj', 'kgaa', 'adr', 'ads', 'reg', 'registered', 'shs', 'ordinary', 'shares', 'the', 'holding', 'holdings',
-  'group', 'class', 'namen', 'aktie', 'aktien', 'sponsored', 'com', 'cl',
+  'group', 'class', 'namen', 'aktie', 'aktien', 'sponsored', 'com', 'cl', 'ord',
 ]);
 /** Empresas que cada fuente nombra de forma distinta. */
 const ALIASES: [RegExp, string][] = [
@@ -59,6 +59,7 @@ const ALIASES: [RegExp, string][] = [
   [/\balphabet\b/, 'alphabet'],
   [/\bberkshire hathaway\b/, 'berkshire hathaway'],
   [/\basml\b/, 'asml'],
+  [/^amazon(com)?\b/, 'amazon'],
 ];
 
 /** Nombre reducido a lo que identifica a la empresa: «NVIDIA Corp.» y «Nvidia» son la misma. */
@@ -75,6 +76,8 @@ export function companyKey(name: string): string {
   const alias = ALIASES.find(([re]) => re.test(plain));
   if (alias) return alias[1];
   const words = plain.split(' ').filter((w) => w && !NOISE.has(w));
+  // «Eli Lilly and Co» queda en «eli lilly and»: la conjunción suelta del final sobra.
+  while (words.length > 1 && words.at(-1) === 'and') words.pop();
   return (words.length ? words : plain.split(' ')).join(' ');
 }
 

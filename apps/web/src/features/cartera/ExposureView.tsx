@@ -1,4 +1,4 @@
-import { computeExposure, type ExposurePart, type ExposureRow } from '@watchlist/shared';
+import { computeExposure, type ExposurePart, type ExposureRow, type FundComposition } from '@watchlist/shared';
 import { useMemo } from 'react';
 import { usePortfolioComposition } from '../../api/hooks.ts';
 import { money, share } from '../../lib/format.ts';
@@ -27,6 +27,10 @@ function Parts({ parts, onOpen }: { parts: ExposurePart[]; onOpen: (ticker: stri
     </span>
   );
 }
+
+/** De dónde sale la composición de un fondo y de cuándo es: algunas fuentes la publican con meses de retraso. */
+const origin = (c: FundComposition | null | undefined) =>
+  c ? `${c.source}${c.asOf ? `, a ${c.asOf.split('-').reverse().join('/')}` : ''}` : '';
 
 /** Lo que se tiene de cada empresa sumando las acciones directas y las que llevan dentro los fondos y ETF. */
 export function ExposureView({ model, onOpen }: { model: CarteraModel; onOpen: (ticker: string) => void }) {
@@ -117,7 +121,11 @@ export function ExposureView({ model, onOpen }: { model: CarteraModel; onOpen: (
                     <td>
                       <span className="stack">
                         <span className="name">{p.name}</span>
-                        <span className="sub">{p.weight == null ? 'Sin composición conocida' : 'Fuera de sus mayores posiciones'}</span>
+                        <span className="sub">
+                          {p.weight == null
+                            ? compositions.isLoading ? 'Cargando su composición…' : 'Sin composición conocida'
+                            : `Fuera de sus mayores posiciones · ${origin(compositions.data?.[p.ticker])}`}
+                        </span>
                       </span>
                     </td>
                     <td className="al-right num">{money(p.eur, 'EUR', 2)}</td>

@@ -1,7 +1,6 @@
 import type { DailyHistory, HistoryRange, PricePoint } from '@watchlist/shared';
 import YahooFinance from 'yahoo-finance2';
 import { errorSummary, type MarketDataProvider } from './provider.ts';
-import { probeYahoo, type ProbeStep } from './yahoo.probe.ts';
 
 const n = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const s = (v: unknown): string | null => (typeof v === 'string' && v.length ? v : null);
@@ -129,7 +128,6 @@ export class YahooProvider implements MarketDataProvider {
   readonly id = 'yahoo';
   private yf: YahooClient;
   constructor(client?: YahooClient) {
-    this.probeEnabled = !client;
     this.yf = client ?? new YahooFinance({ suppressNotices: ['yahooSurvey'],
       fetch: (input, init) => {
         const headers = new Headers(init?.headers);
@@ -244,17 +242,8 @@ export class YahooProvider implements MarketDataProvider {
   private quoteError: { at: string; message: string } | null = null;
   private chartError: { at: string; message: string } | null = null;
 
-  /** Diagnóstico temporal de la credencial: se lanza una vez por arranque, con la primera consulta de estado. */
-  private probeEnabled: boolean;
-  private probe: ProbeStep[] | 'en curso' | null = null;
-
   diagnostics() {
-    if (this.probeEnabled && !this.probe) {
-      this.probe = 'en curso';
-      void probeYahoo().then((steps) => { this.probe = steps; });
-    }
     return {
-      probe: this.probe,
       quotesByChartUntil: this.quoteBlockedUntil > Date.now() ? new Date(this.quoteBlockedUntil).toISOString() : null,
       quoteError: this.quoteError,
       chartError: this.chartError,
