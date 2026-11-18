@@ -1,8 +1,9 @@
 import { computeExposure, type ExposurePart, type ExposureRow, type FundComposition } from '@watchlist/shared';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { usePortfolioComposition } from '../../api/hooks.ts';
 import { money, share } from '../../lib/format.ts';
 import type { CarteraModel } from './model.ts';
+import { DIRECT, exposureSources, filterExposure, NO_FILTER, type ExposureFilter } from './exposureFilter.ts';
 import { DataBar, SortTable, type Column } from './SortTable.tsx';
 
 const eur = (v: number) => <span className="num">{v ? money(v, 'EUR', 2) : '–'}</span>;
@@ -36,8 +37,15 @@ const origin = (c: FundComposition | null | undefined) =>
 export function ExposureView({ model, onOpen }: { model: CarteraModel; onOpen: (ticker: string) => void }) {
   const compositions = usePortfolioComposition(model.valuation.open.length > 0);
   const exposure = useMemo(() => computeExposure(model.valuation.open, compositions.data ?? {}), [model.valuation.open, compositions.data]);
-  const max = Math.max(0, ...exposure.rows.map((r) => r.totalEur));
-  const sum = (f: (r: ExposureRow) => number) => exposure.rows.reduce((s, r) => s + f(r), 0);
+  const [filter, setFilter] = useState<ExposureFilter>(NO_FILTER);
+  const sources = useMemo(() => exposureSources(exposure.rows), [exposure.rows]);
+  const shown = useMemo(() => filterExposure(exposure.rows, exposure.totalEur, filter), [exposure, filter]);
+  const filtered = JSON.stringify(filter) !== JSON.stringify(NO_FILTER);
+  const set = (patch: Partial<ExposureFilter>) => setFilter((f) => ({ ...f, ...patch }));
+  const toggleSource = (id: string) =>
+    set({ sources: filter.sources.includes(id) ? filter.sources.filter((s) => s !== id) : [...filter.sources, id] });
+  const max = Math.max(0, ...shown.map((r) => r.totalEur));
+  const sum = (f: (r: ExposureRow) => number) => shown.reduce((s, r) => s + f(r), 0);
 
   const columns: Column<ExposureRow>[] = [
     {
@@ -93,8 +101,52 @@ export function ExposureView({ model, onOpen }: { model: CarteraModel; onOpen: (
         {compositions.isLoading && ' Cargando la composición de los fondos…'}
         {compositions.isError && ' No se ha podido cargar la composición de los fondos.'}
       </p>
+      <div className="toolbar exposure-filters">
+        <input
+          type="search"
+          className="search"
+          placeholder="Buscar empresa o ISIN"
+          aria-label="Buscar empresa"
+          value={filter.q}
+          onChange={(e) => set({ q: e.target.value })}
+        />
+        <label className="exposure-filters__check" title="Empresas que tienes por dos o más vías: en directo y en fondos, o en varios fondos">
+          <input type="checkbox" checked={filter.repeated} onChange={(e) => set({ repeated: e.target.checked })} /> Solo repetidas
+        </label>
+        <select className="select" aria-label="Importe mínimo" value={filter.minEur} onChange={(e) => set({ minEur: Number(e.target.value) })}>
+          {[0, 10, 50, 100, 500, 1000].map((v) => (
+            <option key={v} value={v}>
+              {v ? `Desde ${money(v, 'EUR', 0)}` : 'Cualquier importe'}
+            </option>
+          ))}
+        </select>
+        <span className="muted exposure-filters__count">
+          {shown.length === exposure.rows.length ? `${shown.length} empresas` : `${shown.length} de ${exposure.rows.length} empresas`}
+        </span>
+        {filtered && (
+          <button type="button" className="btn btn--ghost btn--small" onClick={() => setFilter(NO_FILTER)}>
+            Quitar filtros
+          </button>
+        )}
+      </div>
+      {sources.length > 1 && (
+        <div className="exposure-parts exposure-filters__sources" role="group" aria-label="Filtrar por origen">
+          {sources.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={`exposure-part${filter.sources.includes(s.id) ? ' on' : ''}`}
+              aria-pressed={filter.sources.includes(s.id)}
+              title={`${s.name}: ${money(s.eur, 'EUR', 2)}. Al marcarlo, los importes son solo lo que viene de aquí.`}
+              onClick={() => toggleSource(s.id)}
+            >
+              <span className={s.id === DIRECT ? '' : 'ticker'}>{s.label}</span> <span className="num sub">{money(s.eur, 'EUR', 0)}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <SortTable
-        rows={exposure.rows}
+        rows={shown}
         columns={columns}
         rowKey={(r) => r.key}
         storageKey="watchlist.cartera.orden.exposicion"

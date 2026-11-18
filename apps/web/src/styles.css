@@ -1424,3 +1424,9 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .quote-sources { display: inline-flex; gap: 3px; cursor: help; }
 .quote-source { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 3px; border-radius: 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); background: color-mix(in oklab, var(--text-2), transparent 88%); }
 @media (max-width: 700px) { .topbar .quote-sources { display: none; } }
+.exposure-filters { margin-bottom: 8px; }
+.exposure-filters__check { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); cursor: pointer; }
+.exposure-filters__count { font-size: var(--fs-sm); }
+.exposure-filters__sources { margin-bottom: 12px; }
+.exposure-part.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.exposure-part.on .sub { color: inherit; opacity: 0.85; }
