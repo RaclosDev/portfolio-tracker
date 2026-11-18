@@ -42,6 +42,7 @@ export function createServicesFromDb(
   // Sin proveedor propio (producción) onvista también hace de catálogo de productos; en los tests no se sale a internet.
   const onvista = opts.provider ? undefined : new OnvistaProvider();
   const yahoo = opts.provider ? undefined : new YahooProvider();
+  const financialHub = opts.provider ? undefined : new FinancialHubComposition();
   const market = opts.market ?? new MarketService(
     opts.provider ?? new FallbackProvider([yahoo!, new BorsaProvider(), new QuefondosProvider(), onvista!, new JustEtfProvider(), new FtProvider()], log),
     db,
@@ -49,7 +50,7 @@ export function createServicesFromDb(
     log,
     opts.catalog ?? (onvista && mergeCatalogs([onvista, new EuronextCatalog()], log)),
     opts.compositionSources ?? (yahoo
-      ? [new FinancialHubComposition(), new ExtraEtfComposition(), new OnvistaComposition(), new FtComposition(), new YahooComposition((symbol) => yahoo.topHoldings(symbol))]
+      ? [financialHub!, new ExtraEtfComposition(), new OnvistaComposition(), new FtComposition(), new YahooComposition((symbol) => yahoo.topHoldings(symbol))]
       : []),
   );
   const watchlist = new WatchlistService(lists, items, settings, market);
@@ -59,7 +60,16 @@ export function createServicesFromDb(
   const backup = new BackupService(db);
   const push = opts.push ?? new PushService(db, opts.vapid ?? { publicKey: null, privateKey: null, subject: 'mailto:avisos@raclos.es' }, log);
   const alerts = new AlertsService(db, lists, settings, state, watchlist, push, backup, log);
-  return { db, lists, items, settings, state, market, watchlist, operations, instruments, portfolio, backup, push, alerts };
+  /** ISIN de un valor por su cotización: el que da la propia cotización o, en fondos y ETF, Financial Hub. */
+  const isinOf = async (symbol: string): Promise<string | null> => {
+    try {
+      const quote = (await market.getQuotes([symbol])).get(symbol);
+      return quote?.isin ?? (await financialHub?.isinOf(symbol)) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  return { db, lists, items, settings, state, market, watchlist, operations, instruments, portfolio, backup, push, alerts, isinOf };
 }
 
 export async function createServices(opts: Parameters<typeof createServicesFromDb>[1] = {}) {

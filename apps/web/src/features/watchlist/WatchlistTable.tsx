@@ -1,4 +1,4 @@
-import { DEFAULT_STATUS_NAMES, DEFAULT_TAG_NAMES, isMuted, localToday, MAX_BUY_LEVELS, type LevelView, type WatchlistRow } from '@watchlist/shared';
+import { DEFAULT_STATUS_NAMES, DEFAULT_TAG_NAMES, displayTicker, isMuted, localToday, MAX_BUY_LEVELS, type LevelView, type WatchlistRow } from '@watchlist/shared';
 import { useSettings } from '../../api/hooks.ts';
 import { Fragment, useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Icon } from '../../components/Icon.tsx';
@@ -188,7 +188,9 @@ const columns: Column[] = [
             {item.name ?? item.symbol}
           </button>
           <span className="sub">
-            <span className="ticker">{item.symbol}</span>
+            <span className="ticker" title={[item.isin ?? quote?.isin, `Cotización: ${item.symbol}`].filter(Boolean).join(' · ')}>
+              {displayTicker(item)}
+            </span>
             {quote?.exchange && <> · {quote.exchange}</>}
             {/* Etiquetas de divisa y tipo en todas las filas; la divisa distinta de la base lleva color. */}
             {quote?.currency && (

@@ -76,7 +76,7 @@ export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'sy
     if (o.kind === 'product') return (setProduct(o.hit), setActive(1));
     if (o.kind === 'back') return (setProduct(null), setActive(0));
     if (o.kind === 'ticker') onPick(o.result);
-    else onPick({ symbol: o.listing.symbol, name: product!.name, exchange: o.listing.exchange, type: o.listing.type ?? product!.type });
+    else onPick({ symbol: o.listing.symbol, name: product!.name, exchange: o.listing.exchange, type: o.listing.type ?? product!.type, isin: product!.isin });
     setProduct(null);
     setOpen(false);
   };

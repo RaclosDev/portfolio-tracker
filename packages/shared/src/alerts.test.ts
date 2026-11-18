@@ -8,6 +8,8 @@ const baseItem: Item = {
   id: 7,
   listId: 1,
   symbol: 'FDR.MC',
+  ticker: null,
+  isin: null,
   name: 'Fluidra',
   buyPrices: [17],
   brokerTarget: null,

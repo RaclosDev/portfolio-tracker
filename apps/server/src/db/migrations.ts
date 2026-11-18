@@ -164,4 +164,10 @@ export const migrations: string[] = [
   `,
   // 7: vínculo entre salida y entrada de un traspaso de fondos.
   `ALTER TABLE operations ADD COLUMN transfer_ref TEXT;`,
+  // 8: los valores de la lista guardan su ticker y su ISIN, aparte del símbolo con el que se cotizan.
+  `
+  ALTER TABLE items ADD COLUMN ticker TEXT;
+  ALTER TABLE items ADD COLUMN isin TEXT;
+  UPDATE items SET isin = substring(upper(symbol) from '([A-Z]{2}[A-Z0-9]{9}[0-9])') WHERE upper(symbol) ~ '[A-Z]{2}[A-Z0-9]{9}[0-9]';
+  `,
 ];

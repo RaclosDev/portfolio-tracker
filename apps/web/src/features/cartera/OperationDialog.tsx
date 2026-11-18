@@ -1,4 +1,5 @@
 import {
+  isinInSymbol,
   isIncome,
   KNOWN_BROKERS,
   localToday,
@@ -26,6 +27,7 @@ export interface OperationDraft {
   type?: OperationType;
   ticker?: string;
   symbol?: string;
+  isin?: string | null;
   name?: string | null;
   currency?: string;
   shares?: number;
@@ -45,15 +47,6 @@ interface Props {
 const str = (v: number | null | undefined) => (v == null ? '' : String(v).replace('.', ','));
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-/** Ticker que se propone para un símbolo de Yahoo (TEF.MC → TEF, GRF-P.MC → GRF.P). */
-export const tickerFromSymbol = (symbol: string) => {
-  const s = symbol.trim().toUpperCase();
-  // Símbolo de FT con bolsa y divisa (FT:SEC0:GER:EUR): el ticker es su código, SEC0.
-  const ft = /^FT:([A-Z0-9.-]+):[A-Z]{3}(?::[A-Z]{3})?$/.exec(s);
-  if (ft && !/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(ft[1]!)) return ft[1]!;
-  return s.replace(/\.MC$/, '').replace(/-P$/, '.P');
-};
-
 /** Alta y edición de una operación del registro (compra, venta, dividendo…). */
 export function OperationDialog({ operation: op, draft, instruments, brokers, onClose }: Props) {
   const { save, remove } = useOperationMutations();
@@ -68,6 +61,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
   const [name, setName] = useState(initial?.name ?? draft?.name ?? null);
   const [currency, setCurrency] = useState(initial?.currency ?? draft?.currency ?? 'EUR');
   const [verifiedSymbol, setVerifiedSymbol] = useState<string | null>(null);
+  const [quoteIsin, setQuoteIsin] = useState<string | null>(null);
   const [withoutQuote, setWithoutQuote] = useState(false);
   const [shares, setShares] = useState(str(op?.shares ?? draft?.shares));
   const [priceRaw, setPrice] = useState(str(op?.price ?? draft?.price));
@@ -103,9 +97,12 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
   const fxN = foreign ? n(fx) : 1;
   const suggested = trade ? tradeTotal(type === 'buy' || type === 'transfer_in' ? 'buy' : 'sell', n(shares), n(priceRaw), n(fees) ?? 0, currency, fxN) : null;
   const amountShown = amountTouched ? amount : suggested != null ? str(suggested) : amount;
+  // ISIN para la ficha del valor, solo si aún no tiene uno.
+  const isin = initial?.isin ? null : (draft?.isin ?? quoteIsin ?? isinInSymbol(quoteSymbol));
   const quoteVerified = !!quoteSymbol && verifiedSymbol === quoteSymbol.trim().toUpperCase();
   const acceptQuote = useCallback((quote: Quote | null) => {
     setVerifiedSymbol(quote?.symbol ?? null);
+    setQuoteIsin(quote?.isin ?? null);
     if (quote) {
       setName((current) => current || quote.name);
       if (quote.currency) setCurrency(quote.currency);
@@ -145,7 +142,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
       await save.mutateAsync({
         id: op?.id,
         data,
-        instrument: { symbol: quoteSymbol.trim() || null, name, currency },
+        instrument: { symbol: quoteSymbol.trim() || null, name, currency, ...(isin ? { isin } : {}) },
       });
       onClose();
     } catch (err) {

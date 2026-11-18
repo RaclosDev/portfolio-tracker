@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, type WatchlistRow } from '@watchlist/shared';
+import { DEFAULT_SETTINGS, displayTicker, type WatchlistRow } from '@watchlist/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { api, DEMO } from './api/client.ts';
@@ -155,7 +155,7 @@ export function App() {
     const q = search.trim().toLowerCase();
     return tagged
       .filter(filterRow(filter))
-      .filter((r) => !q || `${r.item.symbol} ${r.item.name ?? ''} ${r.item.notes ?? ''}`.toLowerCase().includes(q));
+      .filter((r) => !q || `${r.item.symbol} ${displayTicker(r.item)} ${r.item.isin ?? r.quote?.isin ?? ''} ${r.item.name ?? ''} ${r.item.notes ?? ''}`.toLowerCase().includes(q));
   }, [tagged, filter, search]);
   const currencies = useMemo(
     () => [...new Set((view?.rows ?? []).map((r) => r.quote?.currency).filter((c): c is string => !!c))].sort(),
@@ -441,7 +441,7 @@ export function App() {
         {listError && <p className="error-box" role="alert">{listError}</p>}
         {throttleMin != null && (
           <p className="notice" role="status">
-            Yahoo ha pedido ir más despacio. Mientras tanto ves los últimos precios guardados; se vuelve a consultar en{' '}
+            La fuente de precios ha pedido ir más despacio. Mientras tanto ves los últimos precios guardados; se vuelve a consultar en{' '}
             {throttleMin} min.
           </p>
         )}
@@ -548,7 +548,7 @@ export function App() {
           </>
         )}
         <p className="footnote">
-          Cotizaciones: Yahoo Finance, Borsa Italiana / FIDA, Quefondos / VDOS, onvista y FT Markets. Consenso: Yahoo Finance. Los datos pueden tener retraso.
+          Cotizaciones: Yahoo Finance, Borsa Italiana / FIDA, Quefondos / VDOS, onvista y FT Markets. Composición de fondos: Financial Hub. Consenso: Yahoo Finance. Los datos pueden tener retraso.
           {!onPortfolio && <span className="watchlist-desktop-hint"> Doble clic en una fila para editarla.</span>}
         </p>
       </main>

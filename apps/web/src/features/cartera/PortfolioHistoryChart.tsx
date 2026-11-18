@@ -91,7 +91,7 @@ export function PortfolioHistoryChart({ points, mode }: { points: PortfolioHisto
       <line x1={geo.x(index)} x2={geo.x(index)} y1={M.top} y2={H - M.bottom} stroke="var(--text-2)" strokeDasharray="3 4" />
       {compare && selected.constantFxEur != null && <circle cx={geo.x(index)} cy={geo.y(selected.constantFxEur)} r={4} fill="var(--chart-3)" />}
       {selected[field] != null && <circle cx={geo.x(index)} cy={geo.y(selected[field])} r={4} fill="var(--accent)" />}
-    </svg> : <p className="chart-empty muted">Faltan cotizaciones históricas para estas fechas. Revisa los símbolos de los valores o elige otro periodo.</p>}
+    </svg> : <p className="chart-empty muted">Faltan cotizaciones históricas para estas fechas. Revisa las cotizaciones de los valores o elige otro periodo.</p>}
     {compare && <div className="portfolio-history__legend" aria-label="Leyenda"><span>Con efecto divisa</span><span>Sin efecto divisa</span></div>}
     <div className="portfolio-history__cursor">
       <label>Consultar fecha <input className="input" type="date" min={first.date} max={points[points.length - 1]!.date} value={selected.date}

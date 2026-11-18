@@ -25,16 +25,16 @@ export const CARTERA_TOUR_STEPS: TourStep[] = [
   {
     target: '.cartera .name-btn',
     title: 'La ficha de cada valor',
-    body: <p>Pulsa el nombre del valor para consultar sus operaciones y editar su ficha, incluido el símbolo con el que se busca su cotización en Yahoo.</p>,
+    body: <p>Pulsa el nombre del valor para consultar sus operaciones y editar su ficha, incluidos su ticker, su ISIN y la cotización con la que se sigue su precio.</p>,
   },
   {
     title: 'Precios y valoración',
-    body: <p>Para mostrar el precio, cada valor necesita una cotización disponible en Yahoo. En los fondos debe corresponder a la misma clase y divisa. Si falta el precio, las operaciones se conservan y la valoración se indica como incompleta.</p>,
+    body: <p>Para mostrar el precio, cada valor necesita una cotización: se busca por nombre, ISIN o ticker y se elige la bolsa. En los fondos debe corresponder a la misma clase y divisa. Si falta el precio, las operaciones se conservan y la valoración se indica como incompleta.</p>,
   },
   {
     target: '[data-tour="refresh"]',
     title: 'Actualizar cotizaciones',
-    body: <p>Pulsa <strong>Actualizar</strong> para consultar los últimos datos disponibles. Los precios de los fondos dependen de las actualizaciones que publique Yahoo.</p>,
+    body: <p>Pulsa <strong>Actualizar</strong> para consultar los últimos datos disponibles. Los precios de los fondos se actualizan una vez al día, cuando la gestora publica el valor liquidativo.</p>,
   },
   {
     target: '[data-tour="tour"]',
