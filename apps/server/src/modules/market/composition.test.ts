@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { migrate, openPGlite } from '../../db/database.ts';
 import {
   cleanHoldings, ExtraEtfComposition, FinancialHubComposition, FtComposition, isinInSymbol, OnvistaComposition, parseExtraEtf, parseFtHoldings,
-  parseFinancialHub, parseOnvistaHoldings, parseYahooHoldings, YahooComposition, type CompositionSource,
+  parseFinancialHub, parseOnvistaHoldings, parseYahooHoldings, tickerOf, YahooComposition, type CompositionSource,
 } from './composition.ts';
 import { MarketService } from './market.service.ts';
 import type { MarketDataProvider } from './provider.ts';
@@ -107,10 +107,35 @@ describe('composición de fondos', () => {
       '/funds/200/portfolio/holdings?pageSize=500&cursor=a%2Fb%3D',
     ]);
     expect(await fh.getComposition({ isin: null, symbol: 'IWDA.AS' })).toBeNull();
-    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher).toHaveBeenCalledTimes(4); // IWDA.AS se busca por ticker, pero ninguna cotización lo tiene
     const none = new FinancialHubComposition(vi.fn<typeof fetch>(async () => json({ data: [{ type: 'etf', id: '9', primary: { isin: 'IE00B4L5Y983' } }] })));
     expect(await none.getComposition({ isin: 'IE00B3XXRP09', symbol: null })).toBeNull();
     await expect(new FinancialHubComposition(vi.fn<typeof fetch>(async () => json({}, 429))).getComposition({ isin: 'IE00B4L5Y983', symbol: null })).rejects.toThrow(/429/);
+  });
+
+  it('sin ISIN, Financial Hub busca por ticker y elige la cotización de su bolsa y divisa', async () => {
+    expect(tickerOf('FT:SEC0:GER:EUR')).toEqual({ root: 'SEC0', mic: 'XETR', currency: 'EUR' });
+    expect(tickerOf('semi.as')).toEqual({ root: 'SEMI', mic: 'XAMS', currency: null });
+    expect(tickerOf('VOO')).toEqual({ root: 'VOO', mic: null, currency: null });
+    const urls: string[] = [];
+    const listing = (id: string, symbol: string, exchange: string, currency: string) =>
+      ({ type: 'etf', id, primary: { isin: `IE${id}` }, matchedChild: { symbol, exchange, currency } });
+    const fetcher = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input).replace('https://api.financial-hub.es', '');
+      urls.push(url);
+      if (url.includes('/search?q=SEC0')) return json({ data: [listing('12746', 'SEC0', 'XETR', 'EUR'), listing('5', 'SEC0X', 'XETR', 'EUR')] });
+      if (url.includes('/search?q=SEMI')) {
+        return json({ data: [listing('12746', 'SEMI', 'XAMS', 'USD'), listing('13199', 'SEMI', 'XASE', 'USD'), listing('12819', 'SEMI', 'XASX', 'AUD')] });
+      }
+      return json({ portfolioDate: '2026-10-31', nextCursor: null, data: [{ name: 'NVIDIA Corp', isin: 'US67066G1040', holdingType: 'E', weight: 20 }] });
+    });
+    const fh = new FinancialHubComposition(fetcher);
+    expect((await fh.getComposition({ isin: null, symbol: 'FT:SEC0:GER:EUR' }))?.holdings[0]?.name).toBe('NVIDIA Corp');
+    expect(urls).toEqual(['/search?q=SEC0&identifierLookup=true&types=fund,etf', '/funds/12746/portfolio/holdings?pageSize=500']);
+    expect(await fh.getComposition({ isin: null, symbol: 'SEMI.AS' })).not.toBeNull();
+    expect(urls.at(-1)).toBe('/funds/12746/portfolio/holdings?pageSize=500');
+    // Sin bolsa, el mismo ticker es de tres fondos distintos: mejor nada que el que no es.
+    expect(await fh.getComposition({ isin: null, symbol: 'SEMI' })).toBeNull();
   });
 
   it('cada fuente pide solo lo que puede resolver', async () => {

@@ -14,8 +14,8 @@ const HISTORY_TTL_MS = 60 * 60_000;
 const EMPTY_HISTORY_TTL_MS = 5 * 60_000;
 const PROFILE_TTL_MS = 30 * 24 * 60 * 60_000;
 /** Las gestoras publican la composición una vez al mes: una semana de caché; un día si ninguna fuente la tenía. */
-// v2: con Financial Hub llega la cartera completa; las guardadas antes solo tenían las 10 mayores.
-const COMPOSITION_KIND = 'holdings-v2';
+// v3: Financial Hub da la cartera completa, también por ticker (FT:SEC0:GER:EUR); las de antes solo tenían las 10 mayores.
+const COMPOSITION_KIND = 'holdings-v3';
 const COMPOSITION_TTL_MS = 7 * 24 * 60 * 60_000;
 const NO_COMPOSITION_TTL_MS = 24 * 60 * 60_000;
 /** Los minigráficos usan observaciones diarias o mensuales: se renuevan cada 3 h. */
