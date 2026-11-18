@@ -1,4 +1,4 @@
-import { localToday } from '@watchlist/shared';
+import { localToday, type PortfolioHistoryPoint } from '@watchlist/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../../api/client.ts';
@@ -21,8 +21,20 @@ interface HistorySelection {
   custom: { from: string; to: string };
 }
 
-function History({ first, mode, selection, onSelection }: {
-  first: string; mode: HistoryMode; selection: HistorySelection; onSelection: (selection: HistorySelection) => void;
+/**
+ * El histórico valora con cierres; el resumen, con el precio en directo. Si el periodo acaba hoy, el último punto
+ * toma el valor del resumen para que las dos cifras cuadren (el efecto divisa no cambia).
+ */
+function withLiveToday(points: PortfolioHistoryPoint[], today: string, live: number | null): PortfolioHistoryPoint[] {
+  const last = points.at(-1);
+  if (live == null || !last || last.date !== today || last.valueEur == null || last.missing.length) return points;
+  const delta = live - last.valueEur;
+  const add = (v: number | null) => (v == null ? v : v + delta);
+  return [...points.slice(0, -1), { ...last, valueEur: live, constantFxEur: add(last.constantFxEur), resultEur: add(last.resultEur) }];
+}
+
+function History({ first, mode, selection, onSelection, liveValue }: {
+  first: string; mode: HistoryMode; selection: HistorySelection; onSelection: (selection: HistorySelection) => void; liveValue: number | null;
 }) {
   const today = localToday();
   const { period, custom } = selection;
@@ -50,7 +62,7 @@ function History({ first, mode, selection, onSelection }: {
           {' '}Sin histórico disponible de {history.data.available.excluded.map(i => i.name).join(', ')}.
           {' '}El gráfico y su resultado excluyen esos valores y todas sus compras, ventas y cobros.
         </p>}
-        <PortfolioHistoryChart key={`${from}:${to}`} points={history.data.available?.points ?? history.data.points} mode={mode} />
+        <PortfolioHistoryChart key={`${from}:${to}`} points={history.data.available ? history.data.available.points : withLiveToday(history.data.points, today, liveValue)} mode={mode} />
         {history.data.stale && <p className="small muted">No se han podido actualizar todos los históricos. Se muestran los datos disponibles en caché. <button className="link-btn" onClick={() => void history.refetch()}>Reintentar</button></p>}
         {!history.data.available && history.data.missing.length > 0 && <p className="small muted">Hay huecos por falta de datos de {history.data.missing.join(', ')}. No se suman valores parciales.</p>}
       </>}
@@ -83,7 +95,8 @@ export function PortfolioCharts({ model, byBroker }: { model: CarteraModel; byBr
       {VIEWS.map(({ label, title }, i) => <button type="button" key={label} title={title} aria-pressed={view === i} onClick={() => setView(i)}>{label}</button>)}
     </div>
     <div role="region" aria-labelledby="portfolio-chart-title">
-      {view < 3 ? <History first={first} mode={view === 0 ? 'result' : view === 1 ? 'value' : 'fx'} selection={selection} onSelection={setSelection} /> : <>
+      {view < 3 ? <History first={first} mode={view === 0 ? 'result' : view === 1 ? 'value' : 'fx'} selection={selection} onSelection={setSelection}
+        liveValue={model.valuation.summary.missing.length ? null : model.valuation.summary.valueEur} /> : <>
         <p className="small muted">Distribución del valor actual de la cartera.</p>
         <Donut title={VIEWS[view]!.title} slices={slices} showValues />
         {model.valuation.summary.missing.length > 0 && <p className="small muted">Reparto parcial: faltan precios de {model.valuation.summary.missing.join(', ')}.</p>}

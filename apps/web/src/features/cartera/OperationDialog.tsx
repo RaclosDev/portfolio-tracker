@@ -119,6 +119,8 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
   const fxAuto = fxTouched ? null : (impliedFx ?? (marketFx ? Math.round(marketFx * 10000) / 10000 : null));
   const fxShown = fxTouched ? fx : fxAuto != null ? str(fxAuto) : '';
   const fxN = foreign ? n(fxShown) : 1;
+  // Un cambio muy distinto del de mercado suele ser un error (el inverso, o un 1 que se quedó puesto).
+  const fxOff = foreign && fxN && marketFx ? (Math.abs(fxN / marketFx - 1) > 0.05 ? Math.abs(fxN / marketFx - 1) : null) : null;
   const suggested = trade ? tradeTotal(type === 'buy' || type === 'transfer_in' ? 'buy' : 'sell', n(shares), n(priceRaw), n(fees) ?? 0, currency, fxN) : null;
   const amountShown = amountTouched ? amount : suggested != null ? str(suggested) : amount;
   // ISIN para la ficha del valor, solo si aún no tiene uno.
@@ -341,6 +343,11 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
                             ? 'Cambio de mercado de ese día; pon el de tu bróker si lo tienes.'
                             : 'Cambio aplicado por el bróker el día de la operación.'}
                     </span>
+                    {fxOff && (
+                      <span className="field__help" role="alert" style={{ color: 'var(--expired-fg)' }}>
+                        Se aleja un {Math.round(fxOff * 100)} % del cambio de mercado de ese día ({str(Math.round(marketFx! * 10000) / 10000)}). Revisa que no sea el inverso o un 1 por defecto.
+                      </span>
+                    )}
                   </div>
                 )}
                 <div className="field">

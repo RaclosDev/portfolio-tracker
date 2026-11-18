@@ -24,14 +24,9 @@ Se ha usado la app como un usuario: dar de alta compras y ventas en euros y en d
 | F7 | Con menos de un año de historia, la TIR se anualizaba y exageraba el resultado (−17,7 % en vez de −15,3 %). | Por debajo de un año se muestra la rentabilidad desde el inicio, sin anualizar. |
 | F8 | La Renta vacía decía «No hay operaciones» aunque hubiera compras. | Explica que ahí saldrán las ventas y los cobros. |
 | F9 | El pie de página citaba fuentes de precios antiguas. | Ahora cita Financial Hub y las de respaldo. |
-
-### Pendiente de la prueba
-
-| # | Qué falla | Propuesta |
-|---|---|---|
-| F10 | Al elegir un producto, la lista de bolsas tarda 3–6 s en salir. | Pedir las bolsas en paralelo y guardarlas en caché por ISIN. |
-| F11 | «Resultado del periodo» y el resumen difieren en unos céntimos: uno usa cierres y el otro el precio en directo. | Usar el mismo precio en los dos, o indicarlo. |
-| F12 | Una compra en dólares guardada con cambio 1 (como la de NVDA en los datos de prueba) no avisa de nada. | Avisar si el cambio se aleja más de un 5 % del de mercado de ese día. |
+| F10 | Al elegir un producto, la lista de bolsas tardaba 2–6 s en salir. | Se piden por adelantado las bolsas del producto resaltado; al elegirlo ya están. |
+| F11 | «Resultado del periodo» y el resumen diferían en unos céntimos: uno usaba cierres y el otro el precio en directo. | Si el periodo acaba hoy, el último punto usa el valor en directo del resumen. |
+| F12 | Una compra en dólares guardada con cambio 1 no avisaba de nada. | Aviso si el cambio se aleja más de un 5 % del de mercado de ese día. |
 
 ## 1. Registro y datos de entrada
 
