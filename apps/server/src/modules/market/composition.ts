@@ -57,7 +57,29 @@ async function get(fetcher: typeof fetch, url: string, accept: string, source: s
 const FH_API = 'https://api.financial-hub.es';
 const FH_PAGE = 500;
 const FH_HEADERS = { Accept: 'application/json', 'User-Agent': 'watchlist (uso personal)' };
-interface FhHit { type?: unknown; id?: unknown; primary?: { isin?: unknown } | null; matchedChild?: { isin?: unknown } | null }
+interface FhHit {
+  type?: unknown;
+  id?: unknown;
+  primary?: { isin?: unknown } | null;
+  matchedChild?: { isin?: unknown; symbol?: unknown; exchange?: unknown; currency?: unknown } | null;
+}
+/** Bolsa (código MIC de Financial Hub) de cada sufijo de Yahoo y de cada mercado de FT. */
+const MIC: Record<string, string> = {
+  DE: 'XETR', GER: 'XETR', AS: 'XAMS', AEX: 'XAMS', L: 'XLON', LSE: 'XLON', MI: 'XMIL', MIL: 'XMIL',
+  PA: 'XPAR', PAR: 'XPAR', SW: 'XSWX', SWX: 'XSWX', MC: 'XMAD', MCE: 'XMAD',
+};
+
+/** Ticker, bolsa y divisa de un símbolo sin ISIN: `FT:SEC0:GER:EUR` → SEC0 en Xetra en EUR; `SEC0.DE` → SEC0 en Xetra. */
+export function tickerOf(symbol: string | null): { root: string; mic: string | null; currency: string | null } | null {
+  const s = symbol?.trim().toUpperCase();
+  if (!s) return null;
+  if (s.startsWith('FT:')) {
+    const [root, market, currency] = s.slice(3).split(':');
+    return root ? { root, mic: (market && MIC[market]) || null, currency: currency || null } : null;
+  }
+  const m = /^([A-Z0-9-]+)(?:\.([A-Z]+))?$/.exec(s);
+  return m ? { root: m[1]!, mic: (m[2] && MIC[m[2]]) || null, currency: null } : null;
+}
 
 /**
  * Posiciones de `/funds/{id}/portfolio/holdings` (pesos en %, una o varias páginas). Cuentan acciones (E…), bonos
@@ -103,9 +125,28 @@ export class FinancialHubComposition implements CompositionSource {
     return hit && /^\d+$/.test(String(hit.id)) ? String(hit.id) : null;
   }
 
+  /**
+   * Fondo por ticker cuando no hay ISIN: solo cotizaciones con ese ticker exacto, preferidas las de su bolsa y
+   * su divisa. Un mismo ticker puede ser de fondos distintos en bolsas distintas: si no queda uno solo, nada.
+   */
+  private async fundIdByTicker(symbol: string | null): Promise<string | null> {
+    const t = tickerOf(symbol);
+    if (!t) return null;
+    const found = (await this.json(`/search?q=${encodeURIComponent(t.root)}&identifierLookup=true&types=fund,etf`)) as { data?: FhHit[] } | null;
+    let hits = (found?.data ?? []).filter(
+      (h) => (h?.type === 'fund' || h?.type === 'etf') && /^\d+$/.test(String(h.id)) && str(h.matchedChild?.symbol)?.toUpperCase() === t.root,
+    );
+    for (const [field, want] of [['exchange', t.mic], ['currency', t.currency]] as const) {
+      const narrowed = want ? hits.filter((h) => str(h.matchedChild?.[field])?.toUpperCase() === want) : [];
+      if (narrowed.length) hits = narrowed;
+    }
+    const ids = new Set(hits.map((h) => String(h.id)));
+    return ids.size === 1 ? [...ids][0]! : null;
+  }
+
   async getComposition({ isin, symbol }: CompositionRef) {
     const code = isin ?? isinInSymbol(symbol);
-    const id = code && (await this.fundId(code.toUpperCase()));
+    const id = code ? await this.fundId(code.toUpperCase()) : await this.fundIdByTicker(symbol);
     if (!id) return null;
     // Por páginas de 500 (el máximo de la API), siguiendo nextCursor, que va por peso de mayor a menor.
     const pages: unknown[] = [];
