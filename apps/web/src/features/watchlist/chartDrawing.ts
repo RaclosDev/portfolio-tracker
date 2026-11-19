@@ -1,4 +1,4 @@
-import type { ChartDrawing, ChartPoint } from '@watchlist/shared';
+import { DRAWING_POINTS, type Candle, type ChartDrawing, type ChartDrawingType, type ChartPoint } from '@watchlist/shared';
 
 /*
  * Geometría de los dibujos del gráfico de velas. Los puntos se guardan como fecha de sesión y precio; en
@@ -33,12 +33,39 @@ export function addWeekdays(from: string, n: number): string {
   return iso(ms);
 }
 
-/** Posición lógica de una fecha dentro de las sesiones `dates` (ordenadas). */
-export function toLogical(dates: string[], t: string): number {
+/** Intervalo de las velas: diario, semanal o mensual (las dos últimas se agregan de las diarias). */
+export type Step = 'D' | 'W' | 'M';
+
+/** Lunes de la semana de una fecha. */
+export function mondayOf(t: string): string {
+  const ms = utc(t);
+  return iso(ms - ((new Date(ms).getUTCDay() + 6) % 7) * DAY);
+}
+const monthsBetween = (from: string, to: string) =>
+  (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + Number(to.slice(5, 7)) - Number(from.slice(5, 7));
+function addMonths(from: string, n: number): string {
+  const m = Number(from.slice(5, 7)) - 1 + n;
+  const y = Number(from.slice(0, 4)) + Math.floor(m / 12);
+  return `${y}-${String((((m % 12) + 12) % 12) + 1).padStart(2, '0')}-01`;
+}
+/** Barras de `from` a `to` fuera de los datos. */
+function barsBetween(from: string, to: string, step: Step): number {
+  if (step === 'W') return Math.round((utc(mondayOf(to)) - utc(mondayOf(from))) / (7 * DAY));
+  if (step === 'M') return monthsBetween(from, to);
+  return weekdaysBetween(from, to);
+}
+function shiftBars(from: string, n: number, step: Step): string {
+  if (step === 'W') return iso(utc(mondayOf(from)) + n * 7 * DAY);
+  if (step === 'M') return addMonths(from, n);
+  return addWeekdays(from, n);
+}
+
+/** Posición lógica de una fecha dentro de las barras `dates` (ordenadas, fecha de inicio de cada una). */
+export function toLogical(dates: string[], t: string, step: Step = 'D'): number {
   if (!dates.length) return 0;
   const last = dates.length - 1;
-  if (t > dates[last]!) return last + weekdaysBetween(dates[last]!, t);
-  if (t < dates[0]!) return weekdaysBetween(dates[0]!, t);
+  if (t > dates[last]!) return last + barsBetween(dates[last]!, t, step);
+  if (t < dates[0]!) return barsBetween(dates[0]!, t, step);
   let lo = 0;
   let hi = last;
   while (lo < hi) {
@@ -46,16 +73,127 @@ export function toLogical(dates: string[], t: string): number {
     if (dates[mid]! < t) lo = mid + 1;
     else hi = mid;
   }
-  return lo;
+  // En semanas y meses la fecha cae en la barra que la contiene (la última que empieza antes).
+  return step === 'D' || dates[lo] === t ? lo : lo - 1;
 }
 
-/** Fecha de una posición lógica (redondeada a la sesión más cercana). */
-export function fromLogical(dates: string[], logical: number): string {
+/** Fecha de una posición lógica (redondeada a la barra más cercana). */
+export function fromLogical(dates: string[], logical: number, step: Step = 'D'): string {
   const i = Math.round(logical);
   const last = dates.length - 1;
-  if (i > last) return addWeekdays(dates[last]!, i - last);
-  if (i < 0) return addWeekdays(dates[0]!, i);
+  if (i > last) return shiftBars(dates[last]!, i - last, step);
+  if (i < 0) return shiftBars(dates[0]!, i, step);
   return dates[i]!;
+}
+
+/** Velas semanales o mensuales a partir de las diarias. */
+export function aggregate(candles: Candle[], step: Step): Candle[] {
+  if (step === 'D') return candles;
+  const out: Candle[] = [];
+  let key = '';
+  for (const c of candles) {
+    const k = step === 'W' ? mondayOf(c.t) : c.t.slice(0, 7);
+    const bar = out.at(-1);
+    if (bar && k === key) {
+      bar.h = Math.max(bar.h, c.h);
+      bar.l = Math.min(bar.l, c.l);
+      bar.c = c.c;
+    } else {
+      out.push({ ...c });
+      key = k;
+    }
+  }
+  return out;
+}
+
+/** Media simple de `n` barras (null mientras no hay suficientes). */
+export function sma(values: number[], n: number): (number | null)[] {
+  let sum = 0;
+  return values.map((v, i) => {
+    sum += v - (i >= n ? values[i - n]! : 0);
+    return i >= n - 1 ? sum / n : null;
+  });
+}
+
+/** Media exponencial de `n` barras, empezando por la simple de las primeras `n`. */
+export function ema(values: number[], n: number): (number | null)[] {
+  const k = 2 / (n + 1);
+  let prev: number | null = null;
+  return sma(values, n).map((s, i) => {
+    if (s == null) return null;
+    prev = prev == null ? s : values[i]! * k + prev * (1 - k);
+    return prev;
+  });
+}
+
+/** Imán: el precio de la vela (apertura, máximo, mínimo o cierre) más cercano. */
+export function snapPrice(c: Candle, p: number): number {
+  return [c.o, c.h, c.l, c.c].reduce((best, v) => (Math.abs(v - p) < Math.abs(best - p) ? v : best));
+}
+
+export const PERIODS = [
+  ['1d', '1D'], ['5d', '5D'], ['1m', '1M'], ['3m', '3M'], ['6m', '6M'], ['ytd', 'YTD'],
+  ['1y', '1A'], ['3y', '3A'], ['5y', '5A'], ['max', 'Máx'],
+] as const;
+export type PeriodId = (typeof PERIODS)[number][0];
+
+/** Fecha `months` meses antes de `t`, el mismo día (o el último del mes si no existe). */
+function monthsBack(t: string, months: number): string {
+  const first = addMonths(t, -months);
+  const lastDay = new Date(Date.UTC(Number(first.slice(0, 4)), Number(first.slice(5, 7)), 0)).getUTCDate();
+  return `${first.slice(0, 8)}${String(Math.min(Number(t.slice(8)), lastDay)).padStart(2, '0')}`;
+}
+
+/** Índice de la vela diaria de referencia de un periodo (su cierre es la base de la rentabilidad). */
+export function periodBase(candles: Candle[], id: PeriodId): number | null {
+  const n = candles.length;
+  if (!n) return null;
+  if (id === 'max') return 0;
+  if (id === '1d' || id === '5d') {
+    const i = n - 1 - (id === '1d' ? 1 : 5);
+    return i >= 0 ? i : null;
+  }
+  const last = candles[n - 1]!.t;
+  // El YTD se mide desde el cierre del año anterior; los demás, desde la última sesión hasta esa fecha.
+  const months = { '1m': 1, '3m': 3, '6m': 6, '1y': 12, '3y': 36, '5y': 60 }[id as Exclude<PeriodId, 'max' | '1d' | '5d' | 'ytd'>];
+  const limit = id === 'ytd' ? `${last.slice(0, 4)}-01-01` : monthsBack(last, months);
+  let i = -1;
+  for (let k = 0; k < n; k++) {
+    const t = candles[k]!.t;
+    if (id === 'ytd' ? t < limit : t <= limit) i = k;
+    else break;
+  }
+  return i >= 0 ? i : null;
+}
+
+/** Rentabilidad de un periodo, en tanto por uno (null si no hay datos de tan atrás). */
+export function periodReturn(candles: Candle[], id: PeriodId): number | null {
+  const i = periodBase(candles, id);
+  const base = i == null ? null : candles[i]!.c;
+  return base ? candles.at(-1)!.c / base - 1 : null;
+}
+
+export const round7 = (p: number) => Number(p.toPrecision(7));
+
+/** Dibujo desplazado `dl` barras y `dp` de precio (las horizontales no se mueven en el tiempo, ni las verticales en precio). */
+export function moveDrawing(d: ChartDrawing, dl: number, dp: number, dates: string[], step: Step): ChartDrawing {
+  return {
+    ...d,
+    points: d.points.map((p) => ({
+      t: dl === 0 || d.type === 'hline' ? p.t : fromLogical(dates, toLogical(dates, p.t, step) + dl, step),
+      p: d.type === 'vline' ? p.p : round7(p.p + dp),
+    })),
+  };
+}
+
+/** Dibujo con el punto `i` llevado a `to` (arrastrando su asa). */
+export function dragHandle(d: ChartDrawing, i: number, to: ChartPoint): ChartDrawing {
+  // El stop de una posición solo cambia de precio: la caja va de la entrada a la fecha del objetivo.
+  const keepT = d.type === 'hline' || ((d.type === 'long' || d.type === 'short') && i === 2);
+  return {
+    ...d,
+    points: d.points.map((p, k) => (k !== i ? p : { t: keepT ? p.t : to.t, p: d.type === 'vline' ? p.p : to.p })),
+  };
 }
 
 /** Distancia de un punto al segmento AB (en píxeles). */
@@ -79,19 +217,22 @@ export function insidePolygon(px: number, py: number, poly: [number, number][]):
 }
 
 /** Paralela de un canal: los dos puntos de la línea base desplazados lo que marca el tercero. */
-export function channelOffset(dates: string[], [a, b, c]: [ChartPoint, ChartPoint, ChartPoint]): number {
-  const la = toLogical(dates, a.t);
-  const lb = toLogical(dates, b.t);
-  const lc = toLogical(dates, c.t);
+export function channelOffset(dates: string[], [a, b, c]: [ChartPoint, ChartPoint, ChartPoint], step: Step = 'D'): number {
+  const la = toLogical(dates, a.t, step);
+  const lb = toLogical(dates, b.t, step);
+  const lc = toLogical(dates, c.t, step);
   const onBase = lb === la ? a.p : a.p + ((b.p - a.p) * (lc - la)) / (lb - la);
   return c.p - onBase;
 }
 
-export const DRAWING_COLORS = ['#2962ff', '#e53935', '#43a047', '#fb8c00', '#8e24aa'] as const;
+export const DRAWING_COLORS = ['#2962ff', '#e53935', '#43a047', '#fb8c00', '#8e24aa', '#00897b', '#f6c344', '#787b86'] as const;
 export const DEFAULT_DRAWING_COLOR = DRAWING_COLORS[0];
 
-export type Tool = 'cursor' | ChartDrawing['type'];
-/** Clics que necesita cada herramienta. */
-export const TOOL_POINTS: Record<Exclude<Tool, 'cursor'>, number> = { hline: 1, trend: 2, channel: 3 };
+/** Niveles del retroceso de Fibonacci (0 en el segundo punto, 1 en el primero). */
+export const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1] as const;
+
+export type Tool = 'cursor' | 'measure' | ChartDrawingType;
+/** Clics que necesita cada herramienta: las posiciones se crean con uno (la entrada) y se ajustan después. */
+export const TOOL_CLICKS: Record<ChartDrawingType, number> = { ...DRAWING_POINTS, long: 1, short: 1 };
 
 export const newDrawingId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;

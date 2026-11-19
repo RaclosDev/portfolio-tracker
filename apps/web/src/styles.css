@@ -1069,15 +1069,56 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .xp__view > .pm-large { flex: 1; display: flex; align-items: center; }
 .xp__view > .xp-history { flex: 1; }
 .xp-candles { flex: 1; display: flex; flex-direction: column; gap: 8px; outline: none; min-width: 0; }
-.xp-candles__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.xp-candles__ranges { margin-left: auto; }
-.xp-candles__edit { display: inline-flex; align-items: center; gap: 6px; }
+.xp-candles__top, .xp-candles__bottom { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.xp-candles__bottom { justify-content: space-between; }
+.xp-candles__top .btn { display: inline-flex; align-items: center; gap: 6px; }
+.xp-candles__icons { display: inline-flex; gap: 2px; }
+.xp-candles__push { margin-left: auto; }
+.xp-candles__icons button, .xp-candles__tools button { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); cursor: pointer; }
+.xp-candles__icons button:hover:not(:disabled), .xp-candles__tools button:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+.xp-candles__icons button:disabled, .xp-candles__tools button:disabled { opacity: 0.4; cursor: default; }
+.xp-candles__tools button.on, .xp-candles__icons button[aria-pressed='true'] { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.xp-candles__stage { position: relative; flex: 1; display: flex; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); min-height: 480px; }
+.xp-candles__tools { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px; border-right: 1px solid var(--border); overflow-y: auto; flex: none; }
+.xp-candles__tools hr { width: 22px; border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+.xp-candles__group { position: relative; }
+.xp-candles__tools .xp-candles__more { position: absolute; right: -4px; bottom: -2px; width: 12px; height: 12px; border-radius: 3px; }
+.xp-candles__more svg { width: 12px; height: 12px; }
+.xp-candles__flyout, .xp-candles__panel { position: absolute; z-index: 5; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.18); }
+.xp-candles__flyout { left: 44px; display: flex; flex-direction: column; padding: 4px; min-width: 220px; }
+.xp-candles__flyout button { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--text); cursor: pointer; text-align: left; font-size: var(--fs-xs); }
+.xp-candles__flyout button:hover { background: var(--surface-2); }
+.xp-candles__flyout button.on { color: var(--accent); }
+.xp-candles__flyout kbd { margin-left: auto; color: var(--text-2); font: inherit; font-size: 0.85em; }
+.xp-candles__panel { top: 4px; left: 44px; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 260px; }
+.xp-candles__ind { display: flex; align-items: center; gap: 6px; }
+.xp-candles__ind input { width: 64px; }
+.xp-candles__ind-add { display: flex; gap: 6px; }
+.xp-candles__dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.xp-candles__pane { position: relative; flex: 1; min-width: 0; }
+.xp-candles__chart { position: absolute; inset: 0; overflow: hidden; border-radius: 0 8px 8px 0; }
+.xp-candles__chart.is-drawing, .xp-candles__chart.is-drawing * { cursor: crosshair !important; }
+.xp-candles__chart[data-hover='drawing'] * { cursor: move !important; }
+.xp-candles__chart[data-hover='handle'] * { cursor: pointer !important; }
+.xp-candles__legend { position: absolute; top: 6px; left: 8px; z-index: 3; pointer-events: none; font-size: var(--fs-xs); color: var(--text-2); line-height: 1.5; font-variant-numeric: tabular-nums; }
+.xp-candles__legend strong { color: var(--text); }
+.xp-candles__legend b { font-weight: 500; }
+.xp-candles__legend .up, .xp-candles__periods .up { color: var(--up); }
+.xp-candles__legend .down, .xp-candles__periods .down { color: var(--down); }
+.xp-candles__edit { position: absolute; top: 8px; right: 72px; z-index: 4; max-width: calc(100% - 90px); flex-wrap: wrap; display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / 0.15); }
+.xp-candles__edit input { width: 160px; }
+.xp-candles__edit .icon-btn.on { color: var(--accent); }
 .xp-candles__swatch { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--border); cursor: pointer; padding: 0; }
 .xp-candles__swatch.on { box-shadow: 0 0 0 2px var(--text); }
-.xp-candles__chart { position: relative; flex: 1; min-height: 420px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); overflow: hidden; }
-.xp-candles__chart.is-drawing { cursor: crosshair; }
+.xp-candles__swatch:disabled { cursor: default; opacity: 0.5; }
+.xp-candles__periods button { flex-direction: column; gap: 0; line-height: 1.2; }
+.xp-candles__periods small { font-size: 0.8em; font-variant-numeric: tabular-nums; }
+.xp-candles__periods button.on small { color: inherit; }
+.xp-candles__periods button:disabled { opacity: 0.45; cursor: default; }
 .xp-candles__msg { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; }
 .xp-candles__note { margin: 0; }
+.xp-candles:fullscreen { background: var(--bg); padding: 12px; }
+.xp-candles:fullscreen .xp-candles__stage { min-height: 0; }
 .xp__data { padding: 4px 18px 14px; }
 
 /* Pestañas del panel: subrayado bajo la activa, como en las fichas de los brókers. */
