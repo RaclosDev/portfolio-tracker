@@ -37,7 +37,7 @@ export function filterExposure(rows: ExposureRow[], totalEur: number, f: Exposur
   const sources = new Set(f.sources);
   const out: ExposureRow[] = [];
   for (const r of rows) {
-    if (q && !norm(r.name).includes(q) && !(r.isin ?? '').toLowerCase().includes(q)) continue;
+    if (q && !norm(r.name).includes(q) && !(r.isin ?? '').toLowerCase().includes(q) && !(r.ticker ?? '').toLowerCase().includes(q)) continue;
     let row = r;
     if (sources.size) {
       const parts = r.parts.filter((p) => sources.has(sourceOf(p)));

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { migrate, openPGlite } from '../../db/database.ts';
 import {
   cleanHoldings, ExtraEtfComposition, FinancialHubComposition, FtComposition, isinInSymbol, OnvistaComposition, parseExtraEtf, parseFtHoldings,
@@ -207,13 +207,25 @@ describe('composición en el servicio de mercado', { timeout: 30_000 }, () => {
     return new MarketService({ id: 'prueba' } as MarketDataProvider, db, { quoteTtlMs: 0, targetsTtlMs: 0 }, () => {}, undefined, sources);
   };
   const ref = { isin: 'IE00B4L5Y983', symbol: 'IWDA.AS' };
+  // OpenFIGI: Apple cotiza en varias bolsas; se queda el ticker de la de casa (EE. UU.).
+  const figi = vi.fn(async () => Response.json([{ data: [{ ticker: 'APC', exchCode: 'GY' }, { ticker: 'AAPL', exchCode: 'US' }] }]));
+  beforeEach(() => (figi.mockClear(), vi.stubGlobal('fetch', figi)));
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('completa con OpenFIGI el ticker de las posiciones que solo traen ISIN, una sola vez', async () => {
+    const good = { id: 'buena', getComposition: vi.fn(async () => ({ holdings, asOf: '2026-10-31' })) };
+    const market = await service([good]);
+    expect((await market.getComposition(ref))?.holdings[0]?.ticker).toBe('AAPL');
+    expect((await market.getComposition(ref))?.holdings[0]?.ticker).toBe('AAPL');
+    expect(figi).toHaveBeenCalledTimes(1);
+  });
 
   it('pasa a la siguiente fuente si una falla o no lo tiene, y guarda el resultado', async () => {
     const broken = { id: 'rota', getComposition: vi.fn(async () => { throw new Error('HTTP 503'); }) };
     const empty = { id: 'vacía', getComposition: vi.fn(async () => null) };
     const good = { id: 'buena', getComposition: vi.fn(async () => ({ holdings, asOf: '2026-10-31' })) };
     const market = await service([broken, empty, good]);
-    expect(await market.getComposition(ref)).toMatchObject({ holdings, asOf: '2026-10-31', source: 'buena' });
+    expect(await market.getComposition(ref)).toMatchObject({ holdings: [{ ...holdings[0], ticker: 'AAPL' }], asOf: '2026-10-31', source: 'buena' });
     await market.getComposition(ref);
     expect(good.getComposition).toHaveBeenCalledTimes(1);
     expect(broken.getComposition).toHaveBeenCalledTimes(1);
