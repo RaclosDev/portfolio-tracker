@@ -16,6 +16,7 @@ import {
   type MouseEventParams,
   type SeriesType,
   type Time,
+  type UTCTimestamp,
 } from 'lightweight-charts';
 import { useEffect, useMemo, useReducer, useRef, useState, type MutableRefObject } from 'react';
 import { api } from '../../api/client.ts';
@@ -36,6 +37,7 @@ import {
   round7,
   sma,
   snapPrice,
+  isIntraday,
   toLogical,
   TOOL_CLICKS,
   type PeriodId,
@@ -62,8 +64,25 @@ const HIT_PX = 6;
 const HANDLE_PX = 8;
 const RIGHT_OFFSET = 8;
 
-const STEPS: [Step, string, string][] = [['D', 'D', 'Diario'], ['W', 'S', 'Semanal'], ['M', 'M', 'Mensual']];
-const STEP_LABEL: Record<Step, string> = { D: '1D', W: '1S', M: '1M' };
+const STEPS: [Step, string, string][] = [
+  ['1m', '1m', '1 minuto'], ['5m', '5m', '5 minutos'], ['15m', '15m', '15 minutos'], ['30m', '30m', '30 minutos'],
+  ['1h', '1h', '1 hora'], ['4h', '4h', '4 horas'], ['D', 'D', 'Diario'], ['W', 'S', 'Semanal'], ['M', 'M', 'Mensual'],
+];
+const STEP_LABEL: Record<Step, string> = { '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1h', '4h': '4h', D: '1D', W: '1S', M: '1M' };
+/**
+ * Tiempo de una vela para Lightweight Charts: la fecha de sesión tal cual o, en intradía, segundos desplazados
+ * a la hora local (la librería pinta las marcas de tiempo en UTC).
+ */
+function chartTime(t: string): Time {
+  if (t.length === 10) return t as Time;
+  const ms = Date.parse(t);
+  return (ms / 1000 - new Date(ms).getTimezoneOffset() * 60) as UTCTimestamp;
+}
+/** Fecha corta de una vela, con la hora si es intradía. */
+const fmtBarDate = (t: string) =>
+  t.length > 10
+    ? new Date(t).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : new Date(`${t}T12:00:00Z`).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
 const CHART_TYPES: [ChartType, string][] = [['candles', 'Velas'], ['area', 'Área'], ['line', 'Línea']];
 const SCALES: [ScaleMode, string, string][] = [
   ['normal', 'Lineal', 'Escala lineal'],
@@ -190,6 +209,15 @@ export function CandleChart({ row, tvSymbol }: Props) {
   const flat = candles.length > 0 && candles.every((c) => c.o === c.c && c.h === c.c && c.l === c.c);
 
   const [step, setStep] = usePersisted<Step>('watchlist.velas.intervalo', 'D', (v) => STEPS.some(([s]) => s === v));
+  // Los fondos solo tienen valor liquidativo diario: sin intradía.
+  const intraday = isIntraday(step) && !flat;
+  const intradayQ = useQuery({
+    queryKey: ['candles', symbol, step],
+    queryFn: () => api.candles(symbol, step as Exclude<Step, 'D' | 'W' | 'M'>),
+    enabled: intraday,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
   const [chartType, setChartType] = usePersisted<ChartType>('watchlist.velas.tipo', 'candles', (v) => CHART_TYPES.some(([t]) => t === v));
   const [scale, setScale] = usePersisted<ScaleMode>('watchlist.velas.escala', 'normal', (v) => SCALES.some(([s]) => s === v));
   const [period, setPeriod] = usePersisted<PeriodId>('watchlist.velas.periodo', '1y', (v) => PERIODS.some(([p]) => p === v));
@@ -208,7 +236,10 @@ export function CandleChart({ row, tvSymbol }: Props) {
   const [, rerender] = useReducer((n: number) => n + 1, 0);
 
   const kind: ChartType = flat && chartType === 'candles' ? 'line' : chartType;
-  const bars = useMemo(() => aggregate(candles, step), [candles, step]);
+  const intradayBars = intradayQ.data?.candles ?? NO_CANDLES;
+  /** Intervalo de lo que se pinta (un fondo en intradía se ve en diario). */
+  const shown: Step = intraday || !isIntraday(step) ? step : 'D';
+  const bars = useMemo(() => (intraday ? intradayBars : aggregate(candles, shown)), [candles, intradayBars, intraday, shown]);
   const precision = precisionFor(candles.at(-1)?.c ?? 1);
   const indData = useMemo(() => {
     const closes = bars.map((b) => b.c);
@@ -265,8 +296,8 @@ export function CandleChart({ row, tvSymbol }: Props) {
       // Objetivo a un 5 % y stop a un 2,5 % de la entrada; se ajustan arrastrando sus puntos.
       const e = pts[0]!;
       const s = type === 'long' ? 1 : -1;
-      const ahead = step === 'D' ? 20 : step === 'W' ? 8 : 4;
-      const end = fromLogical(datesRef.current, toLogical(datesRef.current, e.t, step) + ahead, step);
+      const ahead = shown === 'W' ? 8 : shown === 'M' ? 4 : 20;
+      const end = fromLogical(datesRef.current, toLogical(datesRef.current, e.t, shown) + ahead, shown);
       points = [e, { t: end, p: round7(e.p * (1 + 0.05 * s)) }, { t: e.t, p: round7(e.p * (1 - 0.025 * s)) }];
     }
     const d: ChartDrawing = { id: newDrawingId(), type, points, ...(type === 'text' ? { text: DEFAULT_TEXT } : {}) };
@@ -279,8 +310,8 @@ export function CandleChart({ row, tvSymbol }: Props) {
   };
 
   // Lo último de cada estado para los manejadores del gráfico, que se suscriben una sola vez.
-  const live = useRef({ tool, pending, drawings, selected, magnet, lockAll, hidden, step });
-  live.current = { tool, pending, drawings, selected, magnet, lockAll, hidden, step };
+  const live = useRef({ tool, pending, drawings, selected, magnet, lockAll, hidden, step: shown });
+  live.current = { tool, pending, drawings, selected, magnet, lockAll, hidden, step: shown };
   const act = useRef({ commit, create });
   act.current = { commit, create };
 
@@ -491,7 +522,9 @@ export function CandleChart({ row, tvSymbol }: Props) {
     const n = datesRef.current.length;
     if (!chart || !n) return;
     const base = periodBase(candles, id);
-    const from = base == null ? 0 : toLogical(datesRef.current, candles[base]!.t, step);
+    // En intradía el periodo empieza en la primera vela de la sesión siguiente a la de referencia.
+    const start = base == null ? undefined : intraday ? candles[base + 1]?.t : candles[base]!.t;
+    const from = start == null ? 0 : Math.max(0, toLogical(datesRef.current, start, shown));
     // Siempre se ven unas cuantas barras, aunque el periodo sea de uno o cinco días.
     chart.timeScale().setVisibleLogicalRange({ from: Math.min(from, n - 15), to: n - 1 + RIGHT_OFFSET });
   };
@@ -500,22 +533,29 @@ export function CandleChart({ row, tvSymbol }: Props) {
   useEffect(() => {
     const series = seriesRef.current;
     const chart = chartRef.current;
-    if (!series || !chart || !bars.length) return;
+    if (!series || !chart) return;
+    chart.applyOptions({ timeScale: { timeVisible: isIntraday(shown), secondsVisible: false } });
+    if (!bars.length) {
+      series.setData([]);
+      datesRef.current = [];
+      barsRef.current = [];
+      return;
+    }
     datesRef.current = bars.map((b) => b.t);
     barsRef.current = bars;
     const prim = primRef.current;
     prim.dates = datesRef.current;
-    prim.step = step;
+    prim.step = shown;
     prim.precision = precision;
     series.applyOptions({ priceFormat: { type: 'price', precision, minMove: 10 ** -precision } });
-    if (kind === 'candles') (series as ISeriesApi<'Candlestick'>).setData(bars.map((c) => ({ time: c.t as Time, open: c.o, high: c.h, low: c.l, close: c.c })));
-    else (series as ISeriesApi<'Line'>).setData(bars.map((c) => ({ time: c.t as Time, value: c.c })));
-    if (!fittedRef.current || stepRef.current !== step) {
+    if (kind === 'candles') (series as ISeriesApi<'Candlestick'>).setData(bars.map((c) => ({ time: chartTime(c.t), open: c.o, high: c.h, low: c.l, close: c.c })));
+    else (series as ISeriesApi<'Line'>).setData(bars.map((c) => ({ time: chartTime(c.t), value: c.c })));
+    if (!fittedRef.current || stepRef.current !== shown) {
       const saved = savedRangeRef.current;
-      if (!fittedRef.current && saved && stepRef.current === step) chart.timeScale().setVisibleLogicalRange(saved);
+      if (!fittedRef.current && saved && stepRef.current === shown) chart.timeScale().setVisibleLogicalRange(saved);
       else showPeriod(period);
       fittedRef.current = true;
-      stepRef.current = step;
+      stepRef.current = shown;
       savedRangeRef.current = null;
     }
     prim.update();
@@ -534,7 +574,7 @@ export function CandleChart({ row, tvSymbol }: Props) {
           color: ind.color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
           priceFormat: { type: 'price', precision, minMove: 10 ** -precision },
         });
-        s.setData(values.flatMap((v, i) => (v == null ? [] : [{ time: bars[i]!.t as Time, value: v }])));
+        s.setData(values.flatMap((v, i) => (v == null ? [] : [{ time: chartTime(bars[i]!.t), value: v }])));
         return s;
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -679,7 +719,7 @@ export function CandleChart({ row, tvSymbol }: Props) {
       : TOOL_CLICKS[tool] === 1
         ? `${TOOL_INFO[tool][0]}: haz clic en el gráfico. Esc para cancelar.`
         : `${TOOL_INFO[tool][0]}: punto ${pending.length + 1} de ${TOOL_CLICKS[tool]}. Esc para cancelar.`;
-  const last = candles.at(-1);
+  const last = bars.at(-1);
   const toggle = (icon: IconName, label: string, on: boolean, onClick: () => void) => (
     <button type="button" className={on ? 'on' : ''} aria-pressed={on} title={label} aria-label={label} onClick={onClick}>
       <ChartIcon name={icon} />
@@ -692,7 +732,15 @@ export function CandleChart({ row, tvSymbol }: Props) {
       <div className="xp-candles__top" role="toolbar" aria-label="Opciones del gráfico">
         <div className="segmented segmented--small" role="group" aria-label="Intervalo">
           {STEPS.map(([s, label, title]) => (
-            <button key={s} type="button" className={step === s ? 'on' : ''} aria-pressed={step === s} title={title} onClick={() => setStep(s)}>
+            <button
+              key={s}
+              type="button"
+              className={step === s ? 'on' : ''}
+              aria-pressed={step === s}
+              title={flat && isIntraday(s) ? `${title}: los fondos solo tienen un valor al día` : title}
+              disabled={flat && isIntraday(s)}
+              onClick={() => setStep(s)}
+            >
               {label}
             </button>
           ))}
@@ -772,9 +820,13 @@ export function CandleChart({ row, tvSymbol }: Props) {
           >
             {candlesQ.isLoading && <p className="muted small xp-candles__msg">Cargando velas…</p>}
             {!candlesQ.isLoading && !hasData && <p className="muted small xp-candles__msg">No hay velas de este valor en las fuentes de datos.</p>}
+            {hasData && intraday && intradayQ.isLoading && <p className="muted small xp-candles__msg">Cargando velas de {STEP_LABEL[step]}…</p>}
+            {hasData && intraday && !intradayQ.isLoading && !intradayBars.length && (
+              <p className="muted small xp-candles__msg">No hay velas de {STEP_LABEL[step]} de este valor en las fuentes de datos.</p>
+            )}
           </div>
           {hasData && (
-            <Legend name={item.name ?? symbol} step={step} bars={bars} flat={flat} indData={indData} precision={precision} setter={legendRef} />
+            <Legend name={item.name ?? symbol} step={shown} bars={bars} flat={flat} indData={indData} precision={precision} setter={legendRef} />
           )}
           {selectedDrawing && (
             <EditBar
@@ -868,8 +920,8 @@ export function CandleChart({ row, tvSymbol }: Props) {
 
       <p className="muted small xp-candles__note">
         {hint}
-        {last && <> · Última vela {new Date(`${last.t}T12:00:00Z`).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}</>}
-        {candlesQ.data?.stale && <> · Datos guardados: la fuente no responde</>}
+        {last && <> · Última vela {fmtBarDate(last.t)}</>}
+        {(intraday ? intradayQ.data?.stale : candlesQ.data?.stale) && <> · Datos guardados: la fuente no responde</>}
         {save.isError && <> · No se pudo guardar el dibujo</>}
         {tvSymbol && (
           <>

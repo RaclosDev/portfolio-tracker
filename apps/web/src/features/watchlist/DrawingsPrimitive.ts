@@ -59,7 +59,9 @@ function extend(a: XY, b: XY, w: number, h: number): XY {
 }
 
 const fmtDate = (t: string) =>
-  new Date(`${t}T12:00:00Z`).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: '2-digit' });
+  t.length > 10
+    ? new Date(t).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : new Date(`${t}T12:00:00Z`).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: '2-digit' });
 
 function axisView(coord: () => number | null, text: string, back: string): ISeriesPrimitiveAxisView {
   return {
@@ -388,7 +390,7 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     ctx.stroke();
     const diff = m.b.p - m.a.p;
     const bars = Math.round(toLogical(this.dates, m.b.t, this.step) - toLogical(this.dates, m.a.t, this.step));
-    const unit = this.step === 'W' ? 'semanas' : this.step === 'M' ? 'meses' : 'sesiones';
+    const unit = this.step === 'W' ? 'semanas' : this.step === 'M' ? 'meses' : this.step === 'D' ? 'sesiones' : 'velas';
     const label = `${diff >= 0 ? '+' : ''}${diff.toFixed(this.precision)} (${((diff / m.a.p) * 100).toFixed(2)} %) · ${bars} ${unit}`;
     ctx.font = LABEL_FONT;
     const w = ctx.measureText(label).width + 12;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Candle, ChartDrawing } from '@watchlist/shared';
 import {
-  addWeekdays, aggregate, channelOffset, distToSegment, dragHandle, ema, fromLogical, insidePolygon, moveDrawing,
+  addWeekdays, aggregate, channelOffset, distToSegment, dragHandle, ema, fromLogical, insidePolygon, isIntraday, moveDrawing,
   periodBase, periodReturn, sma, snapPrice, toLogical, weekdaysBetween,
 } from './chartDrawing.ts';
 
@@ -101,5 +101,30 @@ describe('edición de dibujos', () => {
     expect(dragHandle(trend, 1, { t: '2026-11-19', p: 13 }).points[1]).toEqual({ t: '2026-11-19', p: 13 });
     const long: ChartDrawing = { id: 'l', type: 'long', points: [{ t: '2026-11-13', p: 10 }, { t: '2026-11-19', p: 11 }, { t: '2026-11-13', p: 9 }] };
     expect(dragHandle(long, 2, { t: '2026-11-18', p: 8.5 }).points[2]).toEqual({ t: '2026-11-13', p: 8.5 });
+  });
+});
+
+describe('velas intradía', () => {
+  const dates = ['2026-10-01T13:30Z', '2026-10-01T13:35Z', '2026-10-01T13:40Z', '2026-10-02T13:30Z'];
+
+  it('sitúa cada punto en la vela que lo contiene y cuenta velas fuera de los datos', () => {
+    expect(isIntraday('5m')).toBe(true);
+    expect(isIntraday('D')).toBe(false);
+    expect(toLogical(dates, '2026-10-01T13:35Z', '5m')).toBe(1);
+    expect(toLogical(dates, '2026-10-01T13:37Z', '5m')).toBe(1);
+    expect(toLogical(dates, '2026-10-02T13:45Z', '5m')).toBe(6);
+    expect(toLogical(dates, '2026-10-01T13:20Z', '5m')).toBe(-2);
+    // Un punto dibujado en diario cae en la primera vela de su día.
+    expect(toLogical(dates, '2026-10-02', '5m')).toBe(3);
+  });
+
+  it('pasa de posición a fecha y hora, también más allá de la última vela', () => {
+    expect(fromLogical(dates, 2, '5m')).toBe('2026-10-01T13:40Z');
+    expect(fromLogical(dates, 5, '5m')).toBe('2026-10-02T13:40Z');
+    expect(fromLogical(dates, -1, '5m')).toBe('2026-10-01T13:25Z');
+  });
+
+  it('en diario, un punto con hora cae en la vela de su día', () => {
+    expect(toLogical(['2026-10-01', '2026-10-02', '2026-10-05'], '2026-10-02T15:00Z', 'D')).toBe(1);
   });
 });

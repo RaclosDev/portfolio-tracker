@@ -48,6 +48,9 @@ class FakeProvider implements MarketDataProvider {
   async getCandles(symbol: string) {
     return symbol === 'AAA.MC' ? [{ t: '2026-10-01', o: 10, h: 11, l: 9.5, c: 10.5 }, { t: '2026-10-02', o: 10.5, h: 12, l: 10, c: 11 }] : [];
   }
+  async getIntradayCandles(symbol: string, interval: string) {
+    return symbol === 'AAA.MC' ? [{ t: '2026-10-02T09:00Z', o: 10, h: 10.4, l: 9.9, c: 10.2, i: interval }] : [];
+  }
   async getProfile(symbol: string) {
     return { sector: symbol === 'BBB' ? 'Tecnología' : 'Industria', name: `${symbol} S.A.` };
   }
@@ -690,6 +693,13 @@ describe('gráfico de velas', () => {
     const res = await get('/api/market/candles/aaa.mc');
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ candles: [{ t: '2026-10-01', o: 10 }, { t: '2026-10-02', c: 11 }], stale: false });
+  });
+
+  it('sirve velas intradía del intervalo pedido y rechaza los desconocidos', async () => {
+    const res = await get('/api/market/candles/AAA.MC?interval=5m');
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ candles: [{ t: '2026-10-02T09:00Z', i: '5m' }], stale: false });
+    expect((await get('/api/market/candles/AAA.MC?interval=2m')).statusCode).toBe(400);
   });
 
   it('guarda los dibujos de cada valor y rechaza los mal formados', async () => {
