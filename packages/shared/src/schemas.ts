@@ -231,11 +231,34 @@ export type Backup = z.input<typeof backupSchema>;
 
 /** Dibujos del gráfico de velas de un valor (se guardan todos juntos al cambiar uno). */
 const chartPointSchema = z.object({ t: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), p: z.number().finite() });
-const drawingId = z.string().min(1).max(40);
-const drawingColor = z.string().regex(/^#[0-9a-f]{6}$/i).optional();
-export const chartDrawingSchema = z.discriminatedUnion('type', [
-  z.object({ id: drawingId, type: z.literal('hline'), price: z.number().finite(), color: drawingColor }),
-  z.object({ id: drawingId, type: z.literal('trend'), points: z.tuple([chartPointSchema, chartPointSchema]), color: drawingColor }),
-  z.object({ id: drawingId, type: z.literal('channel'), points: z.tuple([chartPointSchema, chartPointSchema, chartPointSchema]), color: drawingColor }),
-]);
+/** Puntos que lleva cada tipo de dibujo. */
+export const DRAWING_POINTS = {
+  hline: 1, hray: 1, vline: 1, text: 1,
+  trend: 2, ray: 2, extended: 2, fib: 2, rect: 2, arrow: 2,
+  channel: 3, long: 3, short: 3,
+} as const;
+const drawingTypes = Object.keys(DRAWING_POINTS) as [keyof typeof DRAWING_POINTS, ...(keyof typeof DRAWING_POINTS)[]];
+/** Las líneas horizontales de antes guardaban `price` en vez de un punto. */
+const upgradeDrawing = (v: unknown) => {
+  if (v && typeof v === 'object' && 'price' in v && !('points' in v)) {
+    const { price, ...rest } = v as Record<string, unknown>;
+    return { ...rest, points: [{ t: '1970-01-01', p: price }] };
+  }
+  return v;
+};
+export const chartDrawingSchema = z.preprocess(
+  upgradeDrawing,
+  z
+    .object({
+      id: z.string().min(1).max(40),
+      type: z.enum(drawingTypes),
+      points: z.array(chartPointSchema).min(1).max(3),
+      color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+      width: z.number().int().min(1).max(4).optional(),
+      style: z.enum(['solid', 'dashed', 'dotted']).optional(),
+      locked: z.boolean().optional(),
+      text: z.string().max(200).optional(),
+    })
+    .refine((d) => d.points.length === DRAWING_POINTS[d.type], { message: 'Número de puntos incorrecto para el dibujo' }),
+);
 export const chartDrawingsSchema = z.array(chartDrawingSchema).max(200);

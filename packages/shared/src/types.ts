@@ -155,12 +155,27 @@ export interface Candle {
   c: number;
 }
 
-/** Dibujo del gráfico de velas: los puntos son fecha de sesión y precio. */
-export type ChartDrawing =
-  | { id: string; type: 'hline'; price: number; color?: string }
-  | { id: string; type: 'trend'; points: [ChartPoint, ChartPoint]; color?: string }
-  /** Canal: los dos primeros puntos son la línea base; el tercero marca a qué distancia va la paralela. */
-  | { id: string; type: 'channel'; points: [ChartPoint, ChartPoint, ChartPoint]; color?: string };
+/** Herramientas de dibujo del gráfico de velas (las mismas que en Financial Hub). */
+export type ChartDrawingType =
+  | 'hline' | 'hray' | 'vline' | 'text'
+  | 'trend' | 'ray' | 'extended' | 'fib' | 'rect' | 'arrow'
+  | 'channel' | 'long' | 'short';
+/**
+ * Dibujo del gráfico de velas: los puntos son fecha de sesión y precio. El canal usa los dos primeros como
+ * línea base y el tercero como distancia de la paralela; las posiciones largas y cortas, [entrada, objetivo,
+ * stop] (la fecha del objetivo marca hasta dónde llega la caja).
+ */
+export interface ChartDrawing {
+  id: string;
+  type: ChartDrawingType;
+  points: ChartPoint[];
+  color?: string;
+  /** Grosor en píxeles (1-4). */
+  width?: number;
+  style?: 'solid' | 'dashed' | 'dotted';
+  locked?: boolean;
+  text?: string;
+}
 export interface ChartPoint {
   t: string;
   p: number;
