@@ -14,8 +14,13 @@
  *  - Prima de emisión: reduce el coste fiscal hasta cero; lo que pase de cero es rendimiento del capital.
  *  - Regla de los dos meses (art. 33.5.f): una pérdida no se computa si se compran acciones del mismo
  *    valor en los dos meses anteriores o posteriores y siguen en cartera; se integra al venderlas.
+ *
+ * Identidad del valor: el ISIN. Los tickers con el mismo ISIN (un ETF comprado en dos bolsas) forman una
+ * sola posición, con un único FIFO y una única regla de los dos meses. Se agrupa al calcular, sin tocar el
+ * registro: cada operación y cada lote conservan su ticker (el del extracto del bróker), que solo sirve para
+ * pedir la cotización.
  */
-import { isIncome, type Operation, type OperationType } from './schemas.ts';
+import { isIncome, type Instrument, type Operation, type OperationType } from './schemas.ts';
 
 const EPS = 1e-6;
 /** Cambio de normativa de la venta de derechos (Ley 26/2014). */
@@ -116,7 +121,12 @@ export interface LedgerIssue {
 }
 
 export interface TickerLedger {
+  /** Ticker de la posición: el canónico de su ISIN (ver `identityByTicker`) o el suyo si no tiene ISIN. */
   ticker: string;
+  /** ISIN que agrupa la posición (null si el valor no lo tiene). */
+  isin: string | null;
+  /** Tickers del registro que forman la posición (más de uno si el mismo ISIN cotiza en varias bolsas). */
+  members: string[];
   shares: number;
   costEur: number;
   taxCostEur: number;
@@ -150,6 +160,7 @@ export interface Ledger {
   inTransitEur: number;
   inTransitCostEur: number;
   tickers: TickerLedger[];
+  /** Posición de cada ticker, también de los que se agrupan en otro por compartir ISIN. */
   byTicker: Map<string, TickerLedger>;
   sales: Sale[];
   income: IncomeItem[];
@@ -203,9 +214,11 @@ interface TickerState {
   pending: Pending[];
 }
 
-function newTicker(ticker: string, date: string): TickerLedger {
+function newTicker(ticker: string, isin: string | null, date: string): TickerLedger {
   return {
     ticker,
+    isin,
+    members: [],
     shares: 0,
     costEur: 0,
     taxCostEur: 0,
@@ -266,7 +279,34 @@ function reduceTaxCost(t: TickerLedger, amount: number): number {
   return amount - applied;
 }
 
-export function computeLedger(operations: Operation[]): Ledger {
+const normIsin = (isin: string | null | undefined) => {
+  const v = isin?.trim().toUpperCase();
+  return v && v.length === 12 ? v : null;
+};
+
+/**
+ * Ticker canónico de cada ticker con ISIN: el mismo para todos los que comparten ISIN. Se prefiere el que
+ * tiene símbolo de Yahoo y, a igualdad, el primero por orden alfabético (estable entre cálculos).
+ * Los tickers sin ISIN no aparecen: son su propia posición.
+ */
+export function identityByTicker(instruments: readonly Pick<Instrument, 'ticker' | 'symbol' | 'isin'>[]): Map<string, { key: string; isin: string }> {
+  const groups = new Map<string, Pick<Instrument, 'ticker' | 'symbol'>[]>();
+  for (const i of instruments) {
+    const isin = normIsin(i.isin);
+    if (isin) groups.set(isin, [...(groups.get(isin) ?? []), i]);
+  }
+  const out = new Map<string, { key: string; isin: string }>();
+  for (const [isin, list] of groups) {
+    const key = [...list].sort((a, b) => Number(!a.symbol) - Number(!b.symbol) || a.ticker.localeCompare(b.ticker))[0]!.ticker;
+    for (const i of list) out.set(i.ticker, { key, isin });
+  }
+  return out;
+}
+
+/** `instruments` da el ISIN de cada ticker: sin él (o sin ISIN), cada ticker es una posición aparte. */
+export function computeLedger(operations: Operation[], instruments: readonly Pick<Instrument, 'ticker' | 'symbol' | 'isin'>[] = []): Ledger {
+  const identity = identityByTicker(instruments);
+  const keyOf = (ticker: string) => identity.get(ticker)?.key ?? ticker;
   const states = new Map<string, TickerState>();
   const sales: Sale[] = [];
   const income: IncomeItem[] = [];
@@ -282,9 +322,11 @@ export function computeLedger(operations: Operation[]): Ledger {
   for (const o of operations) if (o.type === 'buy' && o.sourceRef != null) lotBySourceRef.set(`${o.ticker}#${o.sourceRef}`, o.id);
 
   for (const op of sortOperations(operations)) {
-    let st = states.get(op.ticker);
-    if (!st) states.set(op.ticker, (st = { t: newTicker(op.ticker, op.date), pending: [] }));
+    const key = keyOf(op.ticker);
+    let st = states.get(key);
+    if (!st) states.set(key, (st = { t: newTicker(key, identity.get(op.ticker)?.isin ?? null, op.date), pending: [] }));
     const t = st.t;
+    if (!t.members.includes(op.ticker)) t.members.push(op.ticker);
     t.lastDate = op.date;
     t.opCount++;
     const issue = (message: string) => issues.push({ opId: op.id, ticker: op.ticker, date: op.date, message });
@@ -332,7 +374,7 @@ export function computeLedger(operations: Operation[]): Ledger {
           issue('Falta una salida anterior disponible con la misma referencia de traspaso.');
           break;
         }
-        if (transfer.operation.ticker === op.ticker || Math.abs(transfer.operation.amountEur - op.amountEur) > 0.005) {
+        if (keyOf(transfer.operation.ticker) === key || Math.abs(transfer.operation.amountEur - op.amountEur) > 0.005) {
           issue('El traspaso debe enlazar fondos distintos con el mismo importe.');
           break;
         }
@@ -577,13 +619,15 @@ export function computeLedger(operations: Operation[]): Ledger {
     t.costEur = t.openLots.reduce((s, l) => s + l.costEur, 0);
     t.taxCostEur = t.openLots.reduce((s, l) => s + l.taxCostEur, 0);
     for (const k of Object.keys(t.sharesByBroker)) if (Math.abs(t.sharesByBroker[k]!) < EPS) delete t.sharesByBroker[k];
+    t.members.sort();
     return t;
   });
   const pending = [...transfers.values()].filter((transfer) => !transfer.received);
   const cashFlows = operations.filter((o) => o.type === 'buy' || o.type === 'sell')
     .map((o) => ({ date: o.date, amount: o.type === 'buy' ? -o.amountEur : o.amountEur }));
   cashFlows.push(...income.map((i) => ({ date: i.date, amount: i.econEur })));
-  return { tickers, byTicker: new Map(tickers.map((t) => [t.ticker, t])), sales, income, issues, cashFlows,
+  const byTicker = new Map(tickers.flatMap((t) => [[t.ticker, t] as const, ...t.members.map((m) => [m, t] as const)]));
+  return { tickers, byTicker, sales, income, issues, cashFlows,
     inTransitEur: pending.reduce((sum, transfer) => sum + transfer.operation.amountEur, 0),
     inTransitCostEur: pending.reduce((sum, transfer) => sum + transfer.lots.reduce((n, lot) => n + lot.costEur, 0), 0) };
 }

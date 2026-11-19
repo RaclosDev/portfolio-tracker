@@ -66,6 +66,13 @@ function Totals({ model }: { model: CarteraModel }) {
           </p>
         </div>
       )}
+      {s.sameIsin.length > 0 && (
+        <div className="hl-cell hl-cell--full">
+          <p className="hl-value muted small">
+            Mismo valor en varias bolsas (un solo FIFO por ISIN): {s.sameIsin.map((g) => `${g.tickers.join(' + ')} (${g.isin})`).join('; ')}.
+          </p>
+        </div>
+      )}
     </section>
     <section className="cartera-breakdown" aria-label="Desglose del resultado">
       <h2>De dónde sale la ganancia total</h2>

@@ -71,7 +71,7 @@ export class BackupService {
         await instruments.deleteAll();
         for (const i of data.portfolio.instruments) await instruments.upsert(i);
         for (const o of data.portfolio.operations) await operations.create(o);
-        PortfolioService.assertValid(await operations.all());
+        PortfolioService.assertValid(await operations.all(), await instruments.all());
       }
       return saved;
     });

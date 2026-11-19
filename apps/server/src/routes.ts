@@ -178,10 +178,11 @@ export async function registerRoutes(app: FastifyInstance) {
       await assertCurrencyUnchanged(t, data.ticker, body.instrument?.currency);
       const ops = new OperationsRepository(t);
       const op = await ops.create(data);
-      PortfolioService.assertValid(await ops.all());
       const instruments = new InstrumentsRepository(t);
       await instruments.ensure({ ticker: data.ticker });
       if (body.instrument) await instruments.upsert({ ...await instruments.byTicker(data.ticker), ...body.instrument, ticker: data.ticker });
+      // Después de guardar el valor: su ISIN decide con qué posición se cruza la operación.
+      PortfolioService.assertValid(await ops.all(), await instruments.all());
       return op;
     });
     reply.code(201);
@@ -200,10 +201,11 @@ export async function registerRoutes(app: FastifyInstance) {
       const ops = new OperationsRepository(t);
       const op = await ops.update(id, data);
       if (!op) throw notFound('Operación');
-      PortfolioService.assertValid(await ops.all());
       const instruments = new InstrumentsRepository(t);
       await instruments.ensure({ ticker: data.ticker });
       if (body.instrument) await instruments.upsert({ ...await instruments.byTicker(data.ticker), ...body.instrument, ticker: data.ticker });
+      // Después de guardar el valor: su ISIN decide con qué posición se cruza la operación.
+      PortfolioService.assertValid(await ops.all(), await instruments.all());
       return op;
     });
   });
@@ -213,7 +215,7 @@ export async function registerRoutes(app: FastifyInstance) {
       await lockPortfolio(t);
       const ops = new OperationsRepository(t);
       if (!(await ops.delete(id))) throw notFound('Operación');
-      PortfolioService.assertValid(await ops.all());
+      PortfolioService.assertValid(await ops.all(), await new InstrumentsRepository(t).all());
     });
     reply.code(204);
   });
@@ -225,7 +227,7 @@ export async function registerRoutes(app: FastifyInstance) {
       await lockPortfolio(t);
       const ops = new OperationsRepository(t);
       const updated = await ops.setBroker(ids, broker, needsReview);
-      PortfolioService.assertValid(await ops.all());
+      PortfolioService.assertValid(await ops.all(), await new InstrumentsRepository(t).all());
       return { updated };
     });
   });
@@ -238,7 +240,10 @@ export async function registerRoutes(app: FastifyInstance) {
       const current = await instruments.byTicker(ticker.toUpperCase());
       if (!current) throw notFound('Valor');
       await assertCurrencyUnchanged(t, current.ticker, patch.currency);
-      return instruments.upsert({ ...current, ...patch });
+      const saved = await instruments.upsert({ ...current, ...patch });
+      // Cambiar el ISIN junta o separa posiciones: el registro tiene que seguir cuadrando.
+      if (patch.isin !== undefined) PortfolioService.assertValid(await new OperationsRepository(t).all(), await instruments.all());
+      return saved;
     });
   });
   /** Añade movimientos con copia previa y valida la cartera completa en una sola transacción. */
@@ -259,7 +264,6 @@ export async function registerRoutes(app: FastifyInstance) {
       if (!additions.length) return { imported: 0, skipped: data.operations.length, savedTo: null };
       const saved = await req.services.backup.snapshot('antes de importar la cartera', t, { skipIfEmpty: true });
       for (const op of additions) await ops.create({ ...op, source: 'excel' });
-      PortfolioService.assertValid(await ops.all());
       const tickers = new Set(additions.map((op) => op.ticker));
       for (const i of data.instruments.filter((i) => tickers.has(i.ticker))) {
         const cur = await instruments.byTicker(i.ticker.toUpperCase());
@@ -276,6 +280,7 @@ export async function registerRoutes(app: FastifyInstance) {
         });
       }
       for (const op of additions) await instruments.ensure({ ticker: op.ticker });
+      PortfolioService.assertValid(await ops.all(), await instruments.all());
       return { imported: additions.length, skipped: data.operations.length - additions.length, savedTo: saved ? saved.id : null };
     });
   });
