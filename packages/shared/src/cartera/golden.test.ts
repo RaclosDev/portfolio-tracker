@@ -7,7 +7,7 @@ import { quoteSession } from '../calc.ts';
 import type { Quote } from '../types.ts';
 import { averageNativePrice, computeLedger } from './ledger.ts';
 import { instrumentInputSchema, operationInputSchema, type Operation, type OperationInput } from './schemas.ts';
-import { valueCartera } from './view.ts';
+import { sameIsinGroups, valueCartera } from './view.ts';
 
 let nextId = 1;
 const op = (o: OperationInput): Operation => ({ id: nextId++, ...operationInputSchema.parse(o) });
@@ -121,5 +121,16 @@ describe('quoteSession', () => {
     expect(quoteSession({ asOf: '2026-11-12' })).toBe('2026-11-12');
     expect(quoteSession({ priceTime: 'basura', asOf: '2026-11-12T00:00:00Z' })).toBe('2026-11-12');
     expect(quoteSession(null)).toBeNull();
+  });
+});
+
+describe('sameIsinGroups', () => {
+  it('agrupa los tickers que comparten ISIN (el mismo ETF en dos bolsas)', () => {
+    expect(sameIsinGroups([
+      { ticker: 'CHIP', isin: 'IE0000000001' },
+      { ticker: 'LSMC', isin: 'ie0000000001 ' },
+      { ticker: 'AAA', isin: 'ES0000000002' },
+      { ticker: 'BBB', isin: null },
+    ])).toEqual([['CHIP', 'LSMC']]);
   });
 });

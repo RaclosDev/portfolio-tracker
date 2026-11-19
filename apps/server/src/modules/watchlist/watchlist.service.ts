@@ -23,12 +23,15 @@ export class WatchlistService {
 
     const quotes = await this.market.getQuotes(symbols, { force });
     const equitySymbols = symbols.filter((s) => !NO_ANALYST_COVERAGE.has(quotes.get(s)?.quoteType ?? ''));
+    const fxStale = new Set<string>();
     const [targets, fx] = await Promise.all([
       // El consenso cambia poco: no se fuerza su refresco (caché de horas).
       this.market.getTargets(equitySymbols),
       this.market.getFxRates(
         settings.baseCurrency,
         [...quotes.values()].map((q) => q.currency),
+        undefined,
+        fxStale,
       ),
     ]);
 
@@ -50,6 +53,7 @@ export class WatchlistService {
       settings,
       rows,
       fx,
+      fxStale: [...fxStale],
       generatedAt: new Date().toISOString(),
       throttledUntil: this.market.throttledUntilIso,
     };

@@ -108,10 +108,11 @@ export class PortfolioService {
     const symbols = instruments.filter((i) => i.symbol && open.has(i.ticker)).map((i) => i.symbol!);
     const quotes = await this.market.getQuotes(symbols, { force });
     // La cartera va siempre en euros (costes, Renta): no depende de la divisa base de la lista.
+    const fxStale = new Set<string>();
     const fx = await this.market.getFxRates('EUR', [
       ...[...quotes.values()].map((q) => q.currency),
       ...instruments.filter((i) => open.has(i.ticker)).map((i) => i.currency),
-    ]);
+    ], undefined, fxStale);
     void this.fillProfiles([...instruments.filter((i) => open.has(i.ticker)), ...instruments.filter((i) => !open.has(i.ticker))]);
     const bySymbol: Record<string, Quote> = {};
     for (const [sym, q] of quotes) bySymbol[sym] = q;
@@ -120,6 +121,7 @@ export class PortfolioService {
       operations,
       quotes: bySymbol,
       fx,
+      fxStale: [...fxStale],
       generatedAt: new Date().toISOString(),
       throttledUntil: this.market.throttledUntilIso,
     };
