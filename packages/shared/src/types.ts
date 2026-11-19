@@ -146,6 +146,26 @@ export interface PricePoint {
   c: number;
 }
 
+/** Vela diaria (fecha AAAA-MM-DD). La de hoy, mientras dura la sesión, va con el último precio como cierre. */
+export interface Candle {
+  t: string;
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+}
+
+/** Dibujo del gráfico de velas: los puntos son fecha de sesión y precio. */
+export type ChartDrawing =
+  | { id: string; type: 'hline'; price: number; color?: string }
+  | { id: string; type: 'trend'; points: [ChartPoint, ChartPoint]; color?: string }
+  /** Canal: los dos primeros puntos son la línea base; el tercero marca a qué distancia va la paralela. */
+  | { id: string; type: 'channel'; points: [ChartPoint, ChartPoint, ChartPoint]; color?: string };
+export interface ChartPoint {
+  t: string;
+  p: number;
+}
+
 /** Lo que devuelve GET /api/portfolio: el registro y los precios; los cálculos se hacen en el cliente. */
 export interface CarteraView {
   instruments: Instrument[];

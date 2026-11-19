@@ -231,6 +231,23 @@ function history(symbol: string, range: string) {
   for (let d = days; d >= 0; d -= step) points.push({ t: daysAgo(d), c: round(priceAt(symbol, d), 4) });
   return { points, stale: false };
 }
+/** Velas de los últimos cinco años (sesiones de lunes a viernes) con aperturas y mechas inventadas pero coherentes. */
+function candles(symbol: string) {
+  if (!CATALOG.has(symbol)) throw new DemoError(404, `Símbolo ${symbol} no encontrado`);
+  const out = [];
+  for (let d = 1826; d >= 0; d--) {
+    const t = daysAgo(d);
+    const weekday = new Date(`${t}T12:00:00Z`).getUTCDay();
+    if (weekday === 0 || weekday === 6) continue;
+    const c = priceAt(symbol, d);
+    const o = priceAt(symbol, d + 1);
+    const wick = Math.abs(c - o) * 0.6 + c * 0.004;
+    out.push({ t, o: round(o, 4), h: round(Math.max(o, c) + wick * 0.7, 4), l: round(Math.min(o, c) - wick * 0.6, 4), c: round(c, 4) });
+  }
+  return { candles: out, stale: false };
+}
+/** En la demo los dibujos del gráfico viven en memoria mientras la pestaña está abierta. */
+const demoDrawings = new Map<string, unknown>();
 function sparklines(symbols: string[], range: string) {
   const days = range === '1y' ? 365 : 91;
   return Object.fromEntries(symbols.filter((s) => CATALOG.has(s)).map((symbol) => [symbol,
@@ -427,6 +444,14 @@ function handle(method: string, url: URL, body: unknown): unknown {
   }
   if (method === 'GET' && path.startsWith('/api/market/history/')) {
     return history(path.slice('/api/market/history/'.length).toUpperCase(), query.range ?? '1y');
+  }
+  if (method === 'GET' && path.startsWith('/api/market/candles/')) {
+    return candles(path.slice('/api/market/candles/'.length).toUpperCase());
+  }
+  if (path.startsWith('/api/drawings/')) {
+    const symbol = path.slice('/api/drawings/'.length).toUpperCase();
+    if (method === 'PUT') demoDrawings.set(symbol, body);
+    return demoDrawings.get(symbol) ?? [];
   }
   if (method !== 'GET') throw new DemoError(403, NOT_IN_DEMO);
   throw new DemoError(404, 'No encontrado');

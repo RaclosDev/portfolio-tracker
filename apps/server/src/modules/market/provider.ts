@@ -1,4 +1,4 @@
-import type { AnalystTargets, DailyHistory, HistoryRange, InstrumentHit, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
+import type { AnalystTargets, Candle, DailyHistory, HistoryRange, InstrumentHit, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
 
 /** Catálogo de productos por nombre, ISIN o WKN (sin precios). */
 export interface InstrumentCatalog {
@@ -32,6 +32,8 @@ export interface MarketDataProvider {
   getHistory(symbol: string, range: HistoryRange): Promise<PricePoint[]>;
   /** Cierres diarios desde una fecha hasta hoy, sin ajuste retrospectivo por splits. */
   getDailyHistory?(symbol: string, from: string): Promise<DailyHistory>;
+  /** Velas diarias desde una fecha, con la de hoy si hay sesión abierta. */
+  getCandles?(symbol: string, from: string): Promise<Candle[]>;
   /** Ficha de la empresa (sector en español). Opcional: sin ella la cartera queda «Sin sector». */
   getProfile?(symbol: string): Promise<CompanyProfile | null>;
   /** Estado de la fuente para /api/health: último fallo y pausas. Sin datos de usuarios. */

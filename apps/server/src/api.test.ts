@@ -45,6 +45,9 @@ class FakeProvider implements MarketDataProvider {
   async getHistory() {
     return [10, 11, 9.5, 10.2].map((c, i) => ({ t: new Date(Date.UTC(2026, 9, i + 1)).toISOString(), c }));
   }
+  async getCandles(symbol: string) {
+    return symbol === 'AAA.MC' ? [{ t: '2026-10-01', o: 10, h: 11, l: 9.5, c: 10.5 }, { t: '2026-10-02', o: 10.5, h: 12, l: 10, c: 11 }] : [];
+  }
   async getProfile(symbol: string) {
     return { sector: symbol === 'BBB' ? 'Tecnología' : 'Industria', name: `${symbol} S.A.` };
   }
@@ -679,5 +682,28 @@ describe('avisos en el servidor', () => {
       subscription: { endpoint: 'https://push.example/x', keys: { p256dh: 'a', auth: 'b' } },
     });
     expect(res.statusCode).toBe(503);
+  });
+});
+
+describe('gráfico de velas', () => {
+  it('sirve las velas del proveedor', async () => {
+    const res = await get('/api/market/candles/aaa.mc');
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ candles: [{ t: '2026-10-01', o: 10 }, { t: '2026-10-02', c: 11 }], stale: false });
+  });
+
+  it('guarda los dibujos de cada valor y rechaza los mal formados', async () => {
+    expect((await get('/api/drawings/AAA.MC')).json()).toEqual([]);
+    const drawings = [
+      { id: 'a1', type: 'hline', price: 10.2 },
+      { id: 'b2', type: 'trend', points: [{ t: '2026-10-01', p: 9.5 }, { t: '2026-10-02', p: 10 }], color: '#e53935' },
+      { id: 'c3', type: 'channel', points: [{ t: '2026-10-01', p: 9.5 }, { t: '2026-10-02', p: 10 }, { t: '2026-10-01', p: 11 }] },
+    ];
+    expect((await send('PUT', '/api/drawings/AAA.MC', drawings)).statusCode).toBe(200);
+    expect((await get('/api/drawings/AAA.MC')).json()).toEqual(drawings);
+    expect((await get('/api/drawings/BBB')).json()).toEqual([]);
+    const bad = await send('PUT', '/api/drawings/AAA.MC', [{ id: 'x', type: 'trend', points: [{ t: 'ayer', p: 1 }] }]);
+    expect(bad.statusCode).toBe(400);
+    expect((await get('/api/drawings/AAA.MC')).json()).toEqual(drawings);
   });
 });

@@ -1,6 +1,8 @@
 import type {
   AlertRecord,
   Backup,
+  Candle,
+  ChartDrawing,
   CarteraImport,
   CarteraView,
   FundComposition,
@@ -141,6 +143,11 @@ export const api = {
   quote: (symbol: string) => request<Quote>('GET', `/api/market/quote/${encodeURIComponent(symbol)}`),
   history: (symbol: string, range: HistoryRange) =>
     request<{ points: PricePoint[]; stale: boolean }>('GET', `/api/market/history/${encodeURIComponent(symbol)}?range=${range}`),
+  candles: (symbol: string) =>
+    request<{ candles: Candle[]; stale: boolean }>('GET', `/api/market/candles/${encodeURIComponent(symbol)}`),
+  drawings: (symbol: string) => request<ChartDrawing[]>('GET', `/api/drawings/${encodeURIComponent(symbol)}`),
+  saveDrawings: (symbol: string, drawings: ChartDrawing[]) =>
+    request<ChartDrawing[]>('PUT', `/api/drawings/${encodeURIComponent(symbol)}`, drawings),
   sparklines: (symbols: string[], range: '3m' | '1y' = '3m') =>
     request<Record<string, number[]>>(
       'GET',
