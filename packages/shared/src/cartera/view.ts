@@ -1,6 +1,7 @@
 /** Valoración de la cartera con los precios de hoy: lo que se ve en Resumen, En cartera y Cerradas. */
 import type { Quote } from '../types.ts';
 import type { Ledger, TickerLedger } from './ledger.ts';
+import { cents } from './money.ts';
 import type { Instrument } from './schemas.ts';
 
 export interface CarteraRowBase {
@@ -150,16 +151,17 @@ export function valueCartera(args: {
     const b = base(t);
     if (t.shares > 0) {
       const valueNative = b.price != null ? t.shares * b.price : null;
-      const valueEur = valueNative != null && b.fxRate ? valueNative / b.fxRate : null;
+      // Todo en céntimos, como se ve: el resultado de cada fila es su valor − su coste y los totales, la suma de las filas.
+      const valueEur = valueNative != null && b.fxRate ? cents(valueNative / b.fxRate) : null;
       const prev = b.quote?.previousClose ?? (b.price != null && b.changePct != null ? b.price / (1 + b.changePct) : null);
       // Las acciones compradas hoy no tenían el cierre de ayer: su variación es valor actual − lo que costaron.
       const boughtToday = t.openLots.filter((l) => l.date === today && l.id > 0 && l.sharesBought > 0);
       const todayShares = boughtToday.reduce((s, l) => s + l.shares, 0);
       const dayChangeEur = b.price != null && prev != null && b.fxRate
-        ? ((t.shares - todayShares) * (b.price - prev)) / b.fxRate
-          + boughtToday.reduce((s, l) => s + (l.shares * b.price!) / b.fxRate! - l.costEur, 0)
+        ? cents(((t.shares - todayShares) * (b.price - prev)) / b.fxRate
+          + boughtToday.reduce((s, l) => s + (l.shares * b.price!) / b.fxRate! - l.costEur, 0))
         : null;
-      const unrealizedEur = valueEur != null ? valueEur - t.costEur : null;
+      const unrealizedEur = valueEur != null ? cents(valueEur - t.costEur) : null;
       open.push({
         ...b,
         valueNative,
@@ -167,27 +169,27 @@ export function valueCartera(args: {
         dayChangeEur,
         unrealizedEur,
         unrealizedPct: unrealizedEur != null && t.costEur > 0 ? unrealizedEur / t.costEur : null,
-        historicEur: unrealizedEur != null ? unrealizedEur + t.realizedEur + t.dividendsEur + t.otherIncomeEur : null,
+        historicEur: unrealizedEur != null ? cents(unrealizedEur + t.realizedEur + t.dividendsEur + t.otherIncomeEur) : null,
         weight: null,
       });
     } else {
-      closed.push({ ...b, totalEur: t.realizedEur + t.dividendsEur + t.otherIncomeEur });
+      closed.push({ ...b, totalEur: cents(t.realizedEur + t.dividendsEur + t.otherIncomeEur) });
     }
   }
 
-  const valueEur = open.reduce((s, r) => s + (r.valueEur ?? 0), ledger.inTransitEur);
+  const valueEur = cents(open.reduce((s, r) => s + (r.valueEur ?? 0), ledger.inTransitEur));
   for (const r of open) r.weight = r.valueEur != null && valueEur ? r.valueEur / valueEur : null;
   const priced = open.filter((r) => r.valueEur != null);
-  const costEur = priced.reduce((s, r) => s + r.ledger.costEur, ledger.inTransitCostEur);
-  const dayChangeEur = open.reduce((s, r) => s + (r.dayChangeEur ?? 0), 0);
+  const costEur = cents(priced.reduce((s, r) => s + r.ledger.costEur, ledger.inTransitCostEur));
+  const dayChangeEur = cents(open.reduce((s, r) => s + (r.dayChangeEur ?? 0), 0));
   // Base del % del día: valor de ayer solo de lo que tiene variación (sin traspasos en curso ni
   // valores sin cierre anterior, que si no rebajan el porcentaje).
   const dayBase = open.reduce((s, r) => (r.dayChangeEur != null && r.valueEur != null ? s + r.valueEur - r.dayChangeEur : s), 0);
-  const unrealizedEur = valueEur - costEur;
+  const unrealizedEur = cents(valueEur - costEur);
   const all = ledger.tickers;
-  const realizedEur = all.reduce((s, t) => s + t.realizedEur, 0);
-  const dividendsEur = all.reduce((s, t) => s + t.dividendsEur, 0);
-  const otherIncomeEur = all.reduce((s, t) => s + t.otherIncomeEur, 0);
+  const realizedEur = cents(all.reduce((s, t) => s + t.realizedEur, 0));
+  const dividendsEur = cents(all.reduce((s, t) => s + t.dividendsEur, 0));
+  const otherIncomeEur = cents(all.reduce((s, t) => s + t.otherIncomeEur, 0));
   const missing = open.filter((r) => r.valueEur == null).map((r) => r.ticker);
 
   // TIR: compras (sale dinero), ventas y cobros (entra) y el valor de hoy.
@@ -209,12 +211,12 @@ export function valueCartera(args: {
       realizedEur,
       dividendsEur,
       otherIncomeEur,
-      incomeEur: dividendsEur + otherIncomeEur,
-      totalEur: unrealizedEur + realizedEur + dividendsEur + otherIncomeEur,
+      incomeEur: cents(dividendsEur + otherIncomeEur),
+      totalEur: cents(unrealizedEur + realizedEur + dividendsEur + otherIncomeEur),
       missing,
       xirr: missing.length ? null : xirr(flows),
       flowDays: flows.length > 1 ? Math.round((Date.parse(today) - Math.min(...flows.map((f) => Date.parse(f.date)))) / DAY) : null,
-      boughtEur: all.reduce((s, t) => s + t.boughtEur, 0),
+      boughtEur: cents(all.reduce((s, t) => s + t.boughtEur, 0)),
       sameIsin: all.filter((t) => t.isin && t.members.length > 1).map((t) => ({ isin: t.isin!, ticker: t.ticker, tickers: t.members })),
     },
     bySector: [...sectors].map(([sector, v]) => ({ sector, valueEur: v })).sort((a, b) => b.valueEur - a.valueEur),
