@@ -217,9 +217,10 @@ export function App() {
 
   // Solo divisas principales: GBp (peniques) comparte tipo con GBP y no se repite.
   const fxChips = Object.entries((onPortfolio ? pf.data?.fx : view?.fx) ?? {}).filter(([c]) => c !== base && /^[A-Z]{3}$/.test(c));
-  const anyStale = onPortfolio
+  const fxStale = new Set((onPortfolio ? pf.data?.fxStale : view?.fxStale) ?? []);
+  const anyStale = fxStale.size > 0 || (onPortfolio
     ? Object.values(pf.data?.quotes ?? {}).some((q) => q.stale)
-    : view?.rows.some((r) => r.quote?.stale);
+    : view?.rows.some((r) => r.quote?.stale));
   // La consulta principal de Yahoo falla y los precios llegan por la vía alternativa (más lenta, sin estado del mercado).
   const anyFallback = onPortfolio
     ? Object.values(pf.data?.quotes ?? {}).some((q) => q.fallback && !q.stale)
@@ -235,8 +236,9 @@ export function App() {
     : `Actualizado ${timeAgo(generatedAt, now)}${anyFallback ? ' · fuente alternativa' : ''}`;
   const updateState = anyStale || refetchFailed ? ' updated--stale' : anyFallback ? ' updated--warn' : '';
   const fxBadges = fxChips.map(([currency, rate]) => (
-    <span key={currency} className="chip" title={`1 ${base} = ${rate} ${currency}`}>
-      {base}/{currency} <strong>{num(rate, 4)}</strong>
+    <span key={currency} className={fxStale.has(currency) ? 'chip chip--stale' : 'chip'}
+      title={`1 ${base} = ${rate} ${currency}${fxStale.has(currency) ? ' · cambio guardado: la fuente no responde y la valoración en esta divisa no está al día' : ''}`}>
+      {base}/{currency} <strong>{num(rate, 4)}</strong>{fxStale.has(currency) && ' ⚠'}
     </span>
   ));
 

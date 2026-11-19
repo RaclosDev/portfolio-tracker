@@ -232,7 +232,7 @@ export class MarketService {
    * Tipos de cambio: unidades de cada divisa por 1 de `base`.
    * Para divisas en centésimas (GBp) aplica el factor ×100.
    */
-  async getFxRates(base: string, currencies: (string | null)[], date?: string): Promise<Record<string, number>> {
+  async getFxRates(base: string, currencies: (string | null)[], date?: string, staleOut?: Set<string>): Promise<Record<string, number>> {
     const rates: Record<string, number> = { [base]: 1 };
     const majors = new Set<string>();
     for (const c of currencies) if (c) majors.add(MINOR_UNITS[c]?.major ?? c);
@@ -248,13 +248,18 @@ export class MarketService {
       const pairs = [...majors].map((c) => `${base}${c}=X`);
       const quotes = await this.getQuotes(pairs);
       for (const c of majors) {
-        const p = quotes.get(`${base}${c}=X`)?.price;
-        if (p) rates[c] = p;
+        const q = quotes.get(`${base}${c}=X`);
+        if (q?.price) rates[c] = q.price;
+        // Cambio guardado de una consulta anterior: la valoración en esa divisa no está al día.
+        if (q?.price && q.stale) staleOut?.add(c);
       }
     }
     for (const c of currencies) {
       const minor = c ? MINOR_UNITS[c] : undefined;
-      if (c && minor && rates[minor.major]) rates[c] = rates[minor.major]! * minor.factor;
+      if (c && minor && rates[minor.major]) {
+        rates[c] = rates[minor.major]! * minor.factor;
+        if (staleOut?.has(minor.major)) staleOut.add(c);
+      }
     }
     return rates;
   }

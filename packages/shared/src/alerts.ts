@@ -33,12 +33,14 @@ export function buildDailySummary(
 ): { title: string; body: string } | null {
   if (!rows.length) return null;
   const name = (r: WatchlistRow) => r.item.name ?? r.quote?.name ?? r.item.symbol;
+  // Un valor puede estar en varias listas: se nombra una sola vez.
+  const named = (rs: WatchlistRow[]) => [...new Set(rs.map(name))].join(', ');
   const reached = rows.filter((r) => r.metrics.status === 'reached');
   const near = rows.filter((r) => r.metrics.status === 'veryNear');
   const expiring = rows.filter((r) => r.item.orderActive && r.metrics.orderDaysLeft != null && r.metrics.orderDaysLeft <= 3);
   const parts: string[] = [];
-  if (reached.length) parts.push(`${names.reached}: ${reached.map(name).join(', ')}.`);
-  if (near.length) parts.push(`${names.veryNear}: ${near.map(name).join(', ')}.`);
+  if (reached.length) parts.push(`${names.reached}: ${named(reached)}.`);
+  if (near.length) parts.push(`${names.veryNear}: ${named(near)}.`);
   if (expiring.length)
     parts.push(
       `Órdenes por caducar: ${expiring.map((r) => `${name(r)} (${r.metrics.orderDaysLeft! < 0 ? 'caducada' : `${r.metrics.orderDaysLeft} d`})`).join(', ')}.`,
