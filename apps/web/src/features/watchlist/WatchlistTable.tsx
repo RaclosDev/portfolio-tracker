@@ -2,6 +2,7 @@ import { DEFAULT_STATUS_NAMES, DEFAULT_TAG_NAMES, displayTicker, isMuted, localT
 import { useSettings } from '../../api/hooks.ts';
 import { Fragment, useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Icon } from '../../components/Icon.tsx';
+import { QuoteAge } from '../../components/QuoteAge.tsx';
 import { TagName } from '../../components/TagName.tsx';
 import {
   compact,
@@ -163,6 +164,7 @@ function PriceCell({ row }: { row: WatchlistRow }) {
           {pct(quote.changePct, 2)}
         </span>
       )}
+      <QuoteAge quote={quote} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import type { ClosedRow, HoldingRow } from '@watchlist/shared';
 import { useSparklines1y } from '../../api/hooks.ts';
 import { Icon } from '../../components/Icon.tsx';
+import { anyQuoteToday, QuoteAge } from '../../components/QuoteAge.tsx';
 import { MINOR_CURRENCY, money, num, qty, pct, price, shortDate } from '../../lib/format.ts';
 import { Sparkline } from '../watchlist/Sparkline.tsx';
 import { signed, type CarteraModel } from './model.ts';
@@ -81,6 +82,7 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
             onOpen(r.ticker);
           }}>{r.instrument?.symbol ? 'Revisar cotización' : 'Vincular cotización'}</button>
             : <span className={`sub num delta ${signed(r.changePct)}`}>{pct(r.changePct, 2)}</span>}
+          {!r.quote?.asOf && <QuoteAge quote={r.quote} />}
           {r.quote?.asOf && <span className="sub" title={`Valor liquidativo · ${r.quote.source ?? ''}`}>VL {shortDate(r.quote.asOf)}</span>}
         </div>
       ),
@@ -123,7 +125,7 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
     },
     {
       id: 'day',
-      label: 'Hoy',
+      label: anyQuoteToday(open.map((r) => r.quote)) ? 'Hoy' : 'Última sesión',
       align: 'right',
       sort: (r) => r.dayChangeEur,
       cell: (r) => <Delta v={r.dayChangeEur} />,
