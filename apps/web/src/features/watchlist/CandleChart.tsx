@@ -38,6 +38,7 @@ import {
   sma,
   snapPrice,
   isIntraday,
+  mergeLive,
   toLogical,
   TOOL_CLICKS,
   type PeriodId,
@@ -218,6 +219,29 @@ export function CandleChart({ row, tvSymbol }: Props) {
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
+  // Precio casi en directo solo del gráfico abierto (se pausa con la pestaña en segundo plano).
+  const liveQ = useQuery({
+    queryKey: ['live', symbol],
+    queryFn: () => api.live(symbol),
+    enabled: candles.length > 0 && !flat,
+    refetchInterval: 2_000,
+    staleTime: 1_000,
+    retry: false,
+  });
+  const liveQuote = liveQ.data;
+  useEffect(() => {
+    if (!liveQuote?.price) return;
+    const { price, priceTime } = liveQuote;
+    type Data = { candles: Candle[]; stale: boolean };
+    const put = (key: unknown[], s: 'D' | Exclude<Step, 'D' | 'W' | 'M'>) =>
+      qc.setQueryData<Data>(key, (d) => {
+        if (!d) return d;
+        const next = mergeLive(d.candles, price, priceTime, s);
+        return next === d.candles ? d : { ...d, candles: next };
+      });
+    put(['candles', symbol], 'D');
+    if (intraday) put(['candles', symbol, step], step as Exclude<Step, 'D' | 'W' | 'M'>);
+  }, [liveQuote, qc, symbol, intraday, step]);
   const [chartType, setChartType] = usePersisted<ChartType>('watchlist.velas.tipo', 'candles', (v) => CHART_TYPES.some(([t]) => t === v));
   const [scale, setScale] = usePersisted<ScaleMode>('watchlist.velas.escala', 'normal', (v) => SCALES.some(([s]) => s === v));
   const [period, setPeriod] = usePersisted<PeriodId>('watchlist.velas.periodo', '1y', (v) => PERIODS.some(([p]) => p === v));

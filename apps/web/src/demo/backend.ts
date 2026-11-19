@@ -458,8 +458,8 @@ function handle(method: string, url: URL, body: unknown): unknown {
     ensureInstrument(ticker, body);
     return instruments.find((i) => i.ticker === ticker);
   }
-  if (method === 'GET' && path.startsWith('/api/market/quote/')) {
-    const symbol = path.slice('/api/market/quote/'.length).toUpperCase();
+  if (method === 'GET' && (path.startsWith('/api/market/quote/') || path.startsWith('/api/market/live/'))) {
+    const symbol = path.slice(path.lastIndexOf('/') + 1).toUpperCase();
     return quoteOf(symbol) ?? (() => { throw new DemoError(404, `Símbolo ${symbol} no encontrado en la demo`); })();
   }
   if (method === 'GET' && path.startsWith('/api/market/history/')) {

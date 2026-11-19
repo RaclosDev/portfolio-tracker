@@ -142,6 +142,8 @@ export const api = {
   importRows: (listId: number, items: ImportRow[]) =>
     request<{ created: number; updated: number }>('POST', `/api/lists/${listId}/import`, { items }),
   quote: (symbol: string) => request<Quote>('GET', `/api/market/quote/${encodeURIComponent(symbol)}`),
+  /** Cotización casi en directo (caché de 1,5 s en el servidor) para el gráfico abierto. */
+  live: (symbol: string) => request<Quote>('GET', `/api/market/live/${encodeURIComponent(symbol)}`),
   history: (symbol: string, range: HistoryRange) =>
     request<{ points: PricePoint[]; stale: boolean }>('GET', `/api/market/history/${encodeURIComponent(symbol)}?range=${range}`),
   candles: (symbol: string, interval: '1d' | IntradayInterval = '1d') =>
