@@ -470,6 +470,28 @@ describe('cartera', () => {
     expect((await portfolio()).operations).toHaveLength(2);
   });
 
+  it('dos ventas a la vez no venden más de lo que hay', async () => {
+    await send('POST', '/api/operations', buy('CCC', 10, 100));
+    const sell = { operation: { date: '2025-02-01', ticker: 'CCC', type: 'sell', shares: 10, amountEur: 120 } };
+    const codes = (await Promise.all([send('POST', '/api/operations', sell), send('POST', '/api/operations', sell)])).map((r) => r.statusCode);
+    expect(codes.sort()).toEqual([201, 400]);
+    expect((await portfolio()).operations).toHaveLength(2);
+  });
+
+  it('cambia el bróker de varias operaciones en una transacción validada', async () => {
+    const b = (await send('POST', '/api/operations', buy('DDD', 10, 100))).json() as { id: number };
+    const res = await send('POST', '/api/operations/broker', { ids: [b.id], broker: 'MyInvestor' });
+    expect(res.json()).toEqual({ updated: 1 });
+    expect((await portfolio()).operations.find((o) => o.id === b.id)?.broker).toBe('MyInvestor');
+  });
+
+  it('no deja cambiar la divisa de un valor con precios apuntados en otra', async () => {
+    await send('POST', '/api/operations', { operation: { ...buy('EEE', 1, 10).operation, price: 10 } });
+    const res = await send('PUT', '/api/instruments/EEE', { currency: 'USD' });
+    expect(res.statusCode).toBe(400);
+    expect((await portfolio()).instruments.find((i) => i.ticker === 'EEE')?.currency).toBe('EUR');
+  });
+
   it('vincula un valor existente al añadir una compra sin perder sus datos personales', async () => {
     await send('POST', '/api/operations', { ...buy('BBB', 1, 2), instrument: { name: 'Mi valor', sector: 'Salud', notes: 'Conservar' } });
     const res = await send('POST', '/api/operations', {

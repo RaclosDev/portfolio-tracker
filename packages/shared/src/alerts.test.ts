@@ -122,4 +122,13 @@ describe('silenciar y resumen diario', () => {
     const { alerts } = evaluateAlerts([row(16)], emptyMemory(), DEFAULT_ALERT_PREFS, t0);
     expect(alerts[0]!.symbol).toBe('FDR.MC');
   });
+
+  it('la memoria olvida niveles editados y avisos viejos (no crece sin fin)', () => {
+    const first = evaluateAlerts([row(16)], emptyMemory(), DEFAULT_ALERT_PREFS, t0).memory;
+    expect(Object.keys(first.levels)).toEqual(['7:0:17']);
+    expect(Object.keys(first.notified)).toHaveLength(1);
+    const edited = evaluateAlerts([row(16, { buyPrices: [15] })], first, DEFAULT_ALERT_PREFS, later(13)).memory;
+    expect(Object.keys(edited.levels)).toEqual(['7:0:15']);
+    expect(Object.keys(edited.notified)).toEqual([]);
+  });
 });

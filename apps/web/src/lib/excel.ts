@@ -197,7 +197,7 @@ export async function exportRenta(y: TaxYear, names: Map<string, string>) {
     line('Resultado estimado (+ a pagar / − a devolver)', y.balanceEstimate, BOLD),
     line('Informativo: pérdidas aplazadas por la regla de los dos meses', y.deferred),
     line('Informativo: pérdidas aplazadas antes que se integran (ya incluidas)', y.released),
-    ...y.carriedPending.map((c) => line(`Pérdidas de ${c.year} pendientes de compensar`, c.amount)),
+    ...y.carriedPending.map((c) => line(`${c.kind === 'rcm' ? 'Saldo negativo de RCM' : 'Pérdidas'} de ${c.year} pendientes de compensar`, c.amount)),
   ];
   const sales: Row[] = [
     head(['Valor', 'Ticker', 'Fecha venta', 'Acciones', 'Transmisión', 'Adquisición', 'Resultado', 'Aplazada', 'Computable', 'Fechas de compra']),

@@ -148,6 +148,9 @@ export function valueCartera(args: {
   const priced = open.filter((r) => r.valueEur != null);
   const costEur = priced.reduce((s, r) => s + r.ledger.costEur, ledger.inTransitCostEur);
   const dayChangeEur = open.reduce((s, r) => s + (r.dayChangeEur ?? 0), 0);
+  // Base del % del día: valor de ayer solo de lo que tiene variación (sin traspasos en curso ni
+  // valores sin cierre anterior, que si no rebajan el porcentaje).
+  const dayBase = open.reduce((s, r) => (r.dayChangeEur != null && r.valueEur != null ? s + r.valueEur - r.dayChangeEur : s), 0);
   const unrealizedEur = valueEur - costEur;
   const all = ledger.tickers;
   const realizedEur = all.reduce((s, t) => s + t.realizedEur, 0);
@@ -169,7 +172,7 @@ export function valueCartera(args: {
       valueEur,
       costEur,
       dayChangeEur,
-      dayChangePct: valueEur - dayChangeEur ? dayChangeEur / (valueEur - dayChangeEur) : null,
+      dayChangePct: dayBase > 0 ? dayChangeEur / dayBase : null,
       unrealizedEur,
       realizedEur,
       dividendsEur,

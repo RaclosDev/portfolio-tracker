@@ -1,3 +1,4 @@
+import './timezone.ts';
 import { startServer } from './server.ts';
 
 const server = await startServer();

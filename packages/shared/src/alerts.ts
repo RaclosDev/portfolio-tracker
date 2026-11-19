@@ -192,11 +192,23 @@ export function evaluateAlerts(
     }
   }
 
-  // Olvidar lo de valores que ya no están en ninguna lista
-  const ids = new Set(rows.map((r) => String(r.item.id)));
-  for (const k of Object.keys(next.levels)) {
-    const id = k.startsWith('order:') ? k.split(':')[1] : k.split(':')[0];
-    if (!ids.has(id!)) delete next.levels[k];
+  // Olvidar los niveles que ya no existen (valor quitado, nivel u orden editados): si no, la memoria
+  // crece con cada cambio de precio.
+  const current = new Set<string>();
+  const orderUntil = new Map<string, string | null>();
+  for (const { item, metrics } of rows) {
+    metrics.levels.forEach((level, i) => current.add(`${item.id}:${i}:${level.price}`));
+    if (item.orderPrice) current.add(`order:${item.id}:${item.orderPrice}`);
+    orderUntil.set(String(item.id), item.orderUntil);
+  }
+  for (const k of Object.keys(next.levels)) if (!current.has(k)) delete next.levels[k];
+  // Los avisos ya enviados solo sirven mientras dura la espera entre avisos; los de caducidad, mientras
+  // la orden siga con la misma fecha.
+  for (const [k, at] of Object.entries(next.notified)) {
+    if (k.startsWith('expira:')) {
+      const [, id, until] = k.split(':');
+      if (orderUntil.get(id!) !== until) delete next.notified[k];
+    } else if (now.getTime() - Date.parse(at) >= ALERT_COOLDOWN_MS) delete next.notified[k];
   }
   return { alerts, memory: next };
 }
