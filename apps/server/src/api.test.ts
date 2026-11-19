@@ -695,9 +695,10 @@ describe('gráfico de velas', () => {
   it('guarda los dibujos de cada valor y rechaza los mal formados', async () => {
     expect((await get('/api/drawings/AAA.MC')).json()).toEqual([]);
     const drawings = [
-      { id: 'a1', type: 'hline', price: 10.2 },
+      { id: 'a1', type: 'hline', points: [{ t: '1970-01-01', p: 10.2 }] },
       { id: 'b2', type: 'trend', points: [{ t: '2026-10-01', p: 9.5 }, { t: '2026-10-02', p: 10 }], color: '#e53935' },
       { id: 'c3', type: 'channel', points: [{ t: '2026-10-01', p: 9.5 }, { t: '2026-10-02', p: 10 }, { t: '2026-10-01', p: 11 }] },
+      { id: 'd4', type: 'text', points: [{ t: '2026-10-02', p: 12 }], text: 'Soporte', width: 2, style: 'dashed', locked: true },
     ];
     expect((await send('PUT', '/api/drawings/AAA.MC', drawings)).statusCode).toBe(200);
     expect((await get('/api/drawings/AAA.MC')).json()).toEqual(drawings);
@@ -705,5 +706,9 @@ describe('gráfico de velas', () => {
     const bad = await send('PUT', '/api/drawings/AAA.MC', [{ id: 'x', type: 'trend', points: [{ t: 'ayer', p: 1 }] }]);
     expect(bad.statusCode).toBe(400);
     expect((await get('/api/drawings/AAA.MC')).json()).toEqual(drawings);
+    // Las líneas horizontales del formato antiguo (con `price`) se siguen leyendo.
+    await send('PUT', '/api/drawings/OLD', [{ id: 'o1', type: 'hline', price: 7 }]);
+    expect((await get('/api/drawings/OLD')).json()).toEqual([{ id: 'o1', type: 'hline', points: [{ t: '1970-01-01', p: 7 }] }]);
+    expect((await send('PUT', '/api/drawings/AAA.MC', [{ id: 'x', type: 'long', points: [{ t: '2026-10-01', p: 1 }] }])).statusCode).toBe(400);
   });
 });
