@@ -164,6 +164,32 @@ describe('regla de los dos meses', () => {
     expect(r2(first!.gainEur + second!.gainEur)).toBe(-300);
   });
 
+  it('una misma recompra posterior no aplaza dos pérdidas', () => {
+    const l = computeLedger([
+      buy('2025-12-01', 'X', 100, 2000),
+      sell('2026-03-02', 'X', 50, 800),
+      sell('2026-03-03', 'X', 50, 800),
+      buy('2026-03-10', 'X', 50, 700),
+    ]);
+    const [a, b] = l.sales;
+    expect(r2(a!.deferredLossEur)).toBe(200);
+    expect(r2(b!.deferredLossEur)).toBe(0);
+    expect(r2(b!.computableEur)).toBe(-200);
+    expect(r2(l.byTicker.get('X')!.openLots[0]!.deferredLossEur)).toBe(200);
+  });
+
+  it('una misma compra anterior no aplaza dos pérdidas', () => {
+    const l = computeLedger([
+      buy('2025-12-01', 'Y', 100, 2000),
+      buy('2026-02-20', 'Y', 50, 1000),
+      sell('2026-03-02', 'Y', 50, 800),
+      sell('2026-03-03', 'Y', 50, 800),
+    ]);
+    const [a, b] = l.sales;
+    expect(r2(a!.deferredLossEur)).toBe(200);
+    expect(r2(b!.deferredLossEur)).toBe(0);
+  });
+
   it('cuenta las compras de los dos meses anteriores que siguen en cartera (solo en proporción)', () => {
     const l = computeLedger([
       buy('2026-01-02', 'FDR', 100, 2000),
@@ -227,6 +253,21 @@ describe('Renta', () => {
     const y25 = years.find((y) => y.year === 2025)!;
     expect(y25.carriedUsed).toEqual([{ year: 2022, amount: 900 }]);
     expect(r2(y25.gpBase)).toBe(600);
+  });
+
+  it('arrastra cuatro años el saldo negativo de RCM y lo compensa con RCM posterior', () => {
+    const l = computeLedger([
+      buy('2022-01-01', 'R', 100, 1000),
+      op({ date: '2022-06-01', ticker: 'R', type: 'dividend', amountEur: 10, fees: 60 }),
+      op({ date: '2023-06-01', ticker: 'R', type: 'dividend', amountEur: 100 }),
+    ]);
+    const years = computeTaxYears(l, 2023);
+    const y22 = years.find((y) => y.year === 2022)!;
+    expect(y22.carriedPending).toEqual([{ year: 2022, amount: 50, kind: 'rcm' }]);
+    const y23 = years.find((y) => y.year === 2023)!;
+    expect(y23.carriedUsed).toEqual([{ year: 2022, amount: 50, kind: 'rcm' }]);
+    expect(r2(y23.rcmBase)).toBe(50);
+    expect(y23.carriedPending).toEqual([]);
   });
 
   it('estima la retención del 19 % de los dividendos importados desde 2026', () => {

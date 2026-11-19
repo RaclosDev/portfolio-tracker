@@ -241,6 +241,9 @@ export function computeLedger(operations: Operation[]): Ledger {
   const issues: LedgerIssue[] = [];
   const transfers = new Map<string, { operation: Operation; lots: Lot[]; received: boolean }>();
   let transferredLotId = 0;
+  // Acciones de cada lote que ya sirven de recompra para aplazar una pérdida: no pueden aplazar otra.
+  const washUsed = new Map<Lot, number>();
+  const washFree = (lot: Lot) => lot.shares - (washUsed.get(lot) ?? 0);
 
   // Nº del Excel de cada compra → id de su lote (para el scrip que indica a qué lote va).
   const lotBySourceRef = new Map<string, number>();
@@ -334,9 +337,12 @@ export function computeLedger(operations: Operation[]): Ledger {
           matches: [],
         };
         // Regla de los dos meses (compra posterior a una venta con pérdida).
+        let room = lot.shares;
         for (const p of st.pending) {
+          if (room <= EPS) break;
           if (p.sharesLeft <= EPS || op.date > p.until) continue;
-          const take = Math.min(p.sharesLeft, lot.shares);
+          const take = Math.min(p.sharesLeft, room);
+          room -= take;
           const amount = take * p.lossPerShare;
           lot.taxCostEur += amount;
           lot.deferredLossEur += amount;
@@ -346,6 +352,7 @@ export function computeLedger(operations: Operation[]): Ledger {
           sale.computableEur = sale.taxGainEur + sale.deferredLossEur;
           sale.deferredBy.push(op.id);
         }
+        if (room < lot.shares - EPS) washUsed.set(lot, lot.shares - room);
         t.openLots.push(lot);
         t.boughtEur += op.amountEur;
         t.sharesByBroker[bk] = (t.sharesByBroker[bk] ?? 0) + shares;
@@ -382,7 +389,11 @@ export function computeLedger(operations: Operation[]): Ledger {
 
       case 'split': {
         const r = op.splitRatio ?? 1;
-        for (const l of t.openLots) l.shares *= r;
+        for (const l of t.openLots) {
+          l.shares *= r;
+          const used = washUsed.get(l);
+          if (used) washUsed.set(l, used * r);
+        }
         for (const k of Object.keys(t.sharesByBroker)) t.sharesByBroker[k]! *= r;
         for (const p of st.pending) {
           p.sharesLeft *= r;
@@ -429,6 +440,8 @@ export function computeLedger(operations: Operation[]): Ledger {
           sale.releasedLossEur += released;
           sale.matches.push({ lotId: lot.id, buyDate: lot.date, shares: take, costEur: cost, taxCostEur: taxCost });
           lot.matches.push({ saleId: op.id, date: op.date, shares: take, costEur: cost, proceedsEur: want ? (op.amountEur * take) / want : 0 });
+          const used = washUsed.get(lot);
+          if (used) washUsed.set(lot, used * (1 - f));
           lot.shares -= take;
           lot.costEur -= cost;
           lot.taxCostEur -= taxCost;
@@ -450,7 +463,9 @@ export function computeLedger(operations: Operation[]): Ledger {
           for (const lot of t.openLots) {
             if (unassigned <= EPS) break;
             if (lot.date < from || lot.sharesBought <= 0) continue;
-            const take = Math.min(unassigned, lot.shares);
+            const take = Math.min(unassigned, washFree(lot));
+            if (take <= EPS) continue;
+            washUsed.set(lot, (washUsed.get(lot) ?? 0) + take);
             const amount = take * lossPerShare;
             lot.taxCostEur += amount;
             lot.deferredLossEur += amount;

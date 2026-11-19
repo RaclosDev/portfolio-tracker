@@ -14,6 +14,8 @@ import {
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { config } from './config.ts';
+import type { Db } from './db/database.ts';
+import { ListsRepository } from './modules/lists/lists.repository.ts';
 import { ItemsRepository } from './modules/items/items.repository.ts';
 import { InstrumentsRepository, OperationsRepository } from './modules/portfolio/cartera.repository.ts';
 import { PortfolioService } from './modules/portfolio/portfolio.service.ts';
@@ -37,11 +39,32 @@ class HttpError extends Error {
   }
 }
 const notFound = (what: string) => new HttpError(404, `${what} no encontrado`);
+const madridToday = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Madrid' }).format(new Date());
+
+/**
+ * Cualquier cambio del registro se valida sobre el estado completo: este bloqueo serializa las
+ * escrituras para que dos peticiones a la vez (dos ventas, venta y borrado…) no pasen la
+ * validación cada una por su lado y dejen juntas un registro que no cuadra.
+ */
+const lockPortfolio = (t: Db) => t.exec('LOCK TABLE operations, instruments IN SHARE ROW EXCLUSIVE MODE');
+
+/**
+ * Cambiar la divisa de un valor descuadraría los precios ya apuntados en la divisa anterior. Sí se
+ * permite mientras ninguna otra operación tenga precio (vincular la cotización más tarde).
+ */
+async function assertCurrencyUnchanged(t: Db, ticker: string, currency: string | undefined, exceptId?: number) {
+  if (!currency) return;
+  const current = await new InstrumentsRepository(t).byTicker(ticker.toUpperCase());
+  if (!current || current.currency === currency) return;
+  const used = (await new OperationsRepository(t).all())
+    .some((o) => o.id !== exceptId && o.ticker.toUpperCase() === ticker.toUpperCase() && o.price != null);
+  if (used) throw new HttpError(400, `${ticker} ya tiene operaciones en ${current.currency}: no se puede cambiar su divisa.`);
+}
 
 export async function registerRoutes(app: FastifyInstance) {
   app.get('/api/portfolio/history', async (req) => {
     const { from, to } = portfolioHistoryQuerySchema.parse(req.query);
-    const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Madrid' }).format(new Date());
+    const today = madridToday();
     if (to > today) throw new HttpError(400, 'El histórico no admite fechas futuras');
     return req.services.portfolio.history(from, to);
   });
@@ -65,8 +88,13 @@ export async function registerRoutes(app: FastifyInstance) {
   });
   app.delete('/api/lists/:id', async (req, reply) => {
     const { id } = idParam.parse(req.params);
-    if ((await req.services.lists.count()) <= 1) throw new HttpError(400, 'Debe quedar al menos una lista');
-    if (!(await req.services.lists.delete(id))) throw notFound('Lista');
+    // Comprobar y borrar en la misma transacción bloqueada: dos borrados a la vez no dejan cero listas.
+    await req.services.db.tx(async (t) => {
+      await t.exec('LOCK TABLE lists IN SHARE ROW EXCLUSIVE MODE');
+      const lists = new ListsRepository(t);
+      if ((await lists.count()) <= 1) throw new HttpError(400, 'Debe quedar al menos una lista');
+      if (!(await lists.delete(id))) throw notFound('Lista');
+    });
     reply.code(204);
   });
   app.get('/api/lists/:id/watchlist', async (req) => {
@@ -144,6 +172,8 @@ export async function registerRoutes(app: FastifyInstance) {
       .parse(req.body);
     const data = operationInputSchema.parse(body.operation);
     const created = await req.services.db.tx(async (t) => {
+      await lockPortfolio(t);
+      await assertCurrencyUnchanged(t, data.ticker, body.instrument?.currency);
       const ops = new OperationsRepository(t);
       const op = await ops.create(data);
       PortfolioService.assertValid(await ops.all());
@@ -163,6 +193,8 @@ export async function registerRoutes(app: FastifyInstance) {
     ]).parse(req.body);
     const data = body.operation;
     return req.services.db.tx(async (t) => {
+      await lockPortfolio(t);
+      await assertCurrencyUnchanged(t, data.ticker, body.instrument?.currency, id);
       const ops = new OperationsRepository(t);
       const op = await ops.update(id, data);
       if (!op) throw notFound('Operación');
@@ -176,6 +208,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.delete('/api/operations/:id', async (req, reply) => {
     const { id } = idParam.parse(req.params);
     await req.services.db.tx(async (t) => {
+      await lockPortfolio(t);
       const ops = new OperationsRepository(t);
       if (!(await ops.delete(id))) throw notFound('Operación');
       PortfolioService.assertValid(await ops.all());
@@ -185,20 +218,33 @@ export async function registerRoutes(app: FastifyInstance) {
   /** Cambia el bróker de varias operaciones a la vez. */
   app.post('/api/operations/broker', async (req) => {
     const { ids, broker, needsReview } = bulkBrokerSchema.parse(req.body);
-    return { updated: await req.services.operations.setBroker(ids, broker, needsReview) };
+    // El bróker decide el FIFO por cuenta: se valida el registro igual que en un alta.
+    return req.services.db.tx(async (t) => {
+      await lockPortfolio(t);
+      const ops = new OperationsRepository(t);
+      const updated = await ops.setBroker(ids, broker, needsReview);
+      PortfolioService.assertValid(await ops.all());
+      return { updated };
+    });
   });
   app.put('/api/instruments/:ticker', async (req) => {
     const { ticker } = z.object({ ticker: z.string().min(1).max(32) }).parse(req.params);
-    const current = await req.services.instruments.byTicker(ticker.toUpperCase());
-    if (!current) throw notFound('Valor');
-    return req.services.instruments.upsert({ ...current, ...instrumentPatchSchema.parse(req.body) });
+    const patch = instrumentPatchSchema.parse(req.body);
+    return req.services.db.tx(async (t) => {
+      await lockPortfolio(t);
+      const instruments = new InstrumentsRepository(t);
+      const current = await instruments.byTicker(ticker.toUpperCase());
+      if (!current) throw notFound('Valor');
+      await assertCurrencyUnchanged(t, current.ticker, patch.currency);
+      return instruments.upsert({ ...current, ...patch });
+    });
   });
   /** Añade movimientos con copia previa y valida la cartera completa en una sola transacción. */
   app.post('/api/portfolio/import', { bodyLimit: 32 * 1024 * 1024 }, async (req) => {
     const data = carteraImportSchema.parse(req.body);
     return req.services.db.tx(async (t) => {
       // Serializa importaciones y altas manuales para comprobar duplicados sobre el estado definitivo.
-      await t.exec('LOCK TABLE operations, instruments IN SHARE ROW EXCLUSIVE MODE');
+      await lockPortfolio(t);
       const ops = new OperationsRepository(t);
       const instruments = new InstrumentsRepository(t);
       const seen = new Set((await ops.all()).map(operationFingerprint));
@@ -266,7 +312,7 @@ export async function registerRoutes(app: FastifyInstance) {
       // La cartera pide en euros; la lista, en su divisa base.
       base: z.string().regex(/^[A-Z]{3}$/).optional(),
     }).parse(req.query);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = madridToday();
     return req.services.market.getFxRates(base ?? (await req.services.settings.get()).baseCurrency, currencies.split(','), date && date < today ? date : undefined);
   });
   // Históricos para la ficha de detalle y minigráficos de la tabla
