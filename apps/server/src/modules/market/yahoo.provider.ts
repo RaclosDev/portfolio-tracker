@@ -1,4 +1,4 @@
-import type { DailyHistory, HistoryRange, PricePoint } from '@watchlist/shared';
+import type { Candle, DailyHistory, HistoryRange, PricePoint } from '@watchlist/shared';
 import YahooFinance from 'yahoo-finance2';
 import { errorSummary, type MarketDataProvider } from './provider.ts';
 
@@ -10,7 +10,7 @@ const LOOSE = { validateResult: false } as const;
 
 interface DailyChart {
   meta?: { currency?: string; exchangeTimezoneName?: string };
-  quotes?: { date: Date | string; close?: number | null }[];
+  quotes?: { date: Date | string; open?: number | null; high?: number | null; low?: number | null; close?: number | null }[];
   events?: { splits?: { date: Date | string; numerator: number; denominator: number }[] };
 }
 
@@ -29,6 +29,20 @@ export function dailyHistoryFromChart(chart: DailyChart): DailyHistory {
       return { t, c: q.close! * factor };
     }),
   };
+}
+
+/** Velas diarias del gráfico de Yahoo (ajustadas por splits, como las de cualquier gráfico), una por sesión. */
+export function candlesFromChart(chart: DailyChart): Candle[] {
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: chart.meta?.exchangeTimezoneName ?? 'UTC',
+    year: 'numeric', month: '2-digit', day: '2-digit' });
+  const byDay = new Map<string, Candle>();
+  for (const q of chart.quotes ?? []) {
+    const c = n(q.close);
+    if (c == null || c <= 0) continue;
+    const o = n(q.open) ?? c;
+    byDay.set(day.format(new Date(q.date)), { t: day.format(new Date(q.date)), o, h: Math.max(n(q.high) ?? c, o, c), l: Math.min(n(q.low) ?? c, o, c), c });
+  }
+  return [...byDay.values()].sort((a, b) => a.t.localeCompare(b.t));
 }
 
 interface QuoteChart {
@@ -173,6 +187,11 @@ export class YahooProvider implements MarketDataProvider {
   async getDailyHistory(symbol: string, from: string): Promise<DailyHistory> {
     const chart = await this.yf.chart(symbol, { period1: from, interval: '1d', events: 'split' }, LOOSE) as DailyChart;
     return dailyHistoryFromChart(chart);
+  }
+
+  async getCandles(symbol: string, from: string): Promise<Candle[]> {
+    const chart = await this.yf.chart(symbol, { period1: from, interval: '1d' }, LOOSE) as DailyChart;
+    return candlesFromChart(chart);
   }
 
   async getHistory(symbol: string, range: HistoryRange): Promise<PricePoint[]> {

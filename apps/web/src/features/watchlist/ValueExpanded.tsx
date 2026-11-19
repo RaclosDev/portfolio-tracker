@@ -3,14 +3,14 @@ import { useId, useState } from 'react';
 import { useSettings } from '../../api/hooks.ts';
 import { pct, price } from '../../lib/format.ts';
 import { tabListKeys } from '../../lib/tabs.ts';
+import { CandleChart } from './CandleChart.tsx';
 import { HistoryView } from './HistoryView.tsx';
 import { PriceMapLarge } from './PriceMapLarge.tsx';
 import { QuoteSheet } from './QuoteSheet.tsx';
-import { TradingViewChart } from './TradingViewChart.tsx';
 
-type View = 'mapa' | 'grafico' | 'tradingview';
+type View = 'mapa' | 'grafico' | 'velas';
 const VIEW_KEY = 'watchlist.detalle.vista';
-const VIEWS: [View, string][] = [['mapa', 'Mapa de precios'], ['grafico', 'Gráfico histórico'], ['tradingview', 'TradingView']];
+const VIEWS: [View, string][] = [['mapa', 'Mapa de precios'], ['grafico', 'Gráfico histórico'], ['velas', 'Velas y dibujos']];
 
 interface Props {
   row: WatchlistRow;
@@ -27,13 +27,16 @@ interface Props {
  */
 export function ValueExpanded({ row, base, width, onEdit, onClose }: Props) {
   const names = useSettings().data?.statusNames ?? DEFAULT_STATUS_NAMES;
-  const [chosen, setView] = useState<View>(() => (localStorage.getItem(VIEW_KEY) as View) || 'mapa');
+  const [chosen, setView] = useState<View>(() => {
+    const stored = localStorage.getItem(VIEW_KEY);
+    // La antigua pestaña de TradingView pasa a ser la de velas.
+    return stored === 'tradingview' ? 'velas' : (stored as View) || 'mapa';
+  });
   const id = useId();
   const { item, quote, metrics } = row;
-  // Los fondos sin cotización en bolsa no están en TradingView: su pestaña no se ofrece.
+  // Los fondos sin cotización en bolsa no están en TradingView: sin enlace para abrirlo allí.
   const tvSymbol = tradingViewSymbol(item.symbol, quote?.quoteType);
-  const views = tvSymbol ? VIEWS : VIEWS.filter(([v]) => v !== 'tradingview');
-  const view = views.some(([v]) => v === chosen) ? chosen : 'mapa';
+  const view = VIEWS.some(([v]) => v === chosen) ? chosen : 'mapa';
   const idx = metrics.levels.findIndex((l) => metrics.status === 'reached'
     ? l.status === 'reached'
     : l.distancePct != null && l.distancePct === metrics.nearestDistancePct);
@@ -79,7 +82,7 @@ export function ValueExpanded({ row, base, width, onEdit, onClose }: Props) {
       <div className="xp__body">
         <section className="xp__panel xp__visual">
           <div className="xp__tabs" role="tablist" aria-label="Vista" onKeyDown={tabListKeys}>
-            {views.map(([v, label]) => (
+            {VIEWS.map(([v, label]) => (
               <button
                 key={v}
                 type="button"
@@ -108,8 +111,8 @@ export function ValueExpanded({ row, base, width, onEdit, onClose }: Props) {
                 {row.targets?.mean != null && <li><i className="lg lg-consensus" /> Consenso</li>}
               </ul>
             </>
-          ) : view === 'tradingview' && tvSymbol ? (
-            <TradingViewChart symbol={tvSymbol} name={item.name ?? item.symbol} />
+          ) : view === 'velas' ? (
+            <CandleChart key={item.symbol} row={row} tvSymbol={tvSymbol} />
           ) : (
             <HistoryView row={row} />
           )}

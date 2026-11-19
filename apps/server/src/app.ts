@@ -37,8 +37,7 @@ export async function buildApp(services: Services, { logLevel = 'warn', webRoot 
         // read-excel-file descomprime el .xlsx en workers creados desde blob:; sin esto la lectura se cuelga sin error.
         workerSrc: ["'self'", 'blob:'],
         manifestSrc: ["'self'"],
-        // El gráfico incrustado de TradingView en el detalle de un valor.
-        frameSrc: ['https://s.tradingview.com'],
+        frameSrc: ["'none'"],
         objectSrc: ["'none'"],
         frameAncestors: ["'none'"],
         baseUri: ["'self'"],

@@ -1068,9 +1068,16 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .xp__view { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .xp__view > .pm-large { flex: 1; display: flex; align-items: center; }
 .xp__view > .xp-history { flex: 1; }
-.xp-tv { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-.xp-tv__frame { flex: 1; width: 100%; min-height: 460px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
-.xp-tv__note { margin: 0; }
+.xp-candles { flex: 1; display: flex; flex-direction: column; gap: 8px; outline: none; min-width: 0; }
+.xp-candles__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.xp-candles__ranges { margin-left: auto; }
+.xp-candles__edit { display: inline-flex; align-items: center; gap: 6px; }
+.xp-candles__swatch { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--border); cursor: pointer; padding: 0; }
+.xp-candles__swatch.on { box-shadow: 0 0 0 2px var(--text); }
+.xp-candles__chart { position: relative; flex: 1; min-height: 420px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); overflow: hidden; }
+.xp-candles__chart.is-drawing { cursor: crosshair; }
+.xp-candles__msg { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; }
+.xp-candles__note { margin: 0; }
 .xp__data { padding: 4px 18px 14px; }
 
 /* Pestañas del panel: subrayado bajo la activa, como en las fichas de los brókers. */

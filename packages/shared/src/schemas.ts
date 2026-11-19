@@ -228,3 +228,14 @@ export const backupSchema = z.object({
   positions: z.array(z.unknown()).optional(),
 });
 export type Backup = z.input<typeof backupSchema>;
+
+/** Dibujos del gráfico de velas de un valor (se guardan todos juntos al cambiar uno). */
+const chartPointSchema = z.object({ t: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), p: z.number().finite() });
+const drawingId = z.string().min(1).max(40);
+const drawingColor = z.string().regex(/^#[0-9a-f]{6}$/i).optional();
+export const chartDrawingSchema = z.discriminatedUnion('type', [
+  z.object({ id: drawingId, type: z.literal('hline'), price: z.number().finite(), color: drawingColor }),
+  z.object({ id: drawingId, type: z.literal('trend'), points: z.tuple([chartPointSchema, chartPointSchema]), color: drawingColor }),
+  z.object({ id: drawingId, type: z.literal('channel'), points: z.tuple([chartPointSchema, chartPointSchema, chartPointSchema]), color: drawingColor }),
+]);
+export const chartDrawingsSchema = z.array(chartDrawingSchema).max(200);
