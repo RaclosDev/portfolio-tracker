@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { PricePoint } from '../types.ts';
 import { computeLedger, sortOperations } from './ledger.ts';
+import { cents } from './money.ts';
 import type { Instrument, Operation } from './schemas.ts';
 
 const DAY = 86_400_000;
@@ -124,21 +125,22 @@ export function computePortfolioHistory(args: {
       const fx = currency === 'EUR' ? 1 : fxReaders.get(currency)?.(date);
       const fixed = currency === 'EUR' ? 1 : fixedFx.get(currency);
       if (fx == null) { missingFx = true; missing.add(`EUR/${currency}`); }
-      else value += held * price / fx;
+      else value += cents(held * price / fx);
       if (fixed == null) { missingFixedFx = true; missing.add(`EUR/${currency} al inicio`); }
-      else constant += held * price / fixed;
+      else constant += cents(held * price / fixed);
     }
-    const valueEur = missingPrice || missingFx ? null : value;
-    const constantFxEur = missingPrice || missingFixedFx ? null : constant;
+    // En céntimos, posición a posición, como la valoración de hoy: el resultado cuadra con las cifras que se ven.
+    const valueEur = missingPrice || missingFx ? null : cents(value);
+    const constantFxEur = missingPrice || missingFixedFx ? null : cents(constant);
     if (date < from) {
       startingValueEur = valueEur;
       if (valueEur == null) startingMissing = [...missing].map((s) => `${s} al cierre previo`);
       continue;
     }
     points.push({ date, valueEur, constantFxEur,
-      fxEffectEur: valueEur != null && constantFxEur != null ? valueEur - constantFxEur : null,
-      startingValueEur, purchasesEur, salesEur, incomeEur,
-      resultEur: valueEur != null && startingValueEur != null ? valueEur - startingValueEur - purchasesEur + salesEur + incomeEur : null,
+      fxEffectEur: valueEur != null && constantFxEur != null ? cents(valueEur - constantFxEur) : null,
+      startingValueEur, purchasesEur: cents(purchasesEur), salesEur: cents(salesEur), incomeEur: cents(incomeEur),
+      resultEur: valueEur != null && startingValueEur != null ? cents(valueEur - startingValueEur - purchasesEur + salesEur + incomeEur) : null,
       missing: [...new Set([...missing, ...startingMissing])],
     });
   }

@@ -1,4 +1,5 @@
 /** Exposición real: lo que se tiene de cada empresa sumando las acciones directas y las que llevan dentro los fondos. */
+import { cents, splitCents } from './money.ts';
 import type { HoldingRow } from './view.ts';
 
 export interface FundHolding {
@@ -128,30 +129,40 @@ export function computeExposure(open: HoldingRow[], compositions: Record<string,
   }
   for (const { row: fund, composition } of funds) {
     let known = 0;
-    for (const h of composition?.holdings ?? []) {
-      if (!(h.weight > 0) || known + h.weight > 1.005) continue;
+    const holdings = (composition?.holdings ?? []).filter((h) => {
+      if (!(h.weight > 0) || known + h.weight > 1.005) return false;
       known += h.weight;
-      const eur = fund.valueEur! * h.weight;
+      return true;
+    });
+    // Reparto en céntimos que suma justo el valor del fondo: lo desglosado más lo que queda sin desglosar.
+    const amounts = splitCents(fund.valueEur!, holdings.map((h) => Math.min(h.weight, 1)));
+    let allocated = 0;
+    for (const [i, h] of holdings.entries()) {
+      const eur = Math.min(amounts[i]!, cents(fund.valueEur! - allocated));
+      if (eur <= 0) continue;
+      allocated = cents(allocated + eur);
       const row = rowFor(h.name, h.isin, fundTicker(h.ticker));
       row.fundsEur += eur;
       // Dos clases de la misma empresa (Alphabet A y C) en un fondo son una sola parte.
       const same = row.parts.find((p) => p.ticker === fund.ticker && p.weight != null);
       if (same) {
-        same.eur += eur;
+        same.eur = cents(same.eur + eur);
         same.weight! += h.weight;
       } else row.parts.push({ ticker: fund.ticker, name: fund.name, eur, weight: h.weight });
     }
-    const left = fund.valueEur! * Math.max(0, 1 - known);
-    if (left > 0.005) rest.push({ ticker: fund.ticker, name: fund.name, eur: left, weight: composition ? Math.max(0, 1 - known) : null });
+    const left = cents(fund.valueEur! - allocated);
+    if (left > 0) rest.push({ ticker: fund.ticker, name: fund.name, eur: left, weight: composition ? Math.max(0, 1 - known) : null });
   }
 
-  const totalEur = priced.reduce((s, r) => s + r.valueEur!, 0);
+  const totalEur = cents(priced.reduce((s, r) => s + r.valueEur!, 0));
   for (const row of rows) {
-    row.totalEur = row.directEur + row.fundsEur;
+    row.directEur = cents(row.directEur);
+    row.fundsEur = cents(row.fundsEur);
+    row.totalEur = cents(row.directEur + row.fundsEur);
     row.weight = totalEur ? row.totalEur / totalEur : 0;
     row.parts.sort((a, b) => b.eur - a.eur);
   }
   rows.sort((a, b) => b.totalEur - a.totalEur);
   rest.sort((a, b) => b.eur - a.eur);
-  return { rows, rest, restEur: rest.reduce((s, p) => s + p.eur, 0), totalEur };
+  return { rows: rows.filter((r) => r.totalEur > 0), rest, restEur: cents(rest.reduce((s, p) => s + p.eur, 0)), totalEur };
 }
