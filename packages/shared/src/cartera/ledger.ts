@@ -21,8 +21,11 @@
  * pedir la cotización.
  */
 import { isIncome, type Instrument, type Operation, type OperationType } from './schemas.ts';
+import { cents, splitCents } from './money.ts';
 
 const EPS = 1e-6;
+/** Parte de un importe del lote: entero si se toma todo, si no en céntimos (los importes se guardan con céntimos). */
+const portion = (amount: number, f: number, whole: boolean) => (whole ? amount : cents(amount * f));
 /** Cambio de normativa de la venta de derechos (Ley 26/2014). */
 export const RIGHTS_GAIN_FROM = '2017-01-01';
 
@@ -275,8 +278,9 @@ function reduceTaxCost(t: TickerLedger, amount: number): number {
   const total = t.openLots.reduce((s, l) => s + l.taxCostEur, 0);
   if (amount <= 0 || total <= EPS) return Math.max(0, amount);
   const applied = Math.min(amount, total);
-  for (const l of t.openLots) l.taxCostEur -= (applied * l.taxCostEur) / total;
-  return amount - applied;
+  const parts = splitCents(applied, t.openLots.map((l) => l.taxCostEur / total));
+  t.openLots.forEach((l, i) => (l.taxCostEur = cents(l.taxCostEur - parts[i]!)));
+  return cents(amount - applied);
 }
 
 const normIsin = (isin: string | null | undefined) => {
@@ -349,15 +353,17 @@ export function computeLedger(operations: Operation[], instruments: readonly Pic
           const lot = t.openLots[0]!;
           const take = Math.min(left, lot.shares);
           const fraction = take / lot.shares;
+          const whole = take >= lot.shares - EPS;
+          const costEur = portion(lot.costEur, fraction, whole);
           const part: Lot = { ...lot, id: --transferredLotId, shares: take, sharesBought: take,
-            costBought: lot.costEur * fraction, costEur: lot.costEur * fraction, costNative: null,
-            taxCostEur: lot.taxCostEur * fraction, deferredLossEur: lot.deferredLossEur * fraction, matches: [] };
+            costBought: costEur, costEur, costNative: null,
+            taxCostEur: portion(lot.taxCostEur, fraction, whole), deferredLossEur: portion(lot.deferredLossEur, fraction, whole), matches: [] };
           moved.push(part);
           lot.shares -= take;
-          lot.costEur -= part.costEur;
+          lot.costEur = cents(lot.costEur - part.costEur);
           if (lot.costNative != null) lot.costNative *= 1 - fraction;
-          lot.taxCostEur -= part.taxCostEur;
-          lot.deferredLossEur -= part.deferredLossEur;
+          lot.taxCostEur = cents(lot.taxCostEur - part.taxCostEur);
+          lot.deferredLossEur = cents(lot.deferredLossEur - part.deferredLossEur);
           left -= take;
           if (lot.shares <= EPS) {
             lot.shares = 0;
@@ -420,13 +426,13 @@ export function computeLedger(operations: Operation[], instruments: readonly Pic
           if (p.sharesLeft <= EPS || op.date > p.until) continue;
           const take = Math.min(p.sharesLeft, room);
           room -= take;
-          const amount = take * p.lossPerShare;
+          const amount = cents(take * p.lossPerShare);
           lot.taxCostEur += amount;
           lot.deferredLossEur += amount;
           p.sharesLeft -= take;
           const sale = sales.find((s) => s.id === p.saleId)!;
-          sale.deferredLossEur += amount;
-          sale.computableEur = sale.taxGainEur + sale.deferredLossEur;
+          sale.deferredLossEur = cents(sale.deferredLossEur + amount);
+          sale.computableEur = cents(sale.taxGainEur + sale.deferredLossEur);
           sale.deferredBy.push(op.id);
         }
         if (room < lot.shares - EPS) washUsed.set(lot, lot.shares - room);
@@ -510,29 +516,33 @@ export function computeLedger(operations: Operation[], instruments: readonly Pic
           const lot = t.openLots[0]!;
           const take = Math.min(left, lot.shares);
           const f = take / lot.shares;
-          const cost = lot.costEur * f;
-          const taxCost = lot.taxCostEur * f;
-          const released = lot.deferredLossEur * f;
+          const whole = take >= lot.shares - EPS;
+          const cost = portion(lot.costEur, f, whole);
+          const taxCost = portion(lot.taxCostEur, f, whole);
+          const released = portion(lot.deferredLossEur, f, whole);
           sale.costEur += cost;
           sale.taxCostEur += taxCost;
           sale.releasedLossEur += released;
           sale.matches.push({ lotId: lot.id, buyDate: lot.date, shares: take, costEur: cost, taxCostEur: taxCost });
-          lot.matches.push({ saleId: op.id, date: op.date, shares: take, costEur: cost, proceedsEur: want ? (op.amountEur * take) / want : 0 });
+          lot.matches.push({ saleId: op.id, date: op.date, shares: take, costEur: cost, proceedsEur: want ? cents((op.amountEur * take) / want) : 0 });
           const used = washUsed.get(lot);
           if (used) washUsed.set(lot, used * (1 - f));
           lot.shares -= take;
-          lot.costEur -= cost;
+          lot.costEur = cents(lot.costEur - cost);
           if (lot.costNative != null) lot.costNative *= 1 - f;
-          lot.taxCostEur -= taxCost;
-          lot.deferredLossEur -= released;
+          lot.taxCostEur = cents(lot.taxCostEur - taxCost);
+          lot.deferredLossEur = cents(lot.deferredLossEur - released);
           left -= take;
           if (lot.shares <= EPS) {
             lot.shares = 0;
             t.closedLots.push(t.openLots.shift()!);
           }
         }
-        sale.gainEur = sale.proceedsEur - sale.costEur;
-        sale.taxGainEur = sale.proceedsEur - sale.taxCostEur;
+        sale.costEur = cents(sale.costEur);
+        sale.taxCostEur = cents(sale.taxCostEur);
+        sale.releasedLossEur = cents(sale.releasedLossEur);
+        sale.gainEur = cents(sale.proceedsEur - sale.costEur);
+        sale.taxGainEur = cents(sale.proceedsEur - sale.taxCostEur);
         sale.computableEur = sale.taxGainEur;
         // Regla de los dos meses: compras del mismo valor en los dos meses anteriores que siguen en cartera…
         if (sale.taxGainEur < -0.005 && want > EPS) {
@@ -545,14 +555,15 @@ export function computeLedger(operations: Operation[], instruments: readonly Pic
             const take = Math.min(unassigned, washFree(lot));
             if (take <= EPS) continue;
             washUsed.set(lot, (washUsed.get(lot) ?? 0) + take);
-            const amount = take * lossPerShare;
+            const amount = cents(take * lossPerShare);
             lot.taxCostEur += amount;
             lot.deferredLossEur += amount;
             sale.deferredLossEur += amount;
             sale.deferredBy.push(lot.id);
             unassigned -= take;
           }
-          sale.computableEur = sale.taxGainEur + sale.deferredLossEur;
+          sale.deferredLossEur = cents(sale.deferredLossEur);
+          sale.computableEur = cents(sale.taxGainEur + sale.deferredLossEur);
           // …y las que se compren en los dos meses siguientes.
           if (unassigned > EPS) st.pending.push({ saleId: op.id, until: addMonths(op.date, 2), lossPerShare, sharesLeft: unassigned });
         }
@@ -567,8 +578,8 @@ export function computeLedger(operations: Operation[], instruments: readonly Pic
       default: {
         if (!isIncome(op.type)) break;
         const fx = op.fxRate || 1;
-        const feesEur = op.fees / fx;
-        const base = op.amountEur - feesEur;
+        const feesEur = cents(op.fees / fx);
+        const base = cents(op.amountEur - feesEur);
         const item: IncomeItem = {
           id: op.id,
           ticker: op.ticker,
@@ -580,7 +591,7 @@ export function computeLedger(operations: Operation[], instruments: readonly Pic
           feesEur,
           withholdingEs: op.withholdingEs,
           withholdingForeign: op.withholdingForeign,
-          econEur: base - (op.withholdingForeign ?? 0),
+          econEur: cents(base - (op.withholdingForeign ?? 0)),
           rcmEur: 0,
           gainEur: 0,
           costReductionEur: 0,
@@ -591,14 +602,14 @@ export function computeLedger(operations: Operation[], instruments: readonly Pic
           t.dividendsEur += item.econEur;
         } else if (op.type === 'issue_premium') {
           const excess = reduceTaxCost(t, base);
-          item.costReductionEur = base - excess;
+          item.costReductionEur = cents(base - excess);
           item.rcmEur = excess;
           t.otherIncomeEur += item.econEur;
         } else if (op.type === 'rights_sale') {
           if (op.date >= RIGHTS_GAIN_FROM || base < 0) item.gainEur = base;
           else {
             const excess = reduceTaxCost(t, base);
-            item.costReductionEur = base - excess;
+            item.costReductionEur = cents(base - excess);
             item.gainEur = excess;
           }
           t.otherIncomeEur += item.econEur;
@@ -616,8 +627,10 @@ export function computeLedger(operations: Operation[], instruments: readonly Pic
       t.shares = 0;
       t.cycleStart = null;
     }
-    t.costEur = t.openLots.reduce((s, l) => s + l.costEur, 0);
-    t.taxCostEur = t.openLots.reduce((s, l) => s + l.taxCostEur, 0);
+    t.costEur = cents(t.openLots.reduce((s, l) => s + l.costEur, 0));
+    t.taxCostEur = cents(t.openLots.reduce((s, l) => s + l.taxCostEur, 0));
+    // Sumas de importes con céntimos: sin el ruido de la coma flotante.
+    for (const k of ['boughtEur', 'realizedEur', 'dividendsEur', 'otherIncomeEur', 'incomeSinceOpenEur'] as const) t[k] = cents(t[k]);
     for (const k of Object.keys(t.sharesByBroker)) if (Math.abs(t.sharesByBroker[k]!) < EPS) delete t.sharesByBroker[k];
     t.members.sort();
     return t;
@@ -628,8 +641,8 @@ export function computeLedger(operations: Operation[], instruments: readonly Pic
   cashFlows.push(...income.map((i) => ({ date: i.date, amount: i.econEur })));
   const byTicker = new Map(tickers.flatMap((t) => [[t.ticker, t] as const, ...t.members.map((m) => [m, t] as const)]));
   return { tickers, byTicker, sales, income, issues, cashFlows,
-    inTransitEur: pending.reduce((sum, transfer) => sum + transfer.operation.amountEur, 0),
-    inTransitCostEur: pending.reduce((sum, transfer) => sum + transfer.lots.reduce((n, lot) => n + lot.costEur, 0), 0) };
+    inTransitEur: cents(pending.reduce((sum, transfer) => sum + transfer.operation.amountEur, 0)),
+    inTransitCostEur: cents(pending.reduce((sum, transfer) => sum + transfer.lots.reduce((n, lot) => n + lot.costEur, 0), 0)) };
 }
 
 const fmt = (n: number) => n.toLocaleString('es-ES', { maximumFractionDigits: 4 });
