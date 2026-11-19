@@ -1,4 +1,4 @@
-import type { DailyHistory, HistoryRange, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
+import type { Candle, DailyHistory, HistoryRange, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
 import { isinInSymbol, tickerOf } from './composition.ts';
 import { isIsin } from './isin.ts';
 import type { MarketDataProvider } from './provider.ts';
@@ -68,7 +68,7 @@ interface Child {
   exchange?: unknown;
   mic?: unknown;
 }
-interface FhQuote {
+export interface FhQuote {
   price?: unknown;
   previousClose?: unknown;
   changePct?: unknown;
@@ -76,6 +76,7 @@ interface FhQuote {
   asOf?: unknown;
   tradingDate?: unknown;
   marketPhase?: unknown;
+  day?: { open?: unknown; high?: unknown; low?: unknown } | null;
 }
 
 const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
@@ -104,6 +105,16 @@ export function wantedFor(symbol: string): Wanted | null {
   const market = s.startsWith('FT:') ? s.split(':')[2] : /\.([A-Z]+)$/.exec(s)?.[1];
   const mics = market ? MIC[market] : US;
   return mics ? { by: 'ticker', root: t.root, mics, currency: t.currency } : null;
+}
+
+/** Vela de la sesión en curso a partir de la cotización en directo, o null si no trae los datos del día. */
+export function liveCandle(q: FhQuote, currency: string | null): Candle | null {
+  const c = num(q.price);
+  const t = str(q.tradingDate);
+  const o = num(q.day?.open);
+  if (c == null || c <= 0 || o == null || o <= 0 || !t || !/^\d{4}-\d{2}-\d{2}$/.test(t)) return null;
+  if (str(q.currency) && str(q.currency) !== currency) return null;
+  return { t, o, h: Math.max(num(q.day?.high) ?? c, o, c), l: Math.min(num(q.day?.low) ?? c, o, c), c };
 }
 
 export class FinancialHubProvider implements MarketDataProvider {
@@ -225,26 +236,33 @@ export class FinancialHubProvider implements MarketDataProvider {
     return range;
   }
 
-  /** Cierres diarios (o valor liquidativo) de la serie, siguiendo las páginas. */
-  private async series(ref: FhRef, query: string): Promise<PricePoint[]> {
-    const points: PricePoint[] = [];
+  /** Velas diarias de la serie, siguiendo las páginas (los fondos solo tienen valor liquidativo: vela plana). */
+  private async ohlc(ref: FhRef, query: string): Promise<Candle[]> {
+    const candles: Candle[] = [];
     let cursor: string | null = null;
     for (let page = 0; page < 10; page++) {
       const body = (await this.json(
         `/market/series/${ref.id}/history?kind=${ref.kind}&resolution=1d&pageSize=5000&${query}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
-      )) as { data?: { points?: { time?: unknown; close?: unknown; value?: unknown }[]; nextCursor?: unknown; currency?: unknown } } | null;
+      )) as { data?: { points?: Record<string, unknown>[]; nextCursor?: unknown; currency?: unknown } } | null;
       const data = body?.data;
       if (!data) break;
       if (str(data.currency) && str(data.currency) !== ref.currency) return [];
       for (const p of data.points ?? []) {
         const t = str(p.time)?.slice(0, 10);
         const c = num(p.close) ?? num(p.value);
-        if (t && /^\d{4}-\d{2}-\d{2}$/.test(t) && c != null && c > 0) points.push({ t, c });
+        if (!t || !/^\d{4}-\d{2}-\d{2}$/.test(t) || c == null || c <= 0) continue;
+        const o = num(p.open) ?? c;
+        candles.push({ t, o, h: Math.max(num(p.high) ?? c, o, c), l: Math.min(num(p.low) ?? c, o, c), c });
       }
       cursor = str(data.nextCursor);
       if (!cursor) break;
     }
-    return points.sort((a, b) => a.t.localeCompare(b.t));
+    return candles.sort((a, b) => a.t.localeCompare(b.t));
+  }
+
+  /** Cierres diarios (o valor liquidativo) de la serie. */
+  private async series(ref: FhRef, query: string): Promise<PricePoint[]> {
+    return (await this.ohlc(ref, query)).map(({ t, c }) => ({ t, c }));
   }
 
   async getQuotes(symbols: string[]): Promise<Omit<Quote, 'stale'>[]> {
@@ -296,6 +314,24 @@ export class FinancialHubProvider implements MarketDataProvider {
     const ref = await this.resolve(symbol);
     if (ref?.kind !== 'fund_class') return { currency: null, points: [] };
     return { currency: ref.currency, points: (await this.series(ref, `from=${from}`)).filter((p) => p.t >= from) };
+  }
+
+  /**
+   * Velas diarias desde una fecha. El histórico llega hasta la última sesión cerrada; la de hoy se completa con
+   * la cotización en directo (apertura, máximo y mínimo del día y último precio).
+   */
+  async getCandles(symbol: string, from: string): Promise<Candle[]> {
+    const ref = await this.resolve(symbol);
+    if (!ref) return [];
+    const candles = (await this.ohlc(ref, `from=${from}`)).filter((c) => c.t >= from);
+    if (ref.kind !== 'listing') return candles;
+    const body = (await this.json(`/market/quotes?listingIds=${ref.id}`).catch(() => null)) as { data?: { quote?: FhQuote | null }[] } | null;
+    const q = body?.data?.[0]?.quote;
+    const live = q ? liveCandle(q, ref.currency) : null;
+    const last = candles.at(-1);
+    if (live && (!last || live.t > last.t)) candles.push(live);
+    else if (live && last && live.t === last.t) candles[candles.length - 1] = live;
+    return candles;
   }
 
   async getTargets() {

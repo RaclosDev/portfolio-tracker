@@ -1,4 +1,4 @@
-import { isFundType, shiftDate, type FundComposition, type AnalystTargets, type DailyHistory, type HistoryRange, type InstrumentHit, type Listing, type PricePoint, type Quote, type SymbolSearchResult } from '@watchlist/shared';
+import { isFundType, shiftDate, type Candle, type FundComposition, type AnalystTargets, type DailyHistory, type HistoryRange, type InstrumentHit, type Listing, type PricePoint, type Quote, type SymbolSearchResult } from '@watchlist/shared';
 import type { Db } from '../../db/database.ts';
 import { isinCandidates, isinTickers, isIsin } from './isin.ts';
 import { queryWords, rankByWords, sameName, wordPairs, wordScore } from './words.ts';
@@ -380,6 +380,41 @@ export class MarketService {
       .map((s) => quotes.get(s))
       .filter((q): q is Quote => !!q && !q.stale)
       .map((q) => ({ symbol: q.symbol, name: q.name ?? q.symbol, exchange: q.exchange, type: q.quoteType }));
+  }
+
+  private candlesPending = new Map<string, Promise<{ candles: Candle[]; stale: boolean }>>();
+
+  /**
+   * Velas diarias de los últimos cinco años para el gráfico de velas. La de hoy va en directo, así que la caché
+   * dura lo mismo que la de las cotizaciones; si las fuentes fallan, se sirven las últimas guardadas.
+   */
+  getCandles(symbol: string): Promise<{ candles: Candle[]; stale: boolean }> {
+    const pending = this.candlesPending.get(symbol);
+    if (pending) return pending;
+    const request = this.loadCandles(symbol).finally(() => this.candlesPending.delete(symbol));
+    this.candlesPending.set(symbol, request);
+    return request;
+  }
+
+  private async loadCandles(symbol: string): Promise<{ candles: Candle[]; stale: boolean }> {
+    const kind = 'candles-5y';
+    const key = `${kind}:${symbol}`;
+    const hit = this.mem.get(key) as Entry<Candle[]> | undefined;
+    if (hit && Date.now() - hit.fetchedAt < Math.max(this.opts.quoteTtlMs, 30_000)) return { candles: hit.value, stale: false };
+    if (!this.throttled && this.provider.getCandles) {
+      try {
+        const candles = await this.provider.getCandles(symbol, shiftDate(new Date().toISOString().slice(0, 10), -5 * 366));
+        if (candles.length) {
+          this.mem.set(key, { value: candles, fetchedAt: Date.now() });
+          await this.persist(kind, symbol, candles);
+          return { candles, stale: false };
+        }
+      } catch (err) {
+        this.onProviderError(err, `Sin velas de ${symbol}`);
+      }
+    }
+    const stored = hit ?? await this.load<Candle[]>(kind, symbol);
+    return { candles: stored?.value ?? [], stale: true };
   }
 
   /** Histórico de cierres (caché 1 h; sin conexión, el último guardado). */

@@ -1,5 +1,6 @@
 import {
   bulkBrokerSchema,
+  chartDrawingsSchema,
   carteraImportSchema,
   operationFingerprint,
   importRequestSchema,
@@ -327,6 +328,24 @@ export async function registerRoutes(app: FastifyInstance) {
     const { symbol } = z.object({ symbol: z.string().min(1).max(32) }).parse(req.params);
     const { range } = z.object({ range: z.enum(['1m', '3m', '6m', '1y', '5y']).default('1y') }).parse(req.query);
     return req.services.market.getHistory(symbol.toUpperCase(), range);
+  });
+  // Velas diarias del gráfico de la ficha (cinco años, con la sesión de hoy en directo).
+  app.get('/api/market/candles/:symbol', async (req) => {
+    const { symbol } = z.object({ symbol: z.string().min(1).max(32) }).parse(req.params);
+    return req.services.market.getCandles(symbol.toUpperCase());
+  });
+  // Dibujos del gráfico de velas de cada valor (soportes, resistencias, tendencias, canales).
+  app.get('/api/drawings/:symbol', async (req) => {
+    const { symbol } = z.object({ symbol: z.string().min(1).max(32) }).parse(req.params);
+    const stored = await req.services.state.get<unknown>(`chart-drawings:${symbol.toUpperCase()}`, []);
+    const parsed = chartDrawingsSchema.safeParse(stored);
+    return parsed.success ? parsed.data : [];
+  });
+  app.put('/api/drawings/:symbol', async (req) => {
+    const { symbol } = z.object({ symbol: z.string().min(1).max(32) }).parse(req.params);
+    const drawings = chartDrawingsSchema.parse(req.body);
+    await req.services.state.set(`chart-drawings:${symbol.toUpperCase()}`, drawings);
+    return drawings;
   });
   app.get('/api/market/sparklines', async (req) => {
     const { symbols, range } = z
