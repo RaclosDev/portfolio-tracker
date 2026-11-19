@@ -1,4 +1,4 @@
-import type { Candle, DailyHistory, HistoryRange, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
+import type { Candle, DailyHistory, HistoryRange, IntradayInterval, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
 import { isinInSymbol, tickerOf } from './composition.ts';
 import { isIsin } from './isin.ts';
 import type { MarketDataProvider } from './provider.ts';
@@ -10,6 +10,8 @@ import type { MarketDataProvider } from './provider.ts';
  * contesta y el precio sale de la siguiente fuente.
  */
 const API = 'https://api.financial-hub.es';
+/** Historia que se pide de cada intervalo intradía: unas 2.000-5.000 velas. */
+const INTRADAY_RANGE: Record<IntradayInterval, string> = { '1m': '1w', '5m': '1m', '15m': '3m', '30m': '6m', '1h': '1y', '4h': '5y' };
 const SOURCE = 'Financial Hub';
 const HEADERS = { Accept: 'application/json', 'User-Agent': 'watchlist (uso personal)' };
 const DAY = 86_400_000;
@@ -236,21 +238,25 @@ export class FinancialHubProvider implements MarketDataProvider {
     return range;
   }
 
-  /** Velas diarias de la serie, siguiendo las páginas (los fondos solo tienen valor liquidativo: vela plana). */
-  private async ohlc(ref: FhRef, query: string): Promise<Candle[]> {
+  /**
+   * Velas de la serie, siguiendo las páginas (los fondos solo tienen valor liquidativo: vela plana). Las diarias
+   * llevan la fecha de la sesión; las intradía, la fecha y hora UTC de su inicio (YYYY-MM-DDTHH:MMZ).
+   */
+  private async ohlc(ref: FhRef, query: string, resolution: '1d' | IntradayInterval = '1d'): Promise<Candle[]> {
     const candles: Candle[] = [];
     let cursor: string | null = null;
     for (let page = 0; page < 10; page++) {
       const body = (await this.json(
-        `/market/series/${ref.id}/history?kind=${ref.kind}&resolution=1d&pageSize=5000&${query}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+        `/market/series/${ref.id}/history?kind=${ref.kind}&resolution=${resolution}&pageSize=5000&${query}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
       )) as { data?: { points?: Record<string, unknown>[]; nextCursor?: unknown; currency?: unknown } } | null;
       const data = body?.data;
       if (!data) break;
       if (str(data.currency) && str(data.currency) !== ref.currency) return [];
       for (const p of data.points ?? []) {
-        const t = str(p.time)?.slice(0, 10);
+        const time = str(p.time);
+        const t = resolution === '1d' ? time?.slice(0, 10) : time && `${time.slice(0, 16)}Z`;
         const c = num(p.close) ?? num(p.value);
-        if (!t || !/^\d{4}-\d{2}-\d{2}$/.test(t) || c == null || c <= 0) continue;
+        if (!t || !(resolution === '1d' ? /^\d{4}-\d{2}-\d{2}$/ : /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z$/).test(t) || c == null || c <= 0) continue;
         const o = num(p.open) ?? c;
         candles.push({ t, o, h: Math.max(num(p.high) ?? c, o, c), l: Math.min(num(p.low) ?? c, o, c), c });
       }
@@ -332,6 +338,13 @@ export class FinancialHubProvider implements MarketDataProvider {
     if (live && (!last || live.t > last.t)) candles.push(live);
     else if (live && last && live.t === last.t) candles[candles.length - 1] = live;
     return candles;
+  }
+
+  /** Velas intradía de una cotización en bolsa (los fondos no tienen), con más o menos historia según el intervalo. */
+  async getIntradayCandles(symbol: string, interval: IntradayInterval): Promise<Candle[]> {
+    const ref = await this.resolve(symbol);
+    if (ref?.kind !== 'listing') return [];
+    return this.ohlc(ref, `range=${INTRADAY_RANGE[interval]}`, interval);
   }
 
   async getTargets() {

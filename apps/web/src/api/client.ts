@@ -2,6 +2,7 @@ import type {
   AlertRecord,
   Backup,
   Candle,
+  IntradayInterval,
   ChartDrawing,
   CarteraImport,
   CarteraView,
@@ -143,8 +144,11 @@ export const api = {
   quote: (symbol: string) => request<Quote>('GET', `/api/market/quote/${encodeURIComponent(symbol)}`),
   history: (symbol: string, range: HistoryRange) =>
     request<{ points: PricePoint[]; stale: boolean }>('GET', `/api/market/history/${encodeURIComponent(symbol)}?range=${range}`),
-  candles: (symbol: string) =>
-    request<{ candles: Candle[]; stale: boolean }>('GET', `/api/market/candles/${encodeURIComponent(symbol)}`),
+  candles: (symbol: string, interval: '1d' | IntradayInterval = '1d') =>
+    request<{ candles: Candle[]; stale: boolean }>(
+      'GET',
+      `/api/market/candles/${encodeURIComponent(symbol)}${interval === '1d' ? '' : `?interval=${interval}`}`,
+    ),
   drawings: (symbol: string) => request<ChartDrawing[]>('GET', `/api/drawings/${encodeURIComponent(symbol)}`),
   saveDrawings: (symbol: string, drawings: ChartDrawing[]) =>
     request<ChartDrawing[]>('PUT', `/api/drawings/${encodeURIComponent(symbol)}`, drawings),

@@ -1,4 +1,4 @@
-import type { AnalystTargets, Candle, DailyHistory, HistoryRange, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
+import type { AnalystTargets, Candle, IntradayInterval, DailyHistory, HistoryRange, PricePoint, Quote, SymbolSearchResult } from '@watchlist/shared';
 import { errorSummary, type CompanyProfile, type MarketDataProvider } from './provider.ts';
 import { isIsin } from './isin.ts';
 
@@ -90,6 +90,9 @@ export class FallbackProvider implements MarketDataProvider {
   }
   async getCandles(symbol: string, from: string): Promise<Candle[]> {
     return await this.first(symbol, p => p.getCandles?.(symbol, from) ?? Promise.resolve(null), candles => candles.length > 0) ?? [];
+  }
+  async getIntradayCandles(symbol: string, interval: IntradayInterval): Promise<Candle[]> {
+    return await this.first(symbol, p => p.getIntradayCandles?.(symbol, interval) ?? Promise.resolve(null), candles => candles.length > 0) ?? [];
   }
   async search(query: string): Promise<SymbolSearchResult[]> {
     const results = new Map<string, SymbolSearchResult>();

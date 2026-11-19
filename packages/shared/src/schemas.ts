@@ -230,7 +230,13 @@ export const backupSchema = z.object({
 export type Backup = z.input<typeof backupSchema>;
 
 /** Dibujos del gráfico de velas de un valor (se guardan todos juntos al cambiar uno). */
-const chartPointSchema = z.object({ t: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), p: z.number().finite() });
+/** Fecha de sesión, o fecha y hora UTC (YYYY-MM-DDTHH:MMZ) si el punto se dibujó en un intervalo intradía. */
+const chartPointSchema = z.object({ t: z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}Z)?$/), p: z.number().finite() });
+
+/** Intervalos intradía del gráfico de velas, con sus minutos. */
+export const INTRADAY_MINUTES = { '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '4h': 240 } as const;
+export type IntradayInterval = keyof typeof INTRADAY_MINUTES;
+export const INTRADAY_INTERVALS = Object.keys(INTRADAY_MINUTES) as [IntradayInterval, ...IntradayInterval[]];
 /** Puntos que lleva cada tipo de dibujo. */
 export const DRAWING_POINTS = {
   hline: 1, hray: 1, vline: 1, text: 1,
