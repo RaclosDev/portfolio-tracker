@@ -170,4 +170,6 @@ export const migrations: string[] = [
   ALTER TABLE items ADD COLUMN isin TEXT;
   UPDATE items SET isin = substring(upper(symbol) from '([A-Z]{2}[A-Z0-9]{9}[0-9])') WHERE upper(symbol) ~ '[A-Z]{2}[A-Z0-9]{9}[0-9]';
   `,
+  // 9: divisas en mayúsculas («usd» no encontraba su cambio EUR/USD).
+  `UPDATE instruments SET currency = upper(currency) WHERE currency <> upper(currency);`,
 ];

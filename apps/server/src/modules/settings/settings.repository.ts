@@ -11,8 +11,10 @@ export class SettingsRepository {
   }
 
   async update(patch: Partial<Settings>): Promise<Settings> {
-    const next = settingsSchema.parse({ ...(await this.get()), ...patch });
-    await this.db.tx(async (t) => {
+    // Leer y escribir bajo bloqueo: dos cambios a la vez de claves distintas no se pisan.
+    return this.db.tx(async (t) => {
+      await t.exec('LOCK TABLE settings IN SHARE ROW EXCLUSIVE MODE');
+      const next = settingsSchema.parse({ ...(await new SettingsRepository(t).get()), ...patch });
       // Claves de versiones anteriores que ya no existen (p. ej. los umbrales de antes de los cinco tramos).
       await t.query('DELETE FROM settings WHERE NOT (key = ANY($1::text[]))', [Object.keys(next)]);
       for (const [k, v] of Object.entries(next)) {
@@ -21,8 +23,8 @@ export class SettingsRepository {
           [k, JSON.stringify(v)],
         );
       }
+      return next;
     });
-    return next;
   }
 }
 

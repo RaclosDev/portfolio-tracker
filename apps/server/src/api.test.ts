@@ -232,6 +232,12 @@ describe('valores y vista', () => {
     expect((await send('DELETE', `/api/items/${id}`)).statusCode).toBe(204);
     expect((await send('DELETE', `/api/items/${id}`)).statusCode).toBe(404);
   });
+
+  it('mover un valor a una lista que no existe da 404, no un error interno', async () => {
+    const { id } = (await send('POST', '/api/items', { listId: 1, symbol: 'MOV.MC' })).json() as { id: number };
+    expect((await send('PATCH', `/api/items/${id}`, { listId: 99999 })).statusCode).toBe(404);
+    await send('DELETE', `/api/items/${id}`);
+  });
 });
 
 describe('ajustes', () => {
@@ -251,6 +257,10 @@ describe('ajustes', () => {
     await send('PUT', '/api/settings', { theme: 'dark', refreshSeconds: 120 });
     const kept = (await send('PUT', '/api/settings', { skin: 'classic' })).json() as Settings;
     expect(kept).toMatchObject({ skin: 'classic', theme: 'dark', refreshSeconds: 120 });
+    await send('PUT', '/api/settings', { theme: s.theme, refreshSeconds: s.refreshSeconds });
+    // Dos cambios a la vez de claves distintas: ninguno se pierde.
+    await Promise.all([send('PUT', '/api/settings', { theme: 'dark' }), send('PUT', '/api/settings', { refreshSeconds: 300 })]);
+    expect((await get('/api/settings')).json()).toMatchObject({ theme: 'dark', refreshSeconds: 300 });
     await send('PUT', '/api/settings', { theme: s.theme, refreshSeconds: s.refreshSeconds });
   });
 

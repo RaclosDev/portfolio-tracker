@@ -18,6 +18,8 @@ import type { InstrumentsRepository, OperationsRepository } from './cartera.repo
 
 /** Fichas pedidas a Yahoo en cada carga como mucho (el resto, en las siguientes). */
 const PROFILES_PER_VIEW = 8;
+/** Un valor sin sector o nombre en Yahoo se vuelve a pedir como pronto al día siguiente. */
+const PROFILE_RETRY_MS = 24 * 3_600_000;
 
 export class LedgerError extends Error {
   statusCode = 400;
@@ -30,6 +32,8 @@ export class LedgerError extends Error {
  */
 export class PortfolioService {
   private profilesRunning = false;
+  /** Cuándo se pidió la ficha de cada valor: los que Yahoo no completa no bloquean a los siguientes. */
+  private profileTried = new Map<string, number>();
 
   constructor(
     private operations: OperationsRepository,
@@ -155,11 +159,16 @@ export class PortfolioService {
   /** Sector y nombre desde Yahoo para los valores que no los tienen (en segundo plano, poco a poco). */
   private async fillProfiles(instruments: Instrument[]) {
     if (this.profilesRunning) return;
-    const pending = instruments.filter((i) => i.symbol && (!i.sector || !i.name)).slice(0, PROFILES_PER_VIEW);
+    const now = Date.now();
+    const pending = instruments
+      .filter((i) => i.symbol && (!i.sector || !i.name) && now - (this.profileTried.get(i.ticker) ?? 0) > PROFILE_RETRY_MS)
+      .slice(0, PROFILES_PER_VIEW);
     if (!pending.length) return;
     this.profilesRunning = true;
     try {
       for (const i of pending) {
+        if (this.profileTried.size >= 5000) this.profileTried.clear();
+        this.profileTried.set(i.ticker, now);
         const p = await this.market.getProfile(i.symbol!);
         if (p) await this.instruments.fillProfile(i.ticker, p);
       }

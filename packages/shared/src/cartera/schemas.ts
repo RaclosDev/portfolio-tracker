@@ -111,7 +111,7 @@ export const operationInputSchema = z
     if (o.type === 'buy') need(o.amountEur > 0, 'amountEur', 'Indica el importe total en euros');
     if (o.type === 'scrip') need((o.shares ?? 0) > 0, 'shares', 'Indica cuántas acciones has recibido');
     if (o.type === 'split') need(o.splitRatio != null && o.splitRatio !== 1, 'splitRatio', 'Indica el ratio (p. ej. 2 = cada acción pasa a ser 2)');
-    if (o.type === 'dividend' || o.type === 'attendance_premium' || o.type === 'issue_premium')
+    if (o.type === 'dividend' || o.type === 'attendance_premium' || o.type === 'issue_premium' || o.type === 'rights_sale')
       need(o.amountEur >= 0, 'amountEur', 'El importe bruto no puede ser negativo');
   });
 export type OperationInput = z.input<typeof operationInputSchema>;
@@ -136,11 +136,12 @@ export const instrumentInputSchema = z.object({
     .default(null),
   name: z.string().trim().max(120).nullable().default(null),
   sector: z.string().trim().max(80).nullable().default(null),
+  // En mayúsculas: «usd» y «USD» deben ser la misma divisa en los cambios y la valoración.
   currency: z
     .string()
     .trim()
-    .min(3)
-    .max(3)
+    .regex(/^[A-Za-z]{3}$/, 'La divisa debe tener tres letras, como EUR o USD')
+    .transform((s) => s.toUpperCase())
     .default('EUR'),
   isin: z.string().trim().max(12).nullable().default(null),
   notes: z.string().max(1000).nullable().default(null),
