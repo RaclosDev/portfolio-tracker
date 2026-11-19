@@ -145,6 +145,8 @@ export async function registerRoutes(app: FastifyInstance) {
     const current = await req.services.items.byId(id);
     if (!current) throw notFound('Valor');
     const patch = itemPatchSchema.parse(req.body);
+    // Mover a una lista que no existe daba un error interno (clave ajena) en vez de un 404.
+    if (patch.listId != null && patch.listId !== current.listId && !(await req.services.lists.byId(patch.listId))) throw notFound('Lista');
     const { id: _id, createdAt, updatedAt, ...rest } = current;
     const data = itemInputSchema.parse({ ...rest, ...patch });
     // Al cambiar de cotización, el ISIN anterior ya no vale si no se manda otro.
