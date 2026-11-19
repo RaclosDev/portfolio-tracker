@@ -1,6 +1,6 @@
 import { isFundType, shiftDate, type FundComposition, type AnalystTargets, type DailyHistory, type HistoryRange, type InstrumentHit, type Listing, type PricePoint, type Quote, type SymbolSearchResult } from '@watchlist/shared';
 import type { Db } from '../../db/database.ts';
-import { isinCandidates, isIsin } from './isin.ts';
+import { isinCandidates, isinTickers, isIsin } from './isin.ts';
 import { queryWords, rankByWords, sameName, wordPairs, wordScore } from './words.ts';
 import { isVenueSymbol } from './onvista.provider.ts';
 import { parseFtSymbol } from './ft.provider.ts';
@@ -16,6 +16,8 @@ const PROFILE_TTL_MS = 30 * 24 * 60 * 60_000;
 /** Las gestoras publican la composición una vez al mes: una semana de caché; un día si ninguna fuente la tenía. */
 // v3: Financial Hub da la cartera completa, también por ticker (FT:SEC0:GER:EUR); las de antes solo tenían las 10 mayores.
 const COMPOSITION_KIND = 'holdings-v3';
+/** Ticker de cada ISIN de las posiciones de los fondos (OpenFIGI). */
+const ISIN_TICKER_KIND = 'isin-ticker';
 const COMPOSITION_TTL_MS = 7 * 24 * 60 * 60_000;
 const NO_COMPOSITION_TTL_MS = 24 * 60 * 60_000;
 /** Los minigráficos usan observaciones diarias o mensuales: se renuevan cada 3 h. */
@@ -456,7 +458,9 @@ export class MarketService {
     if (!key || !this.compositionSources.length) return Promise.resolve(null);
     const pending = this.compositionPending.get(key);
     if (pending) return pending;
-    const request = this.loadComposition(key, ref).finally(() => this.compositionPending.delete(key));
+    const request = this.loadComposition(key, ref)
+      .then((c) => this.withTickers(c))
+      .finally(() => this.compositionPending.delete(key));
     this.compositionPending.set(key, request);
     return request;
   }
@@ -481,6 +485,48 @@ export class MarketService {
     if (stored?.value) return stored.value;
     if (!failed) await this.persist(COMPOSITION_KIND, key, null);
     return null;
+  }
+
+  private isinTicker = new Map<string, string | null>();
+  /** Las consultas a OpenFIGI van de una en una: sin clave admite pocas por minuto. */
+  private figiQueue: Promise<unknown> = Promise.resolve();
+
+  /**
+   * Financial Hub da las posiciones por ISIN, sin ticker: se completa con OpenFIGI (IBM, OHLA) para reconocerlas
+   * de un vistazo. Cada ISIN se pregunta una vez y se guarda; si OpenFIGI no contesta, se queda sin ticker hasta otra vez.
+   */
+  private async withTickers(comp: FundComposition | null): Promise<FundComposition | null> {
+    if (!comp) return comp;
+    const want = [...new Set(comp.holdings.filter((h) => !h.ticker && h.isin).map((h) => h.isin!.toUpperCase()))];
+    const missing = want.filter((i) => !this.isinTicker.has(i));
+    if (missing.length) {
+      try {
+        const rows = await this.db.query<{ symbol: string; data: string | null; fetched_at: Date | string }>(
+          'SELECT symbol, data, fetched_at FROM market_cache WHERE kind = $1 AND symbol = ANY($2)',
+          [ISIN_TICKER_KIND, missing],
+        );
+        for (const r of rows) {
+          // Uno desconocido se vuelve a preguntar al cabo de un mes, por si OpenFIGI lo ha dado de alta.
+          if (r.data || Date.now() - new Date(r.fetched_at).getTime() < PROFILE_TTL_MS) this.isinTicker.set(r.symbol, r.data);
+        }
+      } catch {
+        /* sin base de datos, se pregunta */
+      }
+      const ask = missing.filter((i) => !this.isinTicker.has(i));
+      if (ask.length) {
+        const run = this.figiQueue.then(() => isinTickers(ask.filter((i) => !this.isinTicker.has(i))));
+        this.figiQueue = run.catch(() => {});
+        const found = await run.catch(() => new Map<string, string | null>());
+        for (const [isin, ticker] of found) {
+          this.isinTicker.set(isin, ticker);
+          await this.persist(ISIN_TICKER_KIND, isin, ticker);
+        }
+      }
+    }
+    return {
+      ...comp,
+      holdings: comp.holdings.map((h) => (h.ticker || !h.isin ? h : { ...h, ticker: this.isinTicker.get(h.isin.toUpperCase()) ?? null })),
+    };
   }
 
   /** Guarda el último dato (si falla la base de datos, se sigue con la memoria). */

@@ -5,7 +5,7 @@ import { DIRECT, exposureSources, filterExposure, NO_FILTER } from './exposureFi
 const row = (name: string, parts: ExposureRow['parts'], isin: string | null = null): ExposureRow => {
   const directEur = parts.reduce((s, p) => s + (p.weight == null ? p.eur : 0), 0);
   const fundsEur = parts.reduce((s, p) => s + (p.weight == null ? 0 : p.eur), 0);
-  return { key: name, name, isin, directEur, fundsEur, totalEur: directEur + fundsEur, weight: (directEur + fundsEur) / 1000, parts };
+  return { key: name, name, isin, ticker: parts.find((p) => p.weight == null)?.ticker ?? null, directEur, fundsEur, totalEur: directEur + fundsEur, weight: (directEur + fundsEur) / 1000, parts };
 };
 
 const rows = [

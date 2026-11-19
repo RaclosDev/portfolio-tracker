@@ -55,7 +55,12 @@ export function ExposureView({ model, onOpen }: { model: CarteraModel; onOpen: (
       cell: (r) => (
         <span className="stack">
           <span className="name">{r.name}</span>
-          {r.isin && <span className="sub">{r.isin}</span>}
+          {(r.ticker || r.isin) && (
+            <span className="sub">
+              {r.ticker && <span className="ticker">{r.ticker}</span>}
+              {r.isin && <span className="muted">{r.isin}</span>}
+            </span>
+          )}
         </span>
       ),
     },
@@ -105,7 +110,7 @@ export function ExposureView({ model, onOpen }: { model: CarteraModel; onOpen: (
         <input
           type="search"
           className="search"
-          placeholder="Buscar empresa o ISIN"
+          placeholder="Buscar empresa, ticker o ISIN"
           aria-label="Buscar empresa"
           value={filter.q}
           onChange={(e) => set({ q: e.target.value })}

@@ -32,6 +32,8 @@ export interface ExposureRow {
   key: string;
   name: string;
   isin: string | null;
+  /** Ticker con el que se la conoce: el de la cartera si se tiene en directo; si no, el que dé la fuente del fondo. */
+  ticker: string | null;
   directEur: number;
   fundsEur: number;
   totalEur: number;
@@ -81,6 +83,9 @@ export function companyKey(name: string): string {
   return (words.length ? words : plain.split(' ')).join(' ');
 }
 
+/** Ticker de una posición de fondo sin la bolsa que añaden algunas fuentes: «NVDA:NSQ» → «NVDA». */
+const fundTicker = (t: string | null) => t?.split(':')[0]?.trim().toUpperCase() || null;
+
 const FUND_TYPES = new Set(['ETF', 'MUTUALFUND', 'FUND']);
 export const isFundType = (quoteType: string | null | undefined) => !!quoteType && FUND_TYPES.has(quoteType.toUpperCase());
 
@@ -94,16 +99,17 @@ export function computeExposure(open: HoldingRow[], compositions: Record<string,
   const rows: ExposureRow[] = [];
   const rest: ExposurePart[] = [];
 
-  const rowFor = (name: string, isin: string | null): ExposureRow => {
+  const rowFor = (name: string, isin: string | null, ticker: string | null): ExposureRow => {
     const nameKey = companyKey(name);
     let row = (isin ? byIsin.get(isin) : undefined) ?? byName.get(nameKey);
     if (!row) {
-      row = { key: isin ?? nameKey, name, isin, directEur: 0, fundsEur: 0, totalEur: 0, weight: 0, parts: [] };
+      row = { key: isin ?? nameKey, name, isin, ticker, directEur: 0, fundsEur: 0, totalEur: 0, weight: 0, parts: [] };
       rows.push(row);
     }
     if (isin && !byIsin.has(isin)) byIsin.set(isin, row);
     if (nameKey && !byName.has(nameKey)) byName.set(nameKey, row);
     row.isin ??= isin;
+    row.ticker ??= ticker;
     return row;
   };
 
@@ -116,7 +122,7 @@ export function computeExposure(open: HoldingRow[], compositions: Record<string,
       funds.push({ row: r, composition: composition ?? null });
       continue;
     }
-    const row = rowFor(r.name, r.instrument?.isin ?? r.quote?.isin ?? null);
+    const row = rowFor(r.name, r.instrument?.isin ?? r.quote?.isin ?? null, r.ticker);
     row.directEur += r.valueEur!;
     row.parts.push({ ticker: r.ticker, name: r.name, eur: r.valueEur!, weight: null });
   }
@@ -126,7 +132,7 @@ export function computeExposure(open: HoldingRow[], compositions: Record<string,
       if (!(h.weight > 0) || known + h.weight > 1.005) continue;
       known += h.weight;
       const eur = fund.valueEur! * h.weight;
-      const row = rowFor(h.name, h.isin);
+      const row = rowFor(h.name, h.isin, fundTicker(h.ticker));
       row.fundsEur += eur;
       // Dos clases de la misma empresa (Alphabet A y C) en un fondo son una sola parte.
       const same = row.parts.find((p) => p.ticker === fund.ticker && p.weight != null);
