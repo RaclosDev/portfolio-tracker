@@ -22,7 +22,7 @@
     "zod": "^4.1.0"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
+    "@types/node": "^25.9.9",
     "@types/pg": "^8.23.1",
     "@types/web-push": "^3.6.4"
   }
