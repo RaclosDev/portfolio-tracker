@@ -58,3 +58,58 @@ Revisión de toda la aplicación: servidor (rutas, cartera, mercado, avisos, cue
 - **Suscripciones push e invalidación de la caché de la web:** correctas.
 - **Posición de un valor dentro de su lista:** si se crean dos valores a la vez pueden empatar, pero el orden se desempata por id. Es un efecto menor.
 - **Refresco forzado frente al sondeo periódico:** a lo sumo se hace una petición de más.
+
+# Tercera ronda: auditoría integral
+
+Revisión de las once áreas pedidas: cartera, cálculos, cotizaciones, identificación de activos, listas, alertas, gráficos, histórico, backend, interfaz y una batería de pruebas con resultados conocidos.
+
+## Errores críticos
+
+Ninguno nuevo. Los cálculos fiscales y el FIFO cuadran con la batería dorada.
+
+## Errores funcionales (corregidos)
+
+- **F1 (alta) · Precio medio en divisa con el cambio de hoy.** El precio medio de un valor en dólares se calculaba como coste en € × cambio actual, así que variaba con el euro aunque no hubieras comprado ni vendido. Ahora cada lote guarda su coste en la divisa original (`costNative`), y el precio medio se calcula con el cambio de cada compra (`averageNativePrice`). Esto aplica a la ficha del valor y a la tabla de lotes.
+- **F2 (media) · Variación del día con compras de hoy.** Las acciones compradas hoy sumaban toda la subida desde el cierre de ayer, aunque se compraron más caras. Ahora su variación es el valor actual menos lo que costaron.
+
+## Errores de datos externos (corregidos)
+
+- **F3 (alta) · Cotización antigua presentada como de hoy.** Yahoo no daba la hora del precio. En fin de semana o festivo, el precio y la variación del viernes se veían como «Hoy». Ahora cada cotización trae `priceTime`, y `quoteSession` da su sesión en hora de Madrid. Si la sesión no es la de hoy:
+  - En cartera y en las listas, junto al precio, aparece «cierre dd/mm».
+  - La cifra «Cotización de hoy» del resumen y la columna «Hoy» pasan a llamarse «Última sesión».
+- Ya estaba cubierto: el aviso de dato guardado cuando falla la fuente (`stale`), la fecha del valor liquidativo de los fondos, el factor 100 de GBp→GBP y las alertas que ignoran cotizaciones caducadas.
+
+## Problemas de arquitectura (riesgo aceptado)
+
+- Los importes son números de coma flotante (DOUBLE en la base de datos), no decimales. Solo se redondean al mostrarlos, a céntimos. El error acumulado está muy por debajo del céntimo en carteras de particular.
+- La rentabilidad es TIR (ponderada por dinero), no TWR. Está bien rotulada («TIR anual», «sin anualizar» con menos de un año). Si se quiere comparar con un índice, falta añadir la TWR.
+- Las alertas no tienen estados explícitos (activa, disparada, pausada, caducada) ni historial de evaluaciones. Hoy se disparan con un reposo de 12 h y cubren los saltos por hueco.
+- Las acciones vendidas hoy no entran en la variación del día. Es coherente con su definición: lo que tienes ahora.
+
+## Mejoras de usabilidad
+
+- Antigüedad del precio visible en cartera y en las listas (F3).
+- Pendiente opcional: un selector «TIR / TWR» y una pestaña de historial de cada alerta.
+
+## Tests
+
+- Nuevo `golden.test.ts`, con resultados calculados a mano:
+  - Dos compras: 1.950 €, precio medio 106,6667 €, latente +350 € (+21,875 %).
+  - Venta parcial FIFO: +235 € realizados, 9 acciones a 111,11 € y 405 € de resultado histórico.
+  - Dividendo con retención en origen.
+  - Split 2:1.
+  - Compra en dólares, con valor al cambio de hoy y precio medio al cambio de la compra.
+  - Dos brókers.
+  - Cierre total y nueva compra.
+  - Variación del día con una compra de hoy.
+  - `quoteSession`.
+- Faltan:
+  - Pruebas de interfaz (no hay pruebas de navegador).
+  - Pruebas del proveedor de Yahoo con respuestas grabadas de fin de semana.
+
+## Plan priorizado
+
+1. Hecho en esta ronda: F1, F2 y F3, y la batería dorada.
+2. Siguiente: estados e historial de alertas.
+3. Después: TWR junto a la TIR.
+4. Opcional: importes decimales, si algún día se gestionan carteras grandes o de terceros.

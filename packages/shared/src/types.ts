@@ -30,6 +30,8 @@ export interface Quote {
   source?: string;
   sourceUrl?: string;
   asOf?: string;
+  /** Momento del último precio en la bolsa (ISO). Si es de una sesión anterior, el precio no es de hoy. */
+  priceTime?: string;
   isin?: string;
   /** true si la fuente falló y se muestra el último dato guardado. */
   stale: boolean;

@@ -43,6 +43,15 @@ export function localToday(d = new Date()): string {
 }
 
 /**
+ * Día de la sesión a la que corresponde el precio (AAAA-MM-DD, hora local), o null si la fuente no lo dice.
+ * Si es anterior a hoy, el precio y su variación son de un cierre anterior (fin de semana, festivo, fondo).
+ */
+export function quoteSession(q: { priceTime?: string; asOf?: string } | null | undefined): string | null {
+  if (q?.priceTime && Number.isFinite(Date.parse(q.priceTime))) return localToday(new Date(q.priceTime));
+  return q?.asOf?.slice(0, 10) ?? null;
+}
+
+/**
  * Acciones a comprar: siempre se redondea a la unidad superior (nunca por debajo del importe).
  * El margen evita que errores de coma flotante (200,0000000001) suban una acción de más.
  */

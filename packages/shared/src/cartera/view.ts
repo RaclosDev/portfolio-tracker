@@ -126,7 +126,13 @@ export function valueCartera(args: {
       const valueNative = b.price != null ? t.shares * b.price : null;
       const valueEur = valueNative != null && b.fxRate ? valueNative / b.fxRate : null;
       const prev = b.quote?.previousClose ?? (b.price != null && b.changePct != null ? b.price / (1 + b.changePct) : null);
-      const dayChangeEur = b.price != null && prev != null && b.fxRate ? (t.shares * (b.price - prev)) / b.fxRate : null;
+      // Las acciones compradas hoy no tenían el cierre de ayer: su variación es valor actual − lo que costaron.
+      const boughtToday = t.openLots.filter((l) => l.date === today && l.id > 0 && l.sharesBought > 0);
+      const todayShares = boughtToday.reduce((s, l) => s + l.shares, 0);
+      const dayChangeEur = b.price != null && prev != null && b.fxRate
+        ? ((t.shares - todayShares) * (b.price - prev)) / b.fxRate
+          + boughtToday.reduce((s, l) => s + (l.shares * b.price!) / b.fxRate! - l.costEur, 0)
+        : null;
       const unrealizedEur = valueEur != null ? valueEur - t.costEur : null;
       open.push({
         ...b,

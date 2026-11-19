@@ -64,9 +64,16 @@ export function quoteFromChart(symbol: string, chart: QuoteChart, now = new Date
     exchange: s(meta.fullExchangeName) ?? s(meta.exchangeName),
     marketState: null,
     fetchedAt: now.toISOString(),
+    priceTime: new Date(at).toISOString(),
     source: 'Yahoo Finance',
     fallback: true,
   };
+}
+
+/** Hora del precio que da Yahoo (fecha o segundos desde 1970), en ISO. */
+function marketTime(v: unknown): string | undefined {
+  const ms = v instanceof Date ? v.getTime() : n(v) != null ? n(v)! * 1000 : null;
+  return ms != null && Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
 }
 
 /** Cuánto vale una cotización sacada del gráfico (una consulta por valor: no se repite en cada refresco). */
@@ -233,6 +240,7 @@ export class YahooProvider implements MarketDataProvider {
       exchange: s(q.fullExchangeName) ?? s(q.exchange),
       marketState: s(q.marketState),
       fetchedAt: now,
+      priceTime: marketTime(q.regularMarketTime),
       source: 'Yahoo Finance',
     }));
   }
