@@ -113,3 +113,23 @@ Ninguno nuevo. Los cálculos fiscales y el FIFO cuadran con la batería dorada.
 2. Siguiente: estados e historial de alertas.
 3. Después: TWR junto a la TIR.
 4. Opcional: importes decimales, si algún día se gestionan carteras grandes o de terceros.
+
+# Cuarta ronda: revisión externa
+
+Comprobación, uno a uno en el código, de los hallazgos de una revisión externa.
+
+| # | Hallazgo | Veredicto | Qué se ha hecho |
+|---|----------|-----------|-----------------|
+| 1 | Las alertas descartaban un valor repetido en otra lista | **Cierto** | Antes se quitaban los repetidos por símbolo, así que NVDA en dos listas con niveles distintos solo se evaluaba una vez. Ahora se evalúa cada elemento por su id. El resumen diario nombra cada valor una sola vez. |
+| 2 | Se usaban cambios de divisa antiguos sin avisar | **Cierto** | `getFxRates` marca la divisa cuyo cambio viene de un dato guardado (`fxStale`). La cartera y las listas lo muestran: el chip de la divisa sale en rojo con ⚠ y la cabecera dice «datos guardados». |
+| 3 | El resumen diario se daba por enviado aunque fallara | **Cierto** | Solo se marca si llegó a algún dispositivo, o si no hay ninguno suscrito. Si fallan todos, se reintenta en la siguiente vuelta. |
+| 4 | Precisión decimal | Riesgo ya aceptado | Ver la tercera ronda: el error está muy por debajo del céntimo. Se migraría a decimales solo si se gestionan carteras grandes. |
+| 5 | La identidad del valor depende del ticker | **Cierto, mitigado** | El FIFO y la regla de los dos meses van por ticker. Ahora la cartera avisa cuando dos tickers con operaciones comparten ISIN (`sameIsin`). Pendiente: identidad canónica por ISIN, que es un cambio de modelo con migración. |
+
+Tests añadidos:
+- `alerts.service.test.ts`: el mismo valor en dos listas y el resumen que falla en todos los dispositivos.
+- Cambio de divisa guardado en `market.quotes.test.ts`.
+- Resumen sin nombres repetidos.
+- `sameIsinGroups`.
+
+Siguen pendientes, por orden: identidad por ISIN, TWR y comparación con índices, efectivo por bróker con patrimonio total, estados e historial de alertas, y concentración indirecta a través de ETF.

@@ -123,6 +123,8 @@ export interface WatchlistView {
   settings: Settings;
   rows: WatchlistRow[];
   fx: Record<string, number>;
+  /** Divisas cuyo cambio es un dato guardado (la fuente falló). */
+  fxStale?: string[];
   generatedAt: string;
   /** Si el proveedor de cotizaciones nos limita, hasta cuándo se pausan las consultas (ISO). */
   throttledUntil?: string | null;
@@ -152,6 +154,8 @@ export interface CarteraView {
   quotes: Record<string, Quote>;
   /** Unidades de cada divisa por 1 €. */
   fx: Record<string, number>;
+  /** Divisas cuyo cambio es un dato guardado (la fuente falló): su valoración no está al día. */
+  fxStale?: string[];
   generatedAt: string;
   throttledUntil?: string | null;
 }
