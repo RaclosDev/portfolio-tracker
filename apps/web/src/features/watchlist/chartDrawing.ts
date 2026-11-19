@@ -1,4 +1,4 @@
-import { DRAWING_POINTS, type Candle, type ChartDrawing, type ChartDrawingType, type ChartPoint } from '@watchlist/shared';
+import { DRAWING_POINTS, INTRADAY_MINUTES, type Candle, type IntradayInterval, type ChartDrawing, type ChartDrawingType, type ChartPoint } from '@watchlist/shared';
 
 /*
  * Geometría de los dibujos del gráfico de velas. Los puntos se guardan como fecha de sesión y precio; en
@@ -8,7 +8,7 @@ import { DRAWING_POINTS, type Candle, type ChartDrawing, type ChartDrawingType, 
  */
 
 const DAY = 86_400_000;
-const utc = (t: string) => Date.parse(`${t}T00:00:00Z`);
+const utc = (t: string) => Date.parse(t.length > 10 ? t : `${t}T00:00:00Z`);
 const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const isWeekday = (ms: number) => { const d = new Date(ms).getUTCDay(); return d !== 0 && d !== 6; };
 
@@ -33,8 +33,13 @@ export function addWeekdays(from: string, n: number): string {
   return iso(ms);
 }
 
-/** Intervalo de las velas: diario, semanal o mensual (las dos últimas se agregan de las diarias). */
-export type Step = 'D' | 'W' | 'M';
+/** Intervalo de las velas: intradía, diario, semanal o mensual (las dos últimas se agregan de las diarias). */
+export type Step = IntradayInterval | 'D' | 'W' | 'M';
+export const isIntraday = (step: Step): step is IntradayInterval => step in INTRADAY_MINUTES;
+/** Duración de una vela intradía en milisegundos. */
+const barMs = (step: IntradayInterval) => INTRADAY_MINUTES[step] * 60_000;
+/** Fecha y hora UTC de una vela intradía (YYYY-MM-DDTHH:MMZ). */
+const iso16 = (ms: number) => `${new Date(ms).toISOString().slice(0, 16)}Z`;
 
 /** Lunes de la semana de una fecha. */
 export function mondayOf(t: string): string {
@@ -50,11 +55,13 @@ function addMonths(from: string, n: number): string {
 }
 /** Barras de `from` a `to` fuera de los datos. */
 function barsBetween(from: string, to: string, step: Step): number {
+  if (isIntraday(step)) return Math.round((utc(to) - utc(from)) / barMs(step));
   if (step === 'W') return Math.round((utc(mondayOf(to)) - utc(mondayOf(from))) / (7 * DAY));
   if (step === 'M') return monthsBetween(from, to);
   return weekdaysBetween(from, to);
 }
 function shiftBars(from: string, n: number, step: Step): string {
+  if (isIntraday(step)) return iso16(utc(from) + n * barMs(step));
   if (step === 'W') return iso(utc(mondayOf(from)) + n * 7 * DAY);
   if (step === 'M') return addMonths(from, n);
   return addWeekdays(from, n);
@@ -63,6 +70,8 @@ function shiftBars(from: string, n: number, step: Step): string {
 /** Posición lógica de una fecha dentro de las barras `dates` (ordenadas, fecha de inicio de cada una). */
 export function toLogical(dates: string[], t: string, step: Step = 'D'): number {
   if (!dates.length) return 0;
+  // Un punto dibujado en intradía cae en la vela de su día en los intervalos de días o más.
+  if (!isIntraday(step)) t = t.slice(0, 10);
   const last = dates.length - 1;
   if (t > dates[last]!) return last + barsBetween(dates[last]!, t, step);
   if (t < dates[0]!) return barsBetween(dates[0]!, t, step);
@@ -73,8 +82,9 @@ export function toLogical(dates: string[], t: string, step: Step = 'D'): number 
     if (dates[mid]! < t) lo = mid + 1;
     else hi = mid;
   }
-  // En semanas y meses la fecha cae en la barra que la contiene (la última que empieza antes).
-  return step === 'D' || dates[lo] === t ? lo : lo - 1;
+  // En semanas, meses e intradía el punto cae en la barra que lo contiene (la última que empieza antes);
+  // una fecha sin hora, en la primera vela de ese día.
+  return step === 'D' || dates[lo] === t || (isIntraday(step) && t.length === 10) ? lo : lo - 1;
 }
 
 /** Fecha de una posición lógica (redondeada a la barra más cercana). */

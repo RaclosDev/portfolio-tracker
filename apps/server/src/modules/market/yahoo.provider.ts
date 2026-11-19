@@ -1,4 +1,4 @@
-import type { Candle, DailyHistory, HistoryRange, PricePoint } from '@watchlist/shared';
+import type { Candle, DailyHistory, HistoryRange, IntradayInterval, PricePoint } from '@watchlist/shared';
 import YahooFinance from 'yahoo-finance2';
 import { errorSummary, type MarketDataProvider } from './provider.ts';
 
@@ -43,6 +43,27 @@ export function candlesFromChart(chart: DailyChart): Candle[] {
     byDay.set(day.format(new Date(q.date)), { t: day.format(new Date(q.date)), o, h: Math.max(n(q.high) ?? c, o, c), l: Math.min(n(q.low) ?? c, o, c), c });
   }
   return [...byDay.values()].sort((a, b) => a.t.localeCompare(b.t));
+}
+
+const YAHOO_INTRADAY: Partial<Record<IntradayInterval, { days: number; interval: '1m' | '5m' | '15m' | '30m' | '60m' }>> = {
+  '1m': { days: 7, interval: '1m' },
+  '5m': { days: 30, interval: '5m' },
+  '15m': { days: 59, interval: '15m' },
+  '30m': { days: 59, interval: '30m' },
+  '1h': { days: 365, interval: '60m' },
+};
+
+/** Velas intradía del gráfico de Yahoo, con la fecha y hora UTC de su inicio. */
+export function intradayFromChart(chart: DailyChart): Candle[] {
+  const out = new Map<string, Candle>();
+  for (const q of chart.quotes ?? []) {
+    const c = n(q.close);
+    if (c == null || c <= 0) continue;
+    const o = n(q.open) ?? c;
+    const t = `${new Date(q.date).toISOString().slice(0, 16)}Z`;
+    out.set(t, { t, o, h: Math.max(n(q.high) ?? c, o, c), l: Math.min(n(q.low) ?? c, o, c), c });
+  }
+  return [...out.values()].sort((a, b) => a.t.localeCompare(b.t));
 }
 
 interface QuoteChart {
@@ -192,6 +213,14 @@ export class YahooProvider implements MarketDataProvider {
   async getCandles(symbol: string, from: string): Promise<Candle[]> {
     const chart = await this.yf.chart(symbol, { period1: from, interval: '1d' }, LOOSE) as DailyChart;
     return candlesFromChart(chart);
+  }
+
+  /** Velas intradía (Yahoo guarda 7 días de 1 minuto, 60 de 5 a 30 minutos y dos años de 1 hora; no tiene 4 horas). */
+  async getIntradayCandles(symbol: string, interval: IntradayInterval): Promise<Candle[]> {
+    const spec = YAHOO_INTRADAY[interval];
+    if (!spec) return [];
+    const chart = await this.yf.chart(symbol, { period1: new Date(Date.now() - spec.days * 86_400_000), interval: spec.interval }, LOOSE) as DailyChart;
+    return intradayFromChart(chart);
   }
 
   async getHistory(symbol: string, range: HistoryRange): Promise<PricePoint[]> {

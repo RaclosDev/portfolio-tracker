@@ -4,6 +4,7 @@ import {
   carteraImportSchema,
   operationFingerprint,
   importRequestSchema,
+  INTRADAY_INTERVALS,
   instrumentPatchSchema,
   itemInputSchema,
   itemPatchSchema,
@@ -329,10 +330,11 @@ export async function registerRoutes(app: FastifyInstance) {
     const { range } = z.object({ range: z.enum(['1m', '3m', '6m', '1y', '5y']).default('1y') }).parse(req.query);
     return req.services.market.getHistory(symbol.toUpperCase(), range);
   });
-  // Velas diarias del gráfico de la ficha (cinco años, con la sesión de hoy en directo).
+  // Velas del gráfico de la ficha: diarias (cinco años, con la sesión de hoy en directo) o intradía.
   app.get('/api/market/candles/:symbol', async (req) => {
     const { symbol } = z.object({ symbol: z.string().min(1).max(32) }).parse(req.params);
-    return req.services.market.getCandles(symbol.toUpperCase());
+    const { interval } = z.object({ interval: z.enum(['1d', ...INTRADAY_INTERVALS]).default('1d') }).parse(req.query);
+    return req.services.market.getCandles(symbol.toUpperCase(), interval);
   });
   // Dibujos del gráfico de velas de cada valor (soportes, resistencias, tendencias, canales).
   app.get('/api/drawings/:symbol', async (req) => {

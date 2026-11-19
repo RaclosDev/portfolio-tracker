@@ -246,6 +246,26 @@ function candles(symbol: string) {
   }
   return { candles: out, stale: false };
 }
+/** Velas intradía de la demo: 300 barras en horario de mercado (8:00 a 16:30 UTC) hasta ahora. */
+function intradayCandles(symbol: string, interval: string) {
+  if (!CATALOG.has(symbol)) throw new DemoError(404, `Símbolo ${symbol} no encontrado`);
+  const minutes = ({ '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '4h': 240 } as Record<string, number>)[interval];
+  if (!minutes) throw new DemoError(400, `Intervalo ${interval} no válido`);
+  const res = minutes * 60_000;
+  const out = [];
+  const h = hash(symbol);
+  const price = (ms: number) => priceAt(symbol, (Date.now() - ms) / 86_400_000) * (1 + 0.002 * Math.sin(ms / (res * 7) + h));
+  for (let ms = Math.floor(Date.now() / res) * res; out.length < 300; ms -= res) {
+    const d = new Date(ms);
+    const minute = d.getUTCHours() * 60 + d.getUTCMinutes();
+    if (d.getUTCDay() === 0 || d.getUTCDay() === 6 || minute < 480 || minute >= 990) continue;
+    const o = price(ms);
+    const c = price(ms + res);
+    const wick = Math.abs(c - o) * 0.5 + c * 0.0006;
+    out.push({ t: `${d.toISOString().slice(0, 16)}Z`, o: round(o, 4), h: round(Math.max(o, c) + wick, 4), l: round(Math.min(o, c) - wick, 4), c: round(c, 4) });
+  }
+  return { candles: out.reverse(), stale: false };
+}
 /** En la demo los dibujos del gráfico viven en memoria mientras la pestaña está abierta. */
 const demoDrawings = new Map<string, unknown>();
 function sparklines(symbols: string[], range: string) {
@@ -446,7 +466,8 @@ function handle(method: string, url: URL, body: unknown): unknown {
     return history(path.slice('/api/market/history/'.length).toUpperCase(), query.range ?? '1y');
   }
   if (method === 'GET' && path.startsWith('/api/market/candles/')) {
-    return candles(path.slice('/api/market/candles/'.length).toUpperCase());
+    const symbol = path.slice('/api/market/candles/'.length).toUpperCase();
+    return query.interval && query.interval !== '1d' ? intradayCandles(symbol, query.interval) : candles(symbol);
   }
   if (path.startsWith('/api/drawings/')) {
     const symbol = path.slice('/api/drawings/'.length).toUpperCase();
