@@ -141,13 +141,17 @@ export class MarketService {
     for (const k of this.mem.keys()) if (k.startsWith('quote:')) this.mem.delete(k);
   }
 
-  async getQuotes(symbols: string[], { force = false } = {}): Promise<Map<string, Quote>> {
+  /**
+   * Cotizaciones con caché de `quoteTtlMs`. `maxAgeMs` la acorta (el gráfico abierto pide su valor cada dos
+   * segundos): las pantallas que lo piden a la vez siguen compartiendo una sola petición al proveedor.
+   */
+  async getQuotes(symbols: string[], { force = false, maxAgeMs = this.opts.quoteTtlMs } = {}): Promise<Map<string, Quote>> {
     const out = new Map<string, Quote>();
     const now = Date.now();
     const missing: string[] = [];
     for (const sym of new Set(symbols)) {
       const hit = this.mem.get(`quote:${sym}`) as Entry<Quote> | undefined;
-      if (!force && hit && now - hit.fetchedAt < this.opts.quoteTtlMs) out.set(sym, hit.value);
+      if (!force && hit && now - hit.fetchedAt < Math.min(maxAgeMs, this.opts.quoteTtlMs)) out.set(sym, hit.value);
       else missing.push(sym);
     }
     if (!missing.length) return out;
@@ -191,7 +195,11 @@ export class MarketService {
         if (q) {
           const quote: Quote = { ...q, symbol: sym, stale: false };
           this.mem.set(`quote:${sym}`, { value: quote, fetchedAt: now });
-          await this.persist('quote', sym, quote);
+          // En directo llega una cada pocos segundos: a la base de datos, como mucho una por periodo de caché.
+          if (now - (this.quotePersistedAt.get(sym) ?? 0) >= this.opts.quoteTtlMs) {
+            this.quotePersistedAt.set(sym, now);
+            await this.persist('quote', sym, quote);
+          }
           out.set(sym, quote);
         } else {
           const stored = await this.load<Quote>('quote', sym);
@@ -382,6 +390,7 @@ export class MarketService {
       .map((q) => ({ symbol: q.symbol, name: q.name ?? q.symbol, exchange: q.exchange, type: q.quoteType }));
   }
 
+  private quotePersistedAt = new Map<string, number>();
   private candlesPending = new Map<string, Promise<{ candles: Candle[]; stale: boolean }>>();
 
   /**

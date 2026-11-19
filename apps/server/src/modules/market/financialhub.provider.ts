@@ -221,6 +221,7 @@ export class FinancialHubProvider implements MarketDataProvider {
       source: SOURCE,
       sourceUrl: ref.isin ? `https://financial-hub.es/${fund ? 'fund' : ref.quoteType === 'ETF' ? 'etf' : 'stock'}/${ref.isin}${fund ? '' : `?listingId=${ref.id}`}` : undefined,
       ...(fund && asOf ? { asOf } : {}),
+      ...(!fund && str(q.asOf) && !Number.isNaN(Date.parse(str(q.asOf)!)) ? { priceTime: new Date(str(q.asOf)!).toISOString() } : {}),
       ...(ref.isin ? { isin: ref.isin } : {}),
     };
   }
