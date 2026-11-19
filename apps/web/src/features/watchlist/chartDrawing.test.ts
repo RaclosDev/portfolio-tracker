@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Candle, ChartDrawing } from '@watchlist/shared';
 import {
-  addWeekdays, aggregate, channelOffset, distToSegment, dragHandle, ema, fromLogical, insidePolygon, isIntraday, moveDrawing,
+  addWeekdays, aggregate, channelOffset, distToSegment, dragHandle, ema, fromLogical, insidePolygon, isIntraday, mergeLive, moveDrawing,
   periodBase, periodReturn, sma, snapPrice, toLogical, weekdaysBetween,
 } from './chartDrawing.ts';
 
@@ -126,5 +126,24 @@ describe('velas intradía', () => {
 
   it('en diario, un punto con hora cae en la vela de su día', () => {
     expect(toLogical(['2026-10-01', '2026-10-02', '2026-10-05'], '2026-10-02T15:00Z', 'D')).toBe(1);
+  });
+});
+
+describe('precio en directo', () => {
+  const day: Candle[] = [{ t: '2026-11-18', o: 10, h: 11, l: 9, c: 10.5 }];
+  const bars: Candle[] = [{ t: '2026-11-19T09:00Z', o: 10, h: 10.2, l: 9.9, c: 10.1 }];
+
+  it('actualiza la vela del día o abre la siguiente', () => {
+    expect(mergeLive(day, 11.5, '2026-11-18T15:30:00Z', 'D')).toEqual([{ t: '2026-11-18', o: 10, h: 11.5, l: 9, c: 11.5 }]);
+    expect(mergeLive(day, 10.7, '2026-11-19T08:01:00Z', 'D').at(-1)).toEqual({ t: '2026-11-19', o: 10.7, h: 10.7, l: 10.7, c: 10.7 });
+    expect(mergeLive(day, 10.7, '2026-11-17T08:01:00Z', 'D')).toBe(day);
+    expect(mergeLive(day, 10.5, undefined, 'D')).toBe(day);
+    expect(mergeLive(day, 8, undefined, 'D')[0]).toMatchObject({ c: 8, l: 8 });
+  });
+
+  it('agrupa por el intervalo intradía', () => {
+    expect(mergeLive(bars, 9.8, '2026-11-19T09:04:59Z', '5m')).toEqual([{ t: '2026-11-19T09:00Z', o: 10, h: 10.2, l: 9.8, c: 9.8 }]);
+    expect(mergeLive(bars, 10.3, '2026-11-19T09:05:00Z', '5m').map((b) => b.t)).toEqual(['2026-11-19T09:00Z', '2026-11-19T09:05Z']);
+    expect(mergeLive(bars, 10.3, '2026-11-19T09:05:00Z', '1h')).toHaveLength(1);
   });
 });

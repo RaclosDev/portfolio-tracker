@@ -301,6 +301,15 @@ export async function registerRoutes(app: FastifyInstance) {
     const { isin } = z.object({ isin: z.string().trim().toUpperCase().regex(/^[A-Z]{2}[A-Z0-9]{9}\d$/) }).parse(req.query);
     return req.services.market.listings(isin);
   });
+  // Cotización casi en directo del gráfico abierto: caché de 1,5 s en vez de la normal.
+  app.get('/api/market/live/:symbol', async (req) => {
+    const { symbol } = z.object({ symbol: z.string().min(1).max(32) }).parse(req.params);
+    const sym = symbol.toUpperCase();
+    const quote = (await req.services.market.getQuotes([sym], { maxAgeMs: 1_500 })).get(sym);
+    if (!quote) throw new HttpError(404, `Símbolo ${sym} no encontrado en ${req.services.market.providerId}`);
+    return quote;
+  });
+
   app.get('/api/market/quote/:symbol', async (req) => {
     const { symbol } = z.object({ symbol: z.string().min(1).max(32) }).parse(req.params);
     const sym = symbol.toUpperCase();

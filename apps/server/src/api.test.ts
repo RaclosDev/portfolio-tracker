@@ -192,6 +192,16 @@ describe('histórico de cartera', () => {
     expect(stale.points).toEqual(a.json().points);
   });
 
+  it('da la cotización en directo del gráfico abierto con una caché corta', async () => {
+    const before = provider.calls;
+    const res = await get('/api/market/live/aaa.mc');
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ symbol: 'AAA.MC', price: 10 });
+    await get('/api/market/live/AAA.MC');
+    expect(provider.calls).toBe(before + 1);
+    expect((await get('/api/market/live/NOPE')).statusCode).toBe(404);
+  });
+
   it('convierte cotizaciones en peniques con la divisa del proveedor', async () => {
     await send('POST', '/api/operations', { operation: { type: 'buy', date: '2026-09-30', ticker: 'PENCE', shares: 100, amountEur: 10 }, instrument: { symbol: 'PENCE', currency: 'GBP' } });
     const res = (await get('/api/portfolio/history?from=2026-10-01&to=2026-10-02')).json();

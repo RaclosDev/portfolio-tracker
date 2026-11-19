@@ -96,6 +96,21 @@ export function fromLogical(dates: string[], logical: number, step: Step = 'D'):
   return dates[i]!;
 }
 
+/**
+ * Mete el último precio en directo en las velas diarias o intradía: actualiza la vela en curso o abre la
+ * siguiente. Un precio anterior a la última vela no cambia nada; sin hora, solo se toca la vela en curso.
+ */
+export function mergeLive(candles: Candle[], price: number, at: string | undefined, step: 'D' | IntradayInterval): Candle[] {
+  const last = candles.at(-1);
+  const ms = at ? Date.parse(at) : last ? Date.parse(last.t.length === 10 ? `${last.t}T12:00:00Z` : last.t) : NaN;
+  if (!last || !(price > 0) || Number.isNaN(ms)) return candles;
+  const t = step === 'D' ? new Date(ms).toISOString().slice(0, 10) : iso16(Math.floor(ms / barMs(step)) * barMs(step));
+  if (t < last.t) return candles;
+  if (t > last.t) return [...candles, { t, o: price, h: price, l: price, c: price }];
+  if (last.c === price && price <= last.h && price >= last.l) return candles;
+  return [...candles.slice(0, -1), { ...last, c: price, h: Math.max(last.h, price), l: Math.min(last.l, price) }];
+}
+
 /** Velas semanales o mensuales a partir de las diarias. */
 export function aggregate(candles: Candle[], step: Step): Candle[] {
   if (step === 'D') return candles;
