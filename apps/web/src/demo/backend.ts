@@ -243,7 +243,7 @@ const matches = (q: string) => {
 const asResult = (s: Security) => ({ symbol: s.symbol, name: s.name, exchange: s.exchange, type: s.kind });
 
 function assertLedger(next: Operation[]) {
-  const { issues } = computeLedger(next);
+  const { issues } = computeLedger(next, instruments);
   if (issues.length) throw new DemoError(400, issues.map((i) => i.message).join(' '));
 }
 function ensureInstrument(ticker: string, patch?: unknown) {

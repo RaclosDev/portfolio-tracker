@@ -7,7 +7,8 @@ import { quoteSession } from '../calc.ts';
 import type { Quote } from '../types.ts';
 import { averageNativePrice, computeLedger } from './ledger.ts';
 import { instrumentInputSchema, operationInputSchema, type Operation, type OperationInput } from './schemas.ts';
-import { sameIsinGroups, valueCartera } from './view.ts';
+import { computeTaxYears } from './tax.ts';
+import { valueCartera } from './view.ts';
 
 let nextId = 1;
 const op = (o: OperationInput): Operation => ({ id: nextId++, ...operationInputSchema.parse(o) });
@@ -124,13 +125,91 @@ describe('quoteSession', () => {
   });
 });
 
-describe('sameIsinGroups', () => {
-  it('agrupa los tickers que comparten ISIN (el mismo ETF en dos bolsas)', () => {
-    expect(sameIsinGroups([
-      { ticker: 'CHIP', isin: 'IE0000000001' },
-      { ticker: 'LSMC', isin: 'ie0000000001 ' },
-      { ticker: 'AAA', isin: 'ES0000000002' },
-      { ticker: 'BBB', isin: null },
-    ])).toEqual([['CHIP', 'LSMC']]);
+describe('cartera dorada: mismo ISIN en dos bolsas', () => {
+  // Un ETF que cotiza en París (CHIP) y en Ámsterdam (SEMI): para Hacienda es el mismo valor.
+  const ISIN = 'IE000I8KRLL9';
+  const instruments = [
+    instrumentInputSchema.parse({ ticker: 'CHIP', symbol: 'CHIP.PA', isin: ISIN }),
+    instrumentInputSchema.parse({ ticker: 'SEMI', symbol: 'SEMI.AS', isin: ISIN.toLowerCase() }),
+  ];
+  const trade = (ticker: string, type: 'buy' | 'sell', date: string, shares: number, amountEur: number) =>
+    op({ date, ticker, type, shares, amountEur });
+
+  it('compra en dos bolsas y venta: un solo FIFO y una sola posición', () => {
+    const buyChip = trade('CHIP', 'buy', '2026-01-10', 10, 1000);
+    const buySemi = trade('SEMI', 'buy', '2026-02-10', 10, 1200);
+    const ops = [buyChip, buySemi, trade('SEMI', 'sell', '2026-03-10', 15, 1650)];
+
+    const ledger = computeLedger(ops, instruments);
+    expect(ledger.issues).toEqual([]);
+    expect(ledger.tickers).toHaveLength(1);
+    const t = ledger.tickers[0]!;
+    expect(t.ticker).toBe('CHIP');
+    expect(t.isin).toBe(ISIN);
+    expect(t.members).toEqual(['CHIP', 'SEMI']);
+    expect(ledger.byTicker.get('SEMI')).toBe(t);
+    // FIFO por valor: primero las 10 de París (1000) y luego 5 de Ámsterdam (600).
+    const sale = t.sales[0]!;
+    expect(sale.matches.map((m) => [m.lotId, m.shares])).toEqual([[buyChip.id, 10], [buySemi.id, 5]]);
+    expect(sale.costEur).toBeCloseTo(1600, 6);
+    expect(sale.gainEur).toBeCloseTo(50, 6);
+    expect(t.shares).toBeCloseTo(5, 9);
+    expect(t.costEur).toBeCloseTo(600, 6);
+
+    // Sin ISIN serían dos valores y se venderían acciones de SEMI que no hay.
+    expect(computeLedger(ops).issues).toHaveLength(1);
+  });
+
+  it('valora con la cotización más fresca y no con un dato guardado', () => {
+    const ops = [trade('CHIP', 'buy', '2026-01-10', 10, 1000), trade('SEMI', 'buy', '2026-02-10', 10, 1200)];
+    const chip = quote(130, { symbol: 'CHIP.PA', priceTime: '2026-11-18T16:30:00Z' });
+    const semi = quote(125, { symbol: 'SEMI.AS', priceTime: '2026-11-19T10:00:00Z' });
+    const run = (quotes: Record<string, Quote>) =>
+      valueCartera({ ledger: computeLedger(ops, instruments), instruments, quotes, fx: {}, today: '2026-11-19' });
+
+    const v = run({ 'CHIP.PA': chip, 'SEMI.AS': semi });
+    expect(v.open).toHaveLength(1);
+    expect(v.open[0]!.instrument?.ticker).toBe('SEMI');
+    expect(v.open[0]!.valueEur).toBeCloseTo(2500, 6);
+    expect(v.summary.sameIsin).toEqual([{ isin: ISIN, ticker: 'CHIP', tickers: ['CHIP', 'SEMI'] }]);
+
+    const fallback = run({ 'CHIP.PA': chip, 'SEMI.AS': { ...semi, stale: true } });
+    expect(fallback.open[0]!.valueEur).toBeCloseTo(2600, 6);
+    // Sin precio en ninguna bolsa: falta valorar la posición, una sola vez.
+    expect(run({}).summary.missing).toEqual(['CHIP']);
+  });
+
+  it('regla de los dos meses entre tickers: recompra posterior en la otra bolsa', () => {
+    const ops = [
+      trade('CHIP', 'buy', '2026-01-10', 10, 1000),
+      trade('CHIP', 'sell', '2026-05-10', 10, 800),
+    ];
+    const rebuy = trade('SEMI', 'buy', '2026-06-01', 10, 900);
+    const ledger = computeLedger([...ops, rebuy], instruments);
+    const sale = ledger.sales[0]!;
+    expect(sale.taxGainEur).toBeCloseTo(-200, 6);
+    expect(sale.deferredLossEur).toBeCloseTo(200, 6);
+    expect(sale.computableEur).toBeCloseTo(0, 6);
+    expect(sale.deferredBy).toEqual([rebuy.id]);
+    expect(ledger.tickers[0]!.taxCostEur).toBeCloseTo(1100, 6);
+    expect(computeTaxYears(ledger, 2026)[0]!.deferred).toBeCloseTo(200, 6);
+
+    // Con tickers separados la pérdida se computaría entera.
+    expect(computeLedger([...ops, rebuy]).sales[0]!.computableEur).toBeCloseTo(-200, 6);
+  });
+
+  it('regla de los dos meses entre tickers: compra anterior en la otra bolsa que sigue en cartera', () => {
+    const early = trade('SEMI', 'buy', '2026-04-20', 4, 360);
+    const ledger = computeLedger([
+      trade('CHIP', 'buy', '2026-01-10', 10, 1000),
+      early,
+      trade('CHIP', 'sell', '2026-05-10', 10, 800),
+    ], instruments);
+    const sale = ledger.sales[0]!;
+    // Se venden las 10 de París (FIFO); las 4 de Ámsterdam aplazan 4 × 20 € de la pérdida.
+    expect(sale.matches).toHaveLength(1);
+    expect(sale.deferredLossEur).toBeCloseTo(80, 6);
+    expect(sale.computableEur).toBeCloseTo(-120, 6);
+    expect(sale.deferredBy).toEqual([early.id]);
   });
 });

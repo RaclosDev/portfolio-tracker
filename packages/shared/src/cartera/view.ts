@@ -53,11 +53,8 @@ export interface CarteraSummary {
   flowDays: number | null;
   /** Total invertido en compras desde el principio. */
   boughtEur: number;
-  /**
-   * Grupos de tickers con operaciones que comparten ISIN: probablemente el mismo valor en dos bolsas.
-   * El FIFO, el precio medio y la regla de los dos meses se calculan por ticker, así que hay que fusionarlos.
-   */
-  sameIsin: string[][];
+  /** Informativo: posiciones que reúnen varios tickers con el mismo ISIN (un FIFO para todos). */
+  sameIsin: { isin: string; ticker: string; tickers: string[] }[];
 }
 
 export interface CarteraValuation {
@@ -93,14 +90,29 @@ export function xirr(flows: { date: string; amount: number }[]): number | null {
   return (lo + hi) / 2;
 }
 
-/** Tickers que comparten ISIN (sin distinguir mayúsculas), en grupos de dos o más. */
-export function sameIsinGroups(instruments: Pick<Instrument, 'ticker' | 'isin'>[]): string[][] {
-  const by = new Map<string, string[]>();
-  for (const i of instruments) {
-    const isin = i.isin?.trim().toUpperCase();
-    if (isin) by.set(isin, [...(by.get(isin) ?? []), i.ticker]);
-  }
-  return [...by.values()].filter((g) => g.length > 1);
+/** Momento del precio de una cotización (el más fiable que traiga). */
+const quoteTime = (q: Quote) => Date.parse(q.priceTime ?? q.asOf ?? q.fetchedAt) || 0;
+
+/**
+ * Con qué valor se cotiza una posición que reúne varios tickers del mismo ISIN: el que tiene símbolo y
+ * precio, mejor si no es un dato guardado de una consulta fallida y, a igualdad, el más reciente. Si
+ * ninguno tiene precio, el del ticker canónico (para nombre, sector y divisa).
+ */
+export function pickListing(
+  t: Pick<TickerLedger, 'ticker' | 'members'>,
+  instruments: Map<string, Instrument>,
+  quotes: Record<string, Quote>,
+): { instrument: Instrument | null; quote: Quote | null } {
+  const own = instruments.get(t.ticker) ?? null;
+  const candidates = [...new Set([t.ticker, ...t.members])].flatMap((ticker) => {
+    const instrument = instruments.get(ticker);
+    const quote = instrument?.symbol ? quotes[instrument.symbol] : undefined;
+    return instrument && quote?.price != null ? [{ instrument, quote }] : [];
+  });
+  candidates.sort((a, b) => Number(a.quote.stale) - Number(b.quote.stale) || quoteTime(b.quote) - quoteTime(a.quote)
+    || Number(b.instrument === own) - Number(a.instrument === own));
+  if (candidates[0]) return candidates[0];
+  return { instrument: own, quote: own?.symbol ? (quotes[own.symbol] ?? null) : null };
 }
 
 export function valueCartera(args: {
@@ -116,8 +128,7 @@ export function valueCartera(args: {
   const inst = new Map(args.instruments.map((i) => [i.ticker, i]));
 
   const base = (t: TickerLedger): CarteraRowBase => {
-    const instrument = inst.get(t.ticker) ?? null;
-    const quote = instrument?.symbol ? (quotes[instrument.symbol] ?? null) : null;
+    const { instrument, quote } = pickListing(t, inst, quotes);
     const currency = quote?.currency ?? instrument?.currency ?? 'EUR';
     return {
       ticker: t.ticker,
@@ -204,7 +215,7 @@ export function valueCartera(args: {
       xirr: missing.length ? null : xirr(flows),
       flowDays: flows.length > 1 ? Math.round((Date.parse(today) - Math.min(...flows.map((f) => Date.parse(f.date)))) / DAY) : null,
       boughtEur: all.reduce((s, t) => s + t.boughtEur, 0),
-      sameIsin: sameIsinGroups(all.map((t) => inst.get(t.ticker)).filter((i): i is Instrument => !!i)),
+      sameIsin: all.filter((t) => t.isin && t.members.length > 1).map((t) => ({ isin: t.isin!, ticker: t.ticker, tickers: t.members })),
     },
     bySector: [...sectors].map(([sector, v]) => ({ sector, valueEur: v })).sort((a, b) => b.valueEur - a.valueEur),
   };

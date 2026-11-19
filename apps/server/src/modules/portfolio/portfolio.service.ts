@@ -43,8 +43,8 @@ export class PortfolioService {
 
   async history(from: string, to: string): Promise<PortfolioHistory> {
     const [operations, instruments] = await Promise.all([this.operations.all(), this.instruments.all()]);
-    const held = computeLedger(operations.filter((o) => o.date < from)).tickers.filter((t) => t.shares > 1e-6);
-    const relevant = new Set(held.map((t) => t.ticker));
+    const held = computeLedger(operations.filter((o) => o.date < from), instruments).tickers.filter((t) => t.shares > 1e-6);
+    const relevant = new Set(held.flatMap((t) => [t.ticker, ...t.members]));
     for (const op of operations) {
       if (op.date >= from && op.date <= to && (op.type === 'buy' || op.type === 'scrip' || op.type === 'transfer_in')) relevant.add(op.ticker);
     }
@@ -103,8 +103,9 @@ export class PortfolioService {
   async view({ force = false } = {}): Promise<CarteraView> {
     const [operations, instruments] = await Promise.all([this.operations.all(), this.instruments.all()]);
     // Precio solo de lo que sigue en cartera (lo cerrado no lo necesita).
-    const ledger = computeLedger(operations);
-    const open = new Set(ledger.tickers.filter((t) => t.shares > 1e-9).map((t) => t.ticker));
+    // Todos los tickers de una posición: con el mismo ISIN, se cotiza el que tenga el precio más fresco.
+    const ledger = computeLedger(operations, instruments);
+    const open = new Set(ledger.tickers.filter((t) => t.shares > 1e-9).flatMap((t) => [t.ticker, ...t.members]));
     const symbols = instruments.filter((i) => i.symbol && open.has(i.ticker)).map((i) => i.symbol!);
     const quotes = await this.market.getQuotes(symbols, { force });
     // La cartera va siempre en euros (costes, Renta): no depende de la divisa base de la lista.
@@ -133,7 +134,7 @@ export class PortfolioService {
    */
   async composition(): Promise<Record<string, FundComposition | null>> {
     const [operations, instruments] = await Promise.all([this.operations.all(), this.instruments.all()]);
-    const open = new Set(computeLedger(operations).tickers.filter((t) => t.shares > 1e-9).map((t) => t.ticker));
+    const open = new Set(computeLedger(operations, instruments).tickers.filter((t) => t.shares > 1e-9).map((t) => t.ticker));
     const held = instruments.filter((i) => open.has(i.ticker));
     const quotes = await this.market.getQuotes(held.flatMap((i) => (i.symbol ? [i.symbol] : [])));
     const funds = held.flatMap((i) => {
@@ -153,8 +154,8 @@ export class PortfolioService {
   }
 
   /** Lanza un error 400 si el registro no cuadra (se vende más de lo que hay…). */
-  static assertValid(operations: Operation[]) {
-    const { issues } = computeLedger(operations);
+  static assertValid(operations: Operation[], instruments: Instrument[]) {
+    const { issues } = computeLedger(operations, instruments);
     if (issues.length) throw new LedgerError(issues.map((i) => i.message).join(' '));
   }
 
