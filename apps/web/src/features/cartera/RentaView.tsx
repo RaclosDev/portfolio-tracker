@@ -121,7 +121,7 @@ export function RentaView({ model }: { model: CarteraModel }) {
       {y.carriedPending.length > 0 && (
         <p className="notice">
           Pérdidas pendientes de compensar en los próximos años:{' '}
-          {y.carriedPending.map((c) => `${eur(c.amount)} de ${c.year} (hasta ${c.year + 4})`).join(' · ')}.
+          {y.carriedPending.map((c) => `${eur(c.amount)} de ${c.year}${c.kind === 'rcm' ? ' (RCM)' : ''} (hasta ${c.year + 4})`).join(' · ')}.
         </p>
       )}
 

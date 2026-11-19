@@ -104,6 +104,7 @@ export class MarketService {
   }
 
   private dailyPending = new Map<string, Promise<DailyHistory & { stale: boolean }>>();
+  private quotePending = new Map<string, Promise<Quote | undefined>>();
 
   async getDailyHistory(symbol: string, from: string): Promise<DailyHistory & { stale: boolean }> {
     const start = `${shiftDate(from, -7).slice(0, 4)}-01-01`;
@@ -151,6 +152,29 @@ export class MarketService {
     }
     if (!missing.length) return out;
 
+    // Una sola petición al proveedor por símbolo aunque lo pidan a la vez varias pantallas, cuentas o
+    // el bucle de avisos: los que ya están en camino se esperan.
+    const fresh = missing.filter((sym) => !this.quotePending.has(sym));
+    if (fresh.length) {
+      const batch = this.fetchQuotes(fresh);
+      for (const sym of fresh) {
+        const p = batch.then((m) => m.get(sym));
+        this.quotePending.set(sym, p);
+        const done = () => { if (this.quotePending.get(sym) === p) this.quotePending.delete(sym); };
+        p.then(done, done);
+      }
+    }
+    const waits = missing.map((sym) => [sym, this.quotePending.get(sym)!] as const);
+    for (const [sym, p] of waits) {
+      const q = await p;
+      if (q) out.set(sym, q);
+    }
+    return out;
+  }
+
+  private async fetchQuotes(missing: string[]): Promise<Map<string, Quote>> {
+    const out = new Map<string, Quote>();
+    const now = Date.now();
     let fetched: Omit<Quote, 'stale'>[] = [];
     if (!this.throttled) {
       try {

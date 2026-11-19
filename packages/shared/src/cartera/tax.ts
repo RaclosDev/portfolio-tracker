@@ -4,7 +4,7 @@
  *  - Ganancias y pérdidas patrimoniales: ventas de acciones (FIFO, coste fiscal) y venta de derechos.
  *  - Rendimientos del capital mobiliario (RCM): dividendos, primas de asistencia y exceso de prima de emisión.
  *  - Compensación (art. 49 LIRPF): un saldo negativo de ganancias compensa hasta el 25 % del saldo
- *    positivo de RCM del año (y al revés); lo que quede se arrastra cuatro años.
+ *    positivo de RCM del año (y al revés); lo que quede (de ganancias o de RCM) se arrastra cuatro años.
  *
  * Es una ayuda para preparar la declaración, no un cálculo oficial.
  */
@@ -54,6 +54,8 @@ export interface IncomeLine {
 export interface CarryLoss {
   year: number;
   amount: number;
+  /** Saldo negativo de rendimientos del capital mobiliario (si falta, es de ganancias y pérdidas). */
+  kind?: 'rcm';
 }
 
 export interface TaxYear {
@@ -107,6 +109,7 @@ export function computeTaxYears(ledger: Ledger, lastYear = new Date().getFullYea
   const first = Math.min(...years);
   const out: TaxYear[] = [];
   let pending: CarryLoss[] = [];
+  let pendingRcm: CarryLoss[] = [];
 
   for (let year = first; year <= Math.max(lastYear, ...years); year++) {
     const sales = ledger.sales.filter((s) => s.year === year);
@@ -131,15 +134,17 @@ export function computeTaxYears(ledger: Ledger, lastYear = new Date().getFullYea
     let rcm = rcmBalance;
     let crossCompensation = 0;
     let rcmCap = Math.max(0, rcm) * pctCross;
+    let gpCap = Math.max(0, gp) * pctCross;
     if (gp < 0 && rcm > 0) {
       crossCompensation = Math.min(-gp, rcmCap);
       gp += crossCompensation;
       rcm -= crossCompensation;
       rcmCap -= crossCompensation;
     } else if (rcm < 0 && gp > 0) {
-      crossCompensation = Math.min(-rcm, gp * pctCross);
+      crossCompensation = Math.min(-rcm, gpCap);
       rcm += crossCompensation;
       gp -= crossCompensation;
+      gpCap -= crossCompensation;
     }
 
     // Pérdidas de los cuatro años anteriores (las más antiguas primero).
@@ -163,11 +168,36 @@ export function computeTaxYears(ledger: Ledger, lastYear = new Date().getFullYea
         carriedUsed.push({ year: p.year, amount: round2(used) });
       }
     }
+    // Saldos negativos de RCM de los cuatro años anteriores: contra RCM y, hasta el límite, contra ganancias.
+    pendingRcm = pendingRcm.filter((p) => p.year >= year - 4 && p.amount > 0.005);
+    for (const p of pendingRcm) {
+      let used = 0;
+      if (rcm > 0) {
+        const u = Math.min(p.amount, rcm);
+        rcm -= u;
+        used += u;
+      }
+      if (p.amount - used > 0.005 && gp > 0 && gpCap > 0) {
+        const u = Math.min(p.amount - used, gpCap, gp);
+        gp -= u;
+        gpCap -= u;
+        used += u;
+      }
+      if (used > 0.005) {
+        p.amount -= used;
+        carriedUsed.push({ year: p.year, amount: round2(used), kind: 'rcm' });
+      }
+    }
     if (gp < -0.005) {
       pending.push({ year, amount: -gp });
       gp = 0;
     }
+    if (rcm < -0.005) {
+      pendingRcm.push({ year, amount: -rcm, kind: 'rcm' });
+      rcm = 0;
+    }
     pending = pending.filter((p) => p.amount > 0.005);
+    pendingRcm = pendingRcm.filter((p) => p.amount > 0.005);
 
     const withholdingEs = rcmLines.reduce((s, l) => s + l.withholdingEs, 0);
     const withholdingEsEstimated = rcmLines.filter((l) => l.estimated).reduce((s, l) => s + l.withholdingEs, 0);
@@ -199,7 +229,10 @@ export function computeTaxYears(ledger: Ledger, lastYear = new Date().getFullYea
       foreignDeduction,
       crossCompensation,
       carriedUsed,
-      carriedPending: pending.map((p) => ({ year: p.year, amount: round2(p.amount) })),
+      carriedPending: [
+        ...pending.map((p) => ({ year: p.year, amount: round2(p.amount) })),
+        ...pendingRcm.map((p) => ({ year: p.year, amount: round2(p.amount), kind: 'rcm' as const })),
+      ],
       gpBase,
       rcmBase,
       taxBase,

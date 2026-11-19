@@ -24,6 +24,16 @@ describe('reconocimiento de columnas y valores', () => {
     expect(discoverImportInstruments([['IE0000000001', 'Compra']], opts, [existing])[0]).toMatchObject({ ...existing, key: 'IE0000000001' });
   });
 
+  it('con solo el nombre del valor, el ticker es ese nombre (no queda vacío)', () => {
+    const opts = options({ columns: { name: 0, type: 1 } });
+    expect(discoverImportInstruments([['Fondo Uno', 'Compra']], opts, [])[0]).toMatchObject({ ticker: 'FONDO UNO', name: 'Fondo Uno' });
+  });
+
+  it('la divisa del valor va siempre en mayúsculas', () => {
+    expect(instrumentInputSchema.parse({ ticker: 'X', currency: 'usd' }).currency).toBe('USD');
+    expect(instrumentInputSchema.safeParse({ ticker: 'X', currency: 'U$D' }).success).toBe(false);
+  });
+
   it('no mezcla dos ISIN ni dos divisas con el mismo identificador', () => {
     const opts = options({ columns: { ticker: 0, isin: 1, currency: 2, type: 3 } });
     expect(discoverImportInstruments([['A', 'IE0000000001', 'EUR', 'buy'], ['A', 'IE0000000002', 'EUR', 'buy']], opts, [])[0]?.problem).toContain('varios ISIN');

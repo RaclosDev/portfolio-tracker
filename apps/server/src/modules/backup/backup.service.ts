@@ -49,6 +49,8 @@ export class BackupService {
     const data = backupSchema.parse(raw);
     let count = 0;
     const saved = await this.db.tx(async (t) => {
+      // Nada se cuela entre la copia previa y el reemplazo (altas de operaciones, valores o listas a la vez).
+      await t.exec('LOCK TABLE operations, instruments, lists, items IN SHARE ROW EXCLUSIVE MODE');
       const saved = await this.snapshot('antes de importar', t, { skipIfEmpty: true });
       const lists = new ListsRepository(t);
       const items = new ItemsRepository(t);

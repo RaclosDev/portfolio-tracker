@@ -102,9 +102,10 @@ export class AlertsService {
 
       // Resumen del día: una vez, a partir de la hora elegida.
       if (n.dailySummary && hhmmOf(now) >= n.dailySummaryAt && (await this.state.get('ultimoResumen', '')) !== today) {
-        await this.state.set('ultimoResumen', today);
         const summary = buildDailySummary(rows, now, s.statusNames);
         if (summary) await this.push.sendAll({ ...summary, tag: 'resumen', url: '/' });
+        // Se marca después de enviarlo: si el envío falla, se reintenta en la siguiente vuelta.
+        await this.state.set('ultimoResumen', today);
       }
       return alerts;
     } finally {
@@ -150,7 +151,8 @@ export class AlertsService {
   /** Una copia completa al día dentro de la base de datos (se guardan las últimas). */
   private async dailySnapshot(today: string) {
     if ((await this.state.get('ultimaCopia', '')) === today) return;
-    await this.state.set('ultimaCopia', today);
+    // Primero la copia y luego la marca: si la copia falla, se vuelve a intentar en la siguiente vuelta.
     await this.backup.snapshot('diaria', undefined, { skipIfEmpty: true });
+    await this.state.set('ultimaCopia', today);
   }
 }

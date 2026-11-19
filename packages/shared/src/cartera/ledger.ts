@@ -43,6 +43,11 @@ export interface Lot {
   /** Acciones que quedan (con scrip y splits). */
   shares: number;
   costEur: number;
+  /**
+   * Coste en la divisa del valor al cambio de cada compra (para el precio medio en esa divisa).
+   * null si la compra no lo permite saber (sin cambio ni precio): entonces se usa el cambio de hoy.
+   */
+  costNative: number | null;
   taxCostEur: number;
   /** Pérdidas aplazadas por la regla de los dos meses que lleva este lote y aún no se han integrado. */
   deferredLossEur: number;
@@ -222,6 +227,33 @@ function newTicker(ticker: string, date: string): TickerLedger {
   };
 }
 
+/**
+ * Coste de una compra en la divisa del valor: con el cambio del día de la compra o, si no se indicó
+ * (cambio 1 en un valor extranjero importado), con su precio y comisiones. null si no se puede saber.
+ */
+function nativeCost(op: Operation): number | null {
+  if (op.fxRate !== 1) return op.amountEur * op.fxRate;
+  if (op.price != null && op.shares) return op.shares * op.price + op.fees;
+  return null;
+}
+
+/**
+ * Precio medio de las acciones que quedan, en la divisa del valor y con el cambio de cada compra.
+ * `fxToday` (unidades por 1 €) solo se usa para los lotes cuyo coste en divisa no se conoce.
+ */
+export function averageNativePrice(t: Pick<TickerLedger, 'openLots'>, currency: string, fxToday: number | null): number | null {
+  const shares = t.openLots.reduce((s, l) => s + l.shares, 0);
+  if (shares <= EPS) return null;
+  if (currency === 'EUR') return t.openLots.reduce((s, l) => s + l.costEur, 0) / shares;
+  let native = 0;
+  for (const l of t.openLots) {
+    if (l.costNative != null) native += l.costNative;
+    else if (fxToday) native += l.costEur * fxToday;
+    else return null;
+  }
+  return native / shares;
+}
+
 const brokerKey = (b: string | null) => b?.trim() || 'Sin bróker';
 const held = (t: TickerLedger) => t.openLots.reduce((s, l) => s + l.shares, 0);
 
@@ -241,6 +273,9 @@ export function computeLedger(operations: Operation[]): Ledger {
   const issues: LedgerIssue[] = [];
   const transfers = new Map<string, { operation: Operation; lots: Lot[]; received: boolean }>();
   let transferredLotId = 0;
+  // Acciones de cada lote que ya sirven de recompra para aplazar una pérdida: no pueden aplazar otra.
+  const washUsed = new Map<Lot, number>();
+  const washFree = (lot: Lot) => lot.shares - (washUsed.get(lot) ?? 0);
 
   // Nº del Excel de cada compra → id de su lote (para el scrip que indica a qué lote va).
   const lotBySourceRef = new Map<string, number>();
@@ -273,11 +308,12 @@ export function computeLedger(operations: Operation[]): Ledger {
           const take = Math.min(left, lot.shares);
           const fraction = take / lot.shares;
           const part: Lot = { ...lot, id: --transferredLotId, shares: take, sharesBought: take,
-            costBought: lot.costEur * fraction, costEur: lot.costEur * fraction,
+            costBought: lot.costEur * fraction, costEur: lot.costEur * fraction, costNative: null,
             taxCostEur: lot.taxCostEur * fraction, deferredLossEur: lot.deferredLossEur * fraction, matches: [] };
           moved.push(part);
           lot.shares -= take;
           lot.costEur -= part.costEur;
+          if (lot.costNative != null) lot.costNative *= 1 - fraction;
           lot.taxCostEur -= part.taxCostEur;
           lot.deferredLossEur -= part.deferredLossEur;
           left -= take;
@@ -307,7 +343,8 @@ export function computeLedger(operations: Operation[]): Ledger {
         const total = transfer.lots.reduce((sum, lot) => sum + lot.shares, 0);
         for (const lot of transfer.lots) {
           const quantity = shares * lot.shares / total;
-          t.openLots.push({ ...lot, ticker: op.ticker, broker: op.broker, shares: quantity, sharesBought: quantity });
+          t.openLots.push({ ...lot, ticker: op.ticker, broker: op.broker, shares: quantity, sharesBought: quantity,
+            costNative: op.fxRate !== 1 ? lot.costEur * op.fxRate : null });
         }
         // La antigüedad de los lotes traspasados decide el FIFO de futuras ventas.
         t.openLots.sort((a, b) => a.date.localeCompare(b.date));
@@ -329,14 +366,18 @@ export function computeLedger(operations: Operation[]): Ledger {
           costBought: op.amountEur,
           shares,
           costEur: op.amountEur,
+          costNative: nativeCost(op),
           taxCostEur: op.amountEur,
           deferredLossEur: 0,
           matches: [],
         };
         // Regla de los dos meses (compra posterior a una venta con pérdida).
+        let room = lot.shares;
         for (const p of st.pending) {
+          if (room <= EPS) break;
           if (p.sharesLeft <= EPS || op.date > p.until) continue;
-          const take = Math.min(p.sharesLeft, lot.shares);
+          const take = Math.min(p.sharesLeft, room);
+          room -= take;
           const amount = take * p.lossPerShare;
           lot.taxCostEur += amount;
           lot.deferredLossEur += amount;
@@ -346,6 +387,7 @@ export function computeLedger(operations: Operation[]): Ledger {
           sale.computableEur = sale.taxGainEur + sale.deferredLossEur;
           sale.deferredBy.push(op.id);
         }
+        if (room < lot.shares - EPS) washUsed.set(lot, lot.shares - room);
         t.openLots.push(lot);
         t.boughtEur += op.amountEur;
         t.sharesByBroker[bk] = (t.sharesByBroker[bk] ?? 0) + shares;
@@ -366,6 +408,7 @@ export function computeLedger(operations: Operation[]): Ledger {
             costBought: 0,
             shares,
             costEur: 0,
+            costNative: 0,
             taxCostEur: 0,
             deferredLossEur: 0,
             matches: [],
@@ -382,7 +425,11 @@ export function computeLedger(operations: Operation[]): Ledger {
 
       case 'split': {
         const r = op.splitRatio ?? 1;
-        for (const l of t.openLots) l.shares *= r;
+        for (const l of t.openLots) {
+          l.shares *= r;
+          const used = washUsed.get(l);
+          if (used) washUsed.set(l, used * r);
+        }
         for (const k of Object.keys(t.sharesByBroker)) t.sharesByBroker[k]! *= r;
         for (const p of st.pending) {
           p.sharesLeft *= r;
@@ -429,8 +476,11 @@ export function computeLedger(operations: Operation[]): Ledger {
           sale.releasedLossEur += released;
           sale.matches.push({ lotId: lot.id, buyDate: lot.date, shares: take, costEur: cost, taxCostEur: taxCost });
           lot.matches.push({ saleId: op.id, date: op.date, shares: take, costEur: cost, proceedsEur: want ? (op.amountEur * take) / want : 0 });
+          const used = washUsed.get(lot);
+          if (used) washUsed.set(lot, used * (1 - f));
           lot.shares -= take;
           lot.costEur -= cost;
+          if (lot.costNative != null) lot.costNative *= 1 - f;
           lot.taxCostEur -= taxCost;
           lot.deferredLossEur -= released;
           left -= take;
@@ -450,7 +500,9 @@ export function computeLedger(operations: Operation[]): Ledger {
           for (const lot of t.openLots) {
             if (unassigned <= EPS) break;
             if (lot.date < from || lot.sharesBought <= 0) continue;
-            const take = Math.min(unassigned, lot.shares);
+            const take = Math.min(unassigned, washFree(lot));
+            if (take <= EPS) continue;
+            washUsed.set(lot, (washUsed.get(lot) ?? 0) + take);
             const amount = take * lossPerShare;
             lot.taxCostEur += amount;
             lot.deferredLossEur += amount;

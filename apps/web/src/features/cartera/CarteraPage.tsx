@@ -1,6 +1,7 @@
 import { DEFAULT_TAG_NAMES, instrumentKind, type Operation } from '@watchlist/shared';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { money, pct } from '../../lib/format.ts';
+import { anyQuoteToday } from '../../components/QuoteAge.tsx';
 import { tabListKeys } from '../../lib/tabs.ts';
 import { PortfolioCharts } from './PortfolioCharts.tsx';
 import { ExposureView } from './ExposureView.tsx';
@@ -56,7 +57,7 @@ function Totals({ model }: { model: CarteraModel }) {
       ) : (
         <Figure label="TIR anual · desde el inicio" value={pct(s.xirr, 2)} delta={s.xirr} title="Rentabilidad anualizada del dinero invertido según las fechas de compras, ventas y cobros, y el valor actual de las acciones" />
       )}
-      <Figure label="Cotización de hoy" value={money(complete ? s.dayChangeEur : null, 'EUR', 2)} sub={pct(complete ? s.dayChangePct : null, 2)} delta={s.dayChangeEur}
+      <Figure label={anyQuoteToday(model.valuation.open.map((r) => r.quote)) ? 'Cotización de hoy' : 'Última sesión'} value={money(complete ? s.dayChangeEur : null, 'EUR', 2)} sub={pct(complete ? s.dayChangePct : null, 2)} delta={s.dayChangeEur}
         title="Variación de precio de las acciones que tienes ahora, al cambio actual. No es el resultado diario de la cuenta ni incluye ventas o cobros de hoy" />
       {s.missing.length > 0 && (
         <div className="hl-cell hl-cell--full">

@@ -1,4 +1,4 @@
-import { OPERATION_LABELS, sortOperations, type HistoryRange, type Operation, type Quote } from '@watchlist/shared';
+import { OPERATION_LABELS, averageNativePrice, sortOperations, type HistoryRange, type Operation, type Quote } from '@watchlist/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useState, type FormEvent } from 'react';
 import { api } from '../../api/client.ts';
@@ -59,9 +59,10 @@ export function TickerDialog({
   if (!t) return null;
   const ops = sortOperations(model.view.operations.filter((o) => o.ticker === ticker)).reverse();
   const lastBroker = ops.find((o) => o.broker)?.broker ?? null;
-  const fx = row?.fxRate ?? 1;
+  const cur = row?.currency ?? inst?.currency ?? 'EUR';
   const known = composition?.holdings.reduce((s, h) => s + h.weight, 0) ?? 0;
-  const avgNative = t.shares > 0 ? (t.costEur / t.shares) * fx : null;
+  // Con el cambio de cada compra: con el de hoy, el precio medio en dólares cambiaría cada día con el euro.
+  const avgNative = averageNativePrice(t, cur, row?.fxRate ?? null);
   const refs: RefLine[] = avgNative ? [{ label: 'Coste medio', value: avgNative, kind: 'price' }] : [];
   const sectors = [...new Set(model.view.instruments.map((i) => i.sector).filter((s): s is string => !!s))].sort();
 
@@ -199,7 +200,7 @@ export function TickerDialog({
                     <td className="al-right num" title={l.deferredLossEur ? `Incluye ${money(l.deferredLossEur, 'EUR', 2)} de pérdida aplazada` : undefined}>
                       {money(l.taxCostEur, 'EUR', 2)}
                     </td>
-                    <td className="al-right num">{price((l.costEur / l.shares) * fx, row?.currency ?? inst?.currency ?? 'EUR')}</td>
+                    <td className="al-right num">{price(averageNativePrice({ openLots: [l] }, cur, row?.fxRate ?? null), cur)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -126,7 +126,13 @@ export function valueCartera(args: {
       const valueNative = b.price != null ? t.shares * b.price : null;
       const valueEur = valueNative != null && b.fxRate ? valueNative / b.fxRate : null;
       const prev = b.quote?.previousClose ?? (b.price != null && b.changePct != null ? b.price / (1 + b.changePct) : null);
-      const dayChangeEur = b.price != null && prev != null && b.fxRate ? (t.shares * (b.price - prev)) / b.fxRate : null;
+      // Las acciones compradas hoy no tenían el cierre de ayer: su variación es valor actual − lo que costaron.
+      const boughtToday = t.openLots.filter((l) => l.date === today && l.id > 0 && l.sharesBought > 0);
+      const todayShares = boughtToday.reduce((s, l) => s + l.shares, 0);
+      const dayChangeEur = b.price != null && prev != null && b.fxRate
+        ? ((t.shares - todayShares) * (b.price - prev)) / b.fxRate
+          + boughtToday.reduce((s, l) => s + (l.shares * b.price!) / b.fxRate! - l.costEur, 0)
+        : null;
       const unrealizedEur = valueEur != null ? valueEur - t.costEur : null;
       open.push({
         ...b,
@@ -148,6 +154,9 @@ export function valueCartera(args: {
   const priced = open.filter((r) => r.valueEur != null);
   const costEur = priced.reduce((s, r) => s + r.ledger.costEur, ledger.inTransitCostEur);
   const dayChangeEur = open.reduce((s, r) => s + (r.dayChangeEur ?? 0), 0);
+  // Base del % del día: valor de ayer solo de lo que tiene variación (sin traspasos en curso ni
+  // valores sin cierre anterior, que si no rebajan el porcentaje).
+  const dayBase = open.reduce((s, r) => (r.dayChangeEur != null && r.valueEur != null ? s + r.valueEur - r.dayChangeEur : s), 0);
   const unrealizedEur = valueEur - costEur;
   const all = ledger.tickers;
   const realizedEur = all.reduce((s, t) => s + t.realizedEur, 0);
@@ -169,7 +178,7 @@ export function valueCartera(args: {
       valueEur,
       costEur,
       dayChangeEur,
-      dayChangePct: valueEur - dayChangeEur ? dayChangeEur / (valueEur - dayChangeEur) : null,
+      dayChangePct: dayBase > 0 ? dayChangeEur / dayBase : null,
       unrealizedEur,
       realizedEur,
       dividendsEur,

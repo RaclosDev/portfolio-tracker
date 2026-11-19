@@ -232,6 +232,12 @@ describe('valores y vista', () => {
     expect((await send('DELETE', `/api/items/${id}`)).statusCode).toBe(204);
     expect((await send('DELETE', `/api/items/${id}`)).statusCode).toBe(404);
   });
+
+  it('mover un valor a una lista que no existe da 404, no un error interno', async () => {
+    const { id } = (await send('POST', '/api/items', { listId: 1, symbol: 'MOV.MC' })).json() as { id: number };
+    expect((await send('PATCH', `/api/items/${id}`, { listId: 99999 })).statusCode).toBe(404);
+    await send('DELETE', `/api/items/${id}`);
+  });
 });
 
 describe('ajustes', () => {
@@ -251,6 +257,10 @@ describe('ajustes', () => {
     await send('PUT', '/api/settings', { theme: 'dark', refreshSeconds: 120 });
     const kept = (await send('PUT', '/api/settings', { skin: 'classic' })).json() as Settings;
     expect(kept).toMatchObject({ skin: 'classic', theme: 'dark', refreshSeconds: 120 });
+    await send('PUT', '/api/settings', { theme: s.theme, refreshSeconds: s.refreshSeconds });
+    // Dos cambios a la vez de claves distintas: ninguno se pierde.
+    await Promise.all([send('PUT', '/api/settings', { theme: 'dark' }), send('PUT', '/api/settings', { refreshSeconds: 300 })]);
+    expect((await get('/api/settings')).json()).toMatchObject({ theme: 'dark', refreshSeconds: 300 });
     await send('PUT', '/api/settings', { theme: s.theme, refreshSeconds: s.refreshSeconds });
   });
 
@@ -468,6 +478,28 @@ describe('cartera', () => {
     await send('POST', '/api/operations', { operation: { date: '2025-02-01', ticker: 'AAA', type: 'sell', shares: 10, amountEur: 150 } });
     expect((await send('DELETE', `/api/operations/${b.id}`)).statusCode).toBe(400);
     expect((await portfolio()).operations).toHaveLength(2);
+  });
+
+  it('dos ventas a la vez no venden más de lo que hay', async () => {
+    await send('POST', '/api/operations', buy('CCC', 10, 100));
+    const sell = { operation: { date: '2025-02-01', ticker: 'CCC', type: 'sell', shares: 10, amountEur: 120 } };
+    const codes = (await Promise.all([send('POST', '/api/operations', sell), send('POST', '/api/operations', sell)])).map((r) => r.statusCode);
+    expect(codes.sort()).toEqual([201, 400]);
+    expect((await portfolio()).operations).toHaveLength(2);
+  });
+
+  it('cambia el bróker de varias operaciones en una transacción validada', async () => {
+    const b = (await send('POST', '/api/operations', buy('DDD', 10, 100))).json() as { id: number };
+    const res = await send('POST', '/api/operations/broker', { ids: [b.id], broker: 'MyInvestor' });
+    expect(res.json()).toEqual({ updated: 1 });
+    expect((await portfolio()).operations.find((o) => o.id === b.id)?.broker).toBe('MyInvestor');
+  });
+
+  it('no deja cambiar la divisa de un valor con precios apuntados en otra', async () => {
+    await send('POST', '/api/operations', { operation: { ...buy('EEE', 1, 10).operation, price: 10 } });
+    const res = await send('PUT', '/api/instruments/EEE', { currency: 'USD' });
+    expect(res.statusCode).toBe(400);
+    expect((await portfolio()).instruments.find((i) => i.ticker === 'EEE')?.currency).toBe('EUR');
   });
 
   it('vincula un valor existente al añadir una compra sin perder sus datos personales', async () => {

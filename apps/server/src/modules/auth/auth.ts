@@ -56,6 +56,9 @@ export async function registerAuth(app: FastifyInstance, opts: AuthOptions, serv
   };
   const setSession = async (reply: FastifyReply, account: Account) => {
     const token = crypto.randomBytes(32).toString('base64url');
+    // Las sesiones caducadas se limpian al crear otra (antes solo al arrancar: en un servidor que no
+    // se reinicia la tabla crecía sin fin).
+    await services.db.query('DELETE FROM watchlist_auth.sessions WHERE expires_at <= now()');
     await services.db.query(`INSERT INTO watchlist_auth.sessions (token_hash, account_id, expires_at)
       VALUES ($1, $2, $3)`, [digest(token), account.id, new Date(Date.now() + SESSION_SECONDS * 1000)]);
     reply.header('Set-Cookie', cookie(SESSION_COOKIE, token, SESSION_SECONDS));

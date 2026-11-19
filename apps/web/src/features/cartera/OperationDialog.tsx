@@ -70,7 +70,8 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
   const [withoutQuote, setWithoutQuote] = useState(false);
   const [shares, setShares] = useState(str(op?.shares ?? draft?.shares));
   const [priceRaw, setPrice] = useState(str(op?.price ?? draft?.price));
-  const [fees, setFees] = useState(str(op?.fees || null));
+  // Un cobro importado puede traer las comisiones en su divisa (con su cambio): aquí se ven y se guardan en euros.
+  const [fees, setFees] = useState(str(op && isIncome(op.type) && op.fxRate && op.fxRate !== 1 ? round2(op.fees / op.fxRate) || null : op?.fees || null));
   const [fx, setFxRaw] = useState(str(op?.fxRate));
   const [fxTouched, setFxTouched] = useState(!!op);
   const setFx = (v: string) => { setFxRaw(v); setFxTouched(v !== ''); };
@@ -166,7 +167,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, on
       shares: trade || type === 'scrip' ? n(shares) : null,
       price: trade ? n(priceRaw) : null,
       fees: n(fees) ?? 0,
-      fxRate: trade ? (fxN ?? 1) : (op?.fxRate ?? 1),
+      fxRate: trade ? (fxN ?? 1) : income ? 1 : (op?.fxRate ?? 1),
       amountEur: type === 'scrip' || type === 'split' ? 0 : (n(amountShown) ?? 0),
       withholdingEs: income ? n(whEs) : null,
       withholdingForeign: income ? n(whForeign) : null,
