@@ -22,4 +22,22 @@ describe('cotizaciones en el servicio de mercado', { timeout: 30_000 }, () => {
     expect(rb.get('BBB')?.price).toBe(10);
     expect(getQuotes.mock.calls).toEqual([[['AAA']], [['BBB']]]);
   });
+
+  it('marca el cambio de divisa como antiguo si la fuente falla y se usa el guardado', async () => {
+    const db = openPGlite();
+    await migrate(db);
+    let fail = false;
+    const getQuotes = vi.fn(async (symbols: string[]) => {
+      if (fail) throw new Error('caída');
+      return symbols.map((symbol) => ({ symbol, price: 1.1, currency: 'USD' }));
+    });
+    const market = new MarketService({ id: 'prueba', getQuotes } as unknown as MarketDataProvider, db, { quoteTtlMs: 0, targetsTtlMs: 0 });
+    const fresh = new Set<string>();
+    expect((await market.getFxRates('EUR', ['USD'], undefined, fresh)).USD).toBe(1.1);
+    expect([...fresh]).toEqual([]);
+    fail = true;
+    const stale = new Set<string>();
+    expect((await market.getFxRates('EUR', ['USD', 'GBp'], undefined, stale)).USD).toBe(1.1);
+    expect(stale.has('USD')).toBe(true);
+  });
 });

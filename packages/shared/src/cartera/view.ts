@@ -53,6 +53,11 @@ export interface CarteraSummary {
   flowDays: number | null;
   /** Total invertido en compras desde el principio. */
   boughtEur: number;
+  /**
+   * Grupos de tickers con operaciones que comparten ISIN: probablemente el mismo valor en dos bolsas.
+   * El FIFO, el precio medio y la regla de los dos meses se calculan por ticker, así que hay que fusionarlos.
+   */
+  sameIsin: string[][];
 }
 
 export interface CarteraValuation {
@@ -86,6 +91,16 @@ export function xirr(flows: { date: string; amount: number }[]): number | null {
     }
   }
   return (lo + hi) / 2;
+}
+
+/** Tickers que comparten ISIN (sin distinguir mayúsculas), en grupos de dos o más. */
+export function sameIsinGroups(instruments: Pick<Instrument, 'ticker' | 'isin'>[]): string[][] {
+  const by = new Map<string, string[]>();
+  for (const i of instruments) {
+    const isin = i.isin?.trim().toUpperCase();
+    if (isin) by.set(isin, [...(by.get(isin) ?? []), i.ticker]);
+  }
+  return [...by.values()].filter((g) => g.length > 1);
 }
 
 export function valueCartera(args: {
@@ -189,6 +204,7 @@ export function valueCartera(args: {
       xirr: missing.length ? null : xirr(flows),
       flowDays: flows.length > 1 ? Math.round((Date.parse(today) - Math.min(...flows.map((f) => Date.parse(f.date)))) / DAY) : null,
       boughtEur: all.reduce((s, t) => s + t.boughtEur, 0),
+      sameIsin: sameIsinGroups(all.map((t) => inst.get(t.ticker)).filter((i): i is Instrument => !!i)),
     },
     bySector: [...sectors].map(([sector, v]) => ({ sector, valueEur: v })).sort((a, b) => b.valueEur - a.valueEur),
   };

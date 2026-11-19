@@ -66,6 +66,14 @@ function Totals({ model }: { model: CarteraModel }) {
           </p>
         </div>
       )}
+      {s.sameIsin.length > 0 && (
+        <div className="hl-cell hl-cell--full">
+          <p className="hl-value small warn-text">
+            Mismo ISIN en varios tickers: {s.sameIsin.map((g) => g.join(' y ')).join('; ')}. Si son el mismo valor, pon el mismo ticker en todas sus operaciones:
+            el precio medio, el FIFO y la regla de los dos meses se calculan por separado.
+          </p>
+        </div>
+      )}
     </section>
     <section className="cartera-breakdown" aria-label="Desglose del resultado">
       <h2>De dónde sale la ganancia total</h2>

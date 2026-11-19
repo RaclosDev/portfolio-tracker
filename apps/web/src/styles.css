@@ -228,6 +228,8 @@ p, li { text-wrap: pretty; }
 }
 .updated { font-size: var(--fs-xs); color: var(--text-2); min-width: 120px; text-align: right; }
 .updated--stale { color: var(--down); }
+.chip--stale { color: var(--down); border-color: var(--down); }
+.warn-text { color: var(--down); }
 .updated--warn { color: color-mix(in oklab, var(--c-near), var(--text) 35%); cursor: help; }
 .mobile-primary-nav, .highlights-toggle { display: none; }
 

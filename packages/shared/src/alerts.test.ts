@@ -118,6 +118,12 @@ describe('silenciar y resumen diario', () => {
     expect(s.body).toContain('Resultados: Fluidra (mañana)');
   });
 
+  it('un valor en dos listas sale una sola vez en el resumen', async () => {
+    const { buildDailySummary } = await import('./alerts.ts');
+    const s = buildDailySummary([row(16), row(16, { id: 9, listId: 2, buyPrices: [16.5] })])!;
+    expect(s.body).toContain('En zona: Fluidra.');
+  });
+
   it('los avisos llevan el ticker del valor', () => {
     const { alerts } = evaluateAlerts([row(16)], emptyMemory(), DEFAULT_ALERT_PREFS, t0);
     expect(alerts[0]!.symbol).toBe('FDR.MC');

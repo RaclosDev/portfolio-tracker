@@ -103,9 +103,9 @@ export class AlertsService {
       // Resumen del día: una vez, a partir de la hora elegida.
       if (n.dailySummary && hhmmOf(now) >= n.dailySummaryAt && (await this.state.get('ultimoResumen', '')) !== today) {
         const summary = buildDailySummary(rows, now, s.statusNames);
-        if (summary) await this.push.sendAll({ ...summary, tag: 'resumen', url: '/' });
-        // Se marca después de enviarlo: si el envío falla, se reintenta en la siguiente vuelta.
-        await this.state.set('ultimoResumen', today);
+        const res = summary ? await this.push.sendAll({ ...summary, tag: 'resumen', url: '/' }) : null;
+        // Solo se da por enviado si llegó a algún dispositivo (o no había a quién): si fallan todos, se reintenta en la siguiente vuelta.
+        if (!res || res.sent > 0 || res.failed === 0) await this.state.set('ultimoResumen', today);
       }
       return alerts;
     } finally {
@@ -116,11 +116,8 @@ export class AlertsService {
   private async loadRows(): Promise<WatchlistRow[]> {
     const lists = await this.lists.all();
     const views = await Promise.all(lists.map((l) => this.watchlist.view(l.id)));
-    const seen = new Set<string>();
-    const rows = views
-      .flatMap((v) => v?.rows ?? [])
-      .filter((r) => (seen.has(r.item.symbol) ? false : (seen.add(r.item.symbol), true)));
-    return rows;
+    // Un mismo valor puede estar en varias listas con niveles distintos: se evalúa cada uno.
+    return views.flatMap((v) => v?.rows ?? []);
   }
 
   private async saveHistory(alerts: Alert[]) {
