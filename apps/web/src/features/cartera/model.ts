@@ -22,7 +22,7 @@ export interface CarteraModel {
 
 /** Libro FIFO, valoración y Renta a partir del registro (todo en el navegador, con el motor compartido). */
 export function buildModel(view: CarteraView): CarteraModel {
-  const ledger = computeLedger(view.operations);
+  const ledger = computeLedger(view.operations, view.instruments);
   const valuation = valueCartera({
     ledger,
     instruments: view.instruments,

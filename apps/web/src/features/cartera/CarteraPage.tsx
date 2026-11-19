@@ -68,9 +68,8 @@ function Totals({ model }: { model: CarteraModel }) {
       )}
       {s.sameIsin.length > 0 && (
         <div className="hl-cell hl-cell--full">
-          <p className="hl-value small warn-text">
-            Mismo ISIN en varios tickers: {s.sameIsin.map((g) => g.join(' y ')).join('; ')}. Si son el mismo valor, pon el mismo ticker en todas sus operaciones:
-            el precio medio, el FIFO y la regla de los dos meses se calculan por separado.
+          <p className="hl-value muted small">
+            Mismo valor en varias bolsas (un solo FIFO por ISIN): {s.sameIsin.map((g) => `${g.tickers.join(' + ')} (${g.isin})`).join('; ')}.
           </p>
         </div>
       )}
