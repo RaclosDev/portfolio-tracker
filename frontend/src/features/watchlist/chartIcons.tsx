@@ -17,6 +17,7 @@ const PATHS = {
   measure: 'M2 12L12 2l4 4L6 16zM5 9l2 2M8 6l2 2',
   zoomIn: 'M12 12l4 4M5.5 8h5M8 5.5v5',
   zoomOut: 'M12 12l4 4M5.5 8h5',
+  fitLines: 'M2 2h14M2 16h14M9 5v8M6.5 7.5L9 5l2.5 2.5M6.5 10.5L9 13l2.5-2.5',
   magnet: 'M4 2v7a5 5 0 0 0 10 0V2h-3v7a2 2 0 0 1-4 0V2zM4 5h3M11 5h3',
   stay: 'M3 15l1-4 8-8 3 3-8 8zM11 4l3 3',
   lock: 'M4 8h10v8H4zM6 8V6a3 3 0 0 1 6 0v2',

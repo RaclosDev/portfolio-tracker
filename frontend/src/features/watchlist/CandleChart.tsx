@@ -1,7 +1,6 @@
 import type { Candle, ChartDrawing, ChartDrawingType, ChartPoint, LevelStatus, WatchlistRow } from '@/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  AreaSeries,
   CandlestickSeries,
   ColorType,
   createChart,
@@ -10,6 +9,7 @@ import {
   LineSeries,
   LineStyle,
   PriceScaleMode,
+  type AutoscaleInfo,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
@@ -62,7 +62,7 @@ import {
   type Series,
 } from './indicators.ts';
 
-type ChartType = 'candles' | 'area' | 'line';
+type ChartType = 'candles' | 'line';
 type ScaleMode = 'normal' | 'log' | 'percent';
 type DrawTool = Exclude<Tool, 'cursor'>;
 
@@ -86,7 +86,7 @@ function chartTime(t: string): Time {
   const ms = Date.parse(t);
   return (ms / 1000 - new Date(ms).getTimezoneOffset() * 60) as UTCTimestamp;
 }
-const CHART_TYPES: [ChartType, string][] = [['candles', 'Velas'], ['area', 'Área'], ['line', 'Línea']];
+const CHART_TYPES: [ChartType, string][] = [['candles', 'Velas'], ['line', 'Línea']];
 const SCALES: [ScaleMode, string, string][] = [
   ['normal', 'Lineal', 'Escala lineal'],
   ['log', 'Log', 'Escala logarítmica'],
@@ -175,15 +175,21 @@ function themeColors() {
   };
 }
 type Colors = ReturnType<typeof themeColors>;
-const withAlpha = (rgb: string, a: number) => rgb.replace(/^rgb\((.*)\)$/, `rgba($1, ${a})`);
 
 function mainSeriesOptions(kind: ChartType, c: Colors) {
   if (kind === 'line') return { color: c.accent };
-  if (kind === 'area') return { lineColor: c.accent, topColor: withAlpha(c.accent, 0.28), bottomColor: withAlpha(c.accent, 0) };
   return { upColor: c.up, downColor: c.down, borderUpColor: c.up, borderDownColor: c.down, wickUpColor: c.up, wickDownColor: c.down };
 }
 
+const sameBar = (a: Candle, b: Candle) => a.t === b.t && a.o === b.o && a.h === b.h && a.l === b.l && a.c === b.c;
 const precisionFor = (price: number) => (price < 1 ? 4 : price < 10 ? 3 : 2);
+/** Decimales del eje y la leyenda: todos los que traiga el precio (hasta 6), nunca menos que los de su magnitud. */
+function pricePrecision(bars: Candle[], ...prices: (number | null | undefined)[]) {
+  let d = precisionFor(bars.at(-1)?.c ?? prices.find((p) => p != null) ?? 1);
+  for (const b of bars.slice(-50)) d = Math.max(d, decimals(b.o), decimals(b.h), decimals(b.l), decimals(b.c));
+  for (const p of prices) if (p != null) d = Math.max(d, decimals(p));
+  return Math.min(6, d);
+}
 const fmtPct = (r: number) => `${r >= 0 ? '+' : ''}${(r * 100).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
 
 /** Línea fija de referencia sobre el gráfico (compras de la lista, orden, coste medio…). */
@@ -192,15 +198,24 @@ export interface ChartLine {
   title: string;
   /** Discontinua en el color de acento (por defecto) o punteada en el color del texto. */
   style?: 'dashed' | 'dotted';
-  /** Estado de una compra (alcanzada, cerca…): la línea toma su color, el mismo de la tabla. */
-  status?: LevelStatus | 'order';
+  /** Estado de una compra (alcanzada, cerca…), orden u objetivo: la línea toma su color, el mismo de la tabla. */
+  status?: LevelStatus | 'order' | 'broker' | 'consensus';
 }
 
-/** Líneas de un valor de la lista: sus compras y la orden activa. */
-export const watchlistLines = ({ item, metrics }: WatchlistRow): ChartLine[] => [
+/** Líneas de un valor de la lista: sus compras, la orden activa y los objetivos del bróker y del consenso. */
+export const watchlistLines = ({ item, metrics, targets }: WatchlistRow): ChartLine[] => [
   ...metrics.levels.map((l, i) => ({ price: l.price, title: `Compra ${i + 1}`, status: l.status })),
   ...(item.orderActive && item.orderPrice ? [{ price: item.orderPrice, title: 'Orden', style: 'dotted' as const, status: 'order' as const }] : []),
+  ...(item.brokerTarget ? [{ price: item.brokerTarget, title: item.brokerName ?? 'Bróker', status: 'broker' as const }] : []),
+  ...(targets?.mean ? [{ price: targets.mean, title: 'Consenso', style: 'dotted' as const, status: 'consensus' as const }] : []),
 ];
+
+/** Color de una línea fija, ya resuelto para el gráfico. */
+function lineColor(l: ChartLine, c: Colors) {
+  if (l.status === 'broker' || l.status === 'consensus') return resolveColor(`var(--pm-${l.status})`);
+  if (l.status && l.status !== 'unknown') return resolveColor(`var(--${l.status}-fg)`);
+  return l.style === 'dotted' ? c.text : c.accent;
+}
 
 interface Props {
   symbol: string;
@@ -214,7 +229,7 @@ interface Props {
 
 /**
  * Gráfico de velas (Lightweight Charts, de TradingView) con las herramientas de Financial Hub: intervalos
- * diario, semanal y mensual, velas, área o línea, medias móviles, escala lineal, logarítmica o en porcentaje,
+ * diario, semanal y mensual, velas o línea, medias móviles, escala lineal, logarítmica o en porcentaje,
  * periodos con su rentabilidad y dibujos guardados en la cuenta (líneas, canales, Fibonacci, formas, texto y
  * posiciones), que se seleccionan, se arrastran y se editan. Las compras de la lista y la orden salen como
  * líneas discontinuas.
@@ -297,6 +312,8 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Pr
   const indicators = useMemo(() => storedInd.map((i) => normalizeIndicator(i)!), [storedInd]);
   const [indQuery, setIndQuery] = useState('');
   const [magnet, setMagnet] = usePersisted<boolean>('watchlist.velas.iman', false, (v) => typeof v === 'boolean');
+  /** La escala de precios se abre hasta que se ven todas las líneas: compras, orden, objetivos y horizontales dibujadas. */
+  const [fitLines, setFitLines] = usePersisted<boolean>('watchlist.velas.todasLineas', false, (v) => typeof v === 'boolean');
   const [stay, setStay] = useState(false);
   const [lockAll, setLockAll] = useState(false);
   const [hidden, setHidden] = useState(false);
@@ -317,8 +334,8 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Pr
   /** Intervalo de lo que se pinta (un fondo en intradía se ve en diario). */
   const shown: Step = intraday || !isIntraday(step) ? step : 'D';
   const bars = useMemo(() => (intraday ? intradayBars : aggregate(candles, shown)), [candles, intradayBars, intraday, shown]);
-  // Los mismos decimales que el precio de la tabla: si cotiza a 14,608, el gráfico no lo redondea a 14,61.
-  const precision = Math.max(precisionFor(candles.at(-1)?.c ?? 1), Math.min(4, quoted != null ? decimals(quoted) : 0));
+  // Todos los decimales que trae el precio: si cotiza a 14,6083, el gráfico no lo redondea a 14,61.
+  const precision = useMemo(() => pricePrecision(bars, quoted, liveQuote?.price), [bars, quoted, liveQuote?.price]);
   const visibleInd = useMemo(() => indicators.filter((i) => !i.hidden), [indicators]);
   /** Cifras de cada indicador visible, por línea y alineadas con las velas. */
   const indData = useMemo(
@@ -340,6 +357,13 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Pr
   const datesRef = useRef<string[]>([]);
   const barsRef = useRef<Candle[]>([]);
   const fittedRef = useRef(false);
+  /** Encuadre pendiente de que el gráfico tenga ancho. */
+  const needFitRef = useRef(false);
+  const fitRef = useRef<() => void>(() => {});
+  /** Serie que tiene cargadas las velas: si es otra (gráfico recién creado), se cargan enteras. */
+  const dataSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
+  /** Precios que la escala debe abarcar (con «Ver todas las líneas»), o null. */
+  const fitPricesRef = useRef<number[] | null>(null);
   const stepRef = useRef(step);
   const savedRangeRef = useRef<LogicalRange | null>(null);
   const legendRef = useRef<((i: number | null) => void) | null>(null);
@@ -398,7 +422,7 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Pr
   act.current = { commit, create };
 
   const hasData = candles.length > 0;
-  // Gráfico y serie: se crean de nuevo si cambia el tipo (velas, área o línea), conservando el encuadre.
+  // Gráfico y serie: se crean de nuevo si cambia el tipo (velas o línea), conservando el encuadre.
   useEffect(() => {
     const box = boxRef.current;
     if (!box || !hasData) return;
@@ -415,15 +439,30 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Pr
     });
     const series: ISeriesApi<SeriesType> = kind === 'line'
       ? chart.addSeries(LineSeries, { ...mainSeriesOptions(kind, colors), lineWidth: 2 })
-      : kind === 'area'
-        ? chart.addSeries(AreaSeries, { ...mainSeriesOptions(kind, colors), lineWidth: 2 })
-        : chart.addSeries(CandlestickSeries, mainSeriesOptions(kind, colors));
+      : chart.addSeries(CandlestickSeries, mainSeriesOptions(kind, colors));
     const prim = primRef.current;
     prim.colors = { text: colors.text, up: colors.up, down: colors.down };
     series.attachPrimitive(prim);
+    // La escala automática abarca además las líneas fijas cuando se pide verlas todas.
+    series.applyOptions({
+      autoscaleInfoProvider: (base: () => AutoscaleInfo | null) => {
+        const info = base();
+        const extra = fitPricesRef.current;
+        if (!info?.priceRange || !extra?.length) return info;
+        const { minValue, maxValue } = info.priceRange;
+        return { ...info, priceRange: { minValue: Math.min(minValue, ...extra), maxValue: Math.max(maxValue, ...extra) } };
+      },
+    });
     chartRef.current = chart;
     seriesRef.current = series;
     fittedRef.current = false;
+    const onSize = (width: number) => {
+      if (width > 0 && needFitRef.current) {
+        needFitRef.current = false;
+        fitRef.current();
+      }
+    };
+    chart.timeScale().subscribeSizeChange(onSize);
 
     // Tema claro/oscuro: se repintan los colores al cambiarlo.
     const retheme = () => {
@@ -592,6 +631,7 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Pr
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
       chart.unsubscribeCrosshairMove(onCrosshair);
+      chart.timeScale().unsubscribeSizeChange(onSize);
       savedRangeRef.current = chart.timeScale().getVisibleLogicalRange();
       levelLinesRef.current = [];
       indSeriesRef.current = [];
@@ -612,6 +652,7 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Pr
     // Siempre se ven unas cuantas barras, aunque el periodo sea de uno o cinco días.
     chart.timeScale().setVisibleLogicalRange({ from: Math.min(from, n - 15), to: n - 1 + RIGHT_OFFSET });
   };
+  fitRef.current = () => showPeriod(period);
 
   // Al acercarse al principio de lo cargado (o pedir «Máx»), se trae toda la historia del valor.
   useEffect(() => {
@@ -638,6 +679,7 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Pr
       return;
     }
     const prevFirst = datesRef.current[0];
+    const prev = barsRef.current;
     const before = chart.timeScale().getVisibleLogicalRange();
     datesRef.current = bars.map((b) => b.t);
     barsRef.current = bars;
@@ -646,8 +688,16 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Pr
     prim.step = shown;
     prim.precision = precision;
     series.applyOptions({ priceFormat: { type: 'price', precision, minMove: 10 ** -precision } });
-    if (kind === 'candles') (series as ISeriesApi<'Candlestick'>).setData(bars.map((c) => ({ time: chartTime(c.t), open: c.o, high: c.h, low: c.l, close: c.c })));
-    else (series as ISeriesApi<'Line'>).setData(bars.map((c) => ({ time: chartTime(c.t), value: c.c })));
+    const point = (c: Candle) => (kind === 'candles'
+      ? { time: chartTime(c.t), open: c.o, high: c.h, low: c.l, close: c.c }
+      : { time: chartTime(c.t), value: c.c });
+    // Precio en directo: solo cambia (o se añade) la última vela, que se actualiza sin volver a cargar toda la serie.
+    const grown = bars.length - prev.length;
+    const tick = dataSeriesRef.current === series && stepRef.current === shown && prev.length > 1 && (grown === 0 || grown === 1)
+      && bars[0]!.t === prev[0]!.t && sameBar(bars[prev.length - 2]!, prev[prev.length - 2]!);
+    if (tick) for (const c of bars.slice(prev.length - 1)) (series as ISeriesApi<'Candlestick' | 'Line'>).update(point(c) as never);
+    else (series as ISeriesApi<'Candlestick' | 'Line'>).setData(bars.map(point) as never);
+    dataSeriesRef.current = series;
     // Al llegar la historia antigua, las barras se anteponen: se corre el zoom para que no salte.
     const added = prevFirst && stepRef.current === shown && bars[0]!.t < prevFirst ? bars.findIndex((b) => b.t >= prevFirst) : 0;
     if (fittedRef.current && added > 0) {
@@ -657,14 +707,19 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Pr
     if (!fittedRef.current || stepRef.current !== shown) {
       const saved = savedRangeRef.current;
       if (!fittedRef.current && saved && stepRef.current === shown) chart.timeScale().setVisibleLogicalRange(saved);
+      // Sin ancho todavía (el detalle se está colocando), el encuadre espera a que lo tenga: si no, las velas
+      // quedarían apretadas en una franja de unos píxeles.
+      else if (chart.timeScale().width() === 0) needFitRef.current = true;
       else showPeriod(period);
       fittedRef.current = true;
       stepRef.current = shown;
       savedRangeRef.current = null;
     }
     prim.update();
+    // El gráfico puede nacer después que los datos (p. ej. velas de 5m ya guardadas y las diarias aún de camino):
+    // por eso también corre al crearse, y no solo al cambiar las velas.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bars, kind]);
+  }, [bars, kind, hasData, symbol, precision]);
 
   // Indicadores: los de precio encima de las velas y cada oscilador en su panel, debajo.
   useEffect(() => {
@@ -746,12 +801,23 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Pr
     const colors = themeColors();
     levelLinesRef.current = lines.map((l) => series.createPriceLine({
       price: l.price,
-      color: l.status && l.status !== 'unknown' ? resolveColor(`var(--${l.status}-fg)`) : l.style === 'dotted' ? colors.text : colors.accent,
+      color: lineColor(l, colors),
       lineWidth: 1,
       lineStyle: l.style === 'dotted' ? LineStyle.Dotted : LineStyle.Dashed, axisLabelVisible: true, title: l.title,
     }));
   // eslint-disable-next-line react-hooks/exhaustive-deps -- las líneas cambian cuando cambia su contenido
   }, [linesKey, hasData, kind]);
+
+  // «Ver todas las líneas»: precios de las líneas fijas y de las horizontales dibujadas que la escala debe abarcar.
+  const fitKey = fitLines
+    ? [...lines.map((l) => l.price), ...drawings.filter((d) => d.type === 'hline' || d.type === 'hray').map((d) => d.points[0]!.p)].join(',')
+    : '';
+  useEffect(() => {
+    const chart = chartRef.current;
+    fitPricesRef.current = fitKey ? fitKey.split(',').map(Number) : null;
+    // Vuelve la escala automática (si se había estirado a mano) para que tome las líneas al momento.
+    chart?.priceScale('right').applyOptions({ autoScale: true });
+  }, [fitKey, hasData, kind]);
 
   useEffect(() => {
     const prim = primRef.current;
@@ -1039,6 +1105,7 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Pr
           <hr />
           {toggle('zoomIn', 'Acercar', false, () => zoom(0.7))}
           {toggle('zoomOut', 'Alejar', false, () => zoom(1 / 0.7))}
+          {toggle('fitLines', 'Ver todas las líneas: órdenes, compras, objetivos y consenso', fitLines, () => setFitLines(!fitLines))}
           <hr />
           {toggle('magnet', 'Imán: pega los puntos a la apertura, máximo, mínimo o cierre', magnet, () => setMagnet(!magnet))}
           {toggle('stay', 'Seguir dibujando', stay, () => setStay(!stay))}

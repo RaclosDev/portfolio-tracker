@@ -1,17 +1,18 @@
 import { DEFAULT_STATUS_NAMES, displayTicker, tradingViewSymbol, type WatchlistRow } from '@/shared';
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../../api/client.ts';
 import { useSettings } from '../../api/hooks.ts';
 import { Icon } from '../../components/Icon.tsx';
 import { pct, price } from '../../lib/format.ts';
 import { tabListKeys } from '../../lib/tabs.ts';
 import { CandleChart, watchlistLines } from './CandleChart.tsx';
-import { HistoryView } from './HistoryView.tsx';
 import { PriceMapLarge } from './PriceMapLarge.tsx';
 import { QuoteSheet } from './QuoteSheet.tsx';
 
-type View = 'mapa' | 'grafico' | 'velas';
+type View = 'mapa' | 'velas';
 const VIEW_KEY = 'watchlist.detalle.vista';
-const VIEWS: [View, string][] = [['mapa', 'Mapa de precios'], ['grafico', 'Gráfico histórico'], ['velas', 'Velas y dibujos']];
+const VIEWS: [View, string][] = [['mapa', 'Mapa de precios'], ['velas', 'Gráfica']];
 
 interface Props {
   row: WatchlistRow;
@@ -61,13 +62,16 @@ export function ValueExpanded({ row, base, width, onEdit, onClose, onRecenter, r
   const [editing, setEditing] = useState<{ field: string; inline: boolean } | null>(null);
   const [chosen, setView] = useState<View>(() => {
     const stored = localStorage.getItem(VIEW_KEY);
-    // La antigua pestaña de TradingView pasa a ser la de velas.
-    return stored === 'tradingview' ? 'velas' : (stored as View) || 'mapa';
+    // Las antiguas pestañas de TradingView y del gráfico histórico pasan a ser la gráfica de velas.
+    return stored === 'tradingview' || stored === 'grafico' ? 'velas' : (stored as View) || 'mapa';
   });
   const id = useId();
   const box = useRef<HTMLDivElement>(null);
   useFillScreen(box);
   const { item, quote, metrics } = row;
+  // El precio en directo que va pidiendo la gráfica abierta (sin pedirlo aquí): la cabecera dice lo mismo.
+  const live = useQuery({ queryKey: ['live', item.symbol], queryFn: () => api.live(item.symbol), enabled: false }).data;
+  const shownPrice = live?.price || quote?.price;
   // Los fondos sin cotización en bolsa no están en TradingView: sin enlace para abrirlo allí.
   const tvSymbol = tradingViewSymbol(item.symbol, quote?.quoteType);
   const view = VIEWS.some(([v]) => v === chosen) ? chosen : 'mapa';
@@ -92,7 +96,7 @@ export function ValueExpanded({ row, base, width, onEdit, onClose, onRecenter, r
           </span>
         </div>
         <div className="xp__quote">
-          <span className="xp__price num">{price(quote?.price, quote?.currency)}</span>
+          <span className="xp__price num">{price(shownPrice, quote?.currency)}</span>
           {quote?.changePct != null && (
             <span className={`delta ${quote.changePct >= 0 ? 'up' : 'down'}`}>{pct(quote.changePct, 2)} hoy</span>
           )}
@@ -148,10 +152,8 @@ export function ValueExpanded({ row, base, width, onEdit, onClose, onRecenter, r
                 {row.targets?.mean != null && <li><i className="lg lg-consensus" /> Consenso</li>}
               </ul>
             </>
-          ) : view === 'velas' ? (
-            <CandleChart key={item.symbol} symbol={item.symbol} name={item.name ?? item.symbol} price={quote?.price} lines={watchlistLines(row)} tvSymbol={tvSymbol} />
           ) : (
-            <HistoryView row={row} />
+            <CandleChart key={item.symbol} symbol={item.symbol} name={item.name ?? item.symbol} price={quote?.price} lines={watchlistLines(row)} tvSymbol={tvSymbol} />
           )}
           </div>
         </section>
