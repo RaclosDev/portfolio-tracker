@@ -332,6 +332,8 @@ export function CarteraPage({ model: full, isPending, error, onRetry, draft, onD
               id: r.ticker,
               ticker: r.ticker,
               name: r.name,
+              isin: r.instrument?.isin ?? null,
+              symbol: r.instrument?.symbol ?? null,
               price: r.price ?? r.quote?.price ?? null,
               currency: r.currency,
               changePct: r.changePct ?? r.quote?.changePct ?? null,
