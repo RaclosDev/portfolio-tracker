@@ -88,7 +88,7 @@
 /* ---------- Títulos a rotulador ---------- */
 :root[data-skin='paper'] :is(
   .brand h1, .dialog__header h2, .settings__panel h3, .pcard__head h2, .tour__pop h2,
-  .login__title, .list-picker__title, .crash h1
+  .login__title, .crash h1
 ) {
   font-family: var(--font-marker); font-weight: 400; letter-spacing: 0.01em;
 }
@@ -106,9 +106,6 @@
 }
 :root[data-skin='paper'] .tab--active .tab__count { background: rgb(127 127 127 / 40%); }
 :root[data-skin='paper'] .tab__count { font-family: 'Inter Variable', Inter, sans-serif; letter-spacing: 0; }
-:root[data-skin='paper'] .mobile-primary-nav button {
-  font-family: var(--font-display); font-weight: 400; text-transform: uppercase; letter-spacing: 0.05em;
-}
 
 /* ---------- Botones y campos ---------- */
 :root[data-skin='paper'] .btn {

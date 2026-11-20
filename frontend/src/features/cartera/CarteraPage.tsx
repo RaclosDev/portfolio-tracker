@@ -17,6 +17,9 @@ import { HoldingExpanded } from './HoldingExpanded.tsx';
 import { TickerRail } from '../watchlist/TickerRail.tsx';
 import { PortfolioSkeleton } from '../../components/Skeleton.tsx';
 import { SelectMenu } from '../../components/SelectMenu.tsx';
+import { Dialog } from '../../components/Dialog.tsx';
+import { MOBILE, useMedia } from '../../lib/useMedia.ts';
+import type { ExtraFilters } from './extraFilters.ts';
 
 const CarteraImportDialog = lazy(() => import('./CarteraImportDialog.tsx').then((m) => ({ default: m.CarteraImportDialog })));
 
@@ -263,6 +266,11 @@ export function CarteraPage({ model: full, isPending, error, onRetry, draft, onD
   const [search, setSearch] = useState('');
   /** Hueco al final de la barra de filtros donde cada pestaña pone los suyos. */
   const [filterSlot, setFilterSlot] = useState<HTMLElement | null>(null);
+  // Móvil: los filtros van en un diálogo, como en las listas, para que los datos empiecen arriba.
+  const mobile = useMedia(MOBILE);
+  const [showFilters, setShowFilters] = useState(false);
+  /** Filtros propios de la pestaña (Exposición, Registro): cuántos hay puestos y cómo quitarlos. */
+  const [extra, setExtra] = useState<ExtraFilters | null>(null);
   const searchable = tab === 'abiertas' || tab === 'cerradas';
   const q = searchable ? norm(search.trim()) : '';
   const model = useMemo(() => {
@@ -347,6 +355,32 @@ export function CarteraPage({ model: full, isPending, error, onRetry, draft, onD
       />
     ) : null;
 
+  const activeFilters = Number(filters.type !== 'all') + Number(filters.currency !== 'all') + (extra?.count ?? 0);
+  const clearFilters = () => {
+    setFilters({ type: 'all', currency: 'all' });
+    extra?.clear();
+  };
+  const searchBox = (
+    <input
+      type="search"
+      className="search"
+      placeholder={SEARCH_HINT[tab] ?? 'Buscar valor, ticker o ISIN'}
+      aria-label="Buscar"
+      value={search}
+      onChange={(e) => setSearch(e.target.value)}
+    />
+  );
+  const tagFilters = (
+    <TagFilters
+      type={filters.type}
+      onType={(type) => setFilters((f) => ({ ...f, type }))}
+      currency={filters.currency}
+      currencies={currencies}
+      onCurrency={(currency) => setFilters((f) => ({ ...f, currency }))}
+      names={{ ...DEFAULT_TAG_NAMES, equity: 'Acciones', etf: 'ETF' }}
+    />
+  );
+
   return (
     <div className="cartera">
       <div className="toolbar cartera-toolbar no-print">
@@ -382,33 +416,37 @@ export function CarteraPage({ model: full, isPending, error, onRetry, draft, onD
           options={TABS.map((item) => ({ value: item.id, label: item.label }))}
         />
         <span className="spacer" />
+        {mobile && !empty && tab !== 'renta' && (
+          <button type="button" className="btn" onClick={() => setShowFilters(true)}>
+            Filtros{activeFilters > 0 ? ` (${activeFilters})` : ''}
+          </button>
+        )}
         {!empty && tab !== 'renta' && (
-          <button type="button" className="btn btn--primary" data-tour="operation" onClick={() => setEditing({ op: null })}>
-            Añadir operación
+          <button type="button" className="btn btn--primary" data-tour="operation" aria-label="Añadir operación" onClick={() => setEditing({ op: null })}>
+            {mobile ? 'Añadir' : 'Añadir operación'}
           </button>
         )}
       </div>
 
-      {!empty && tab !== 'renta' && (
-        <div className="cartera-filters no-print">
-          {tab !== 'resumen' && (
-            <input
-              type="search"
-              className="search"
-              placeholder={SEARCH_HINT[tab] ?? 'Buscar valor, ticker o ISIN'}
-              aria-label="Buscar"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+      {!empty && tab !== 'renta' && (mobile ? (
+        <>
+          {tab !== 'resumen' && <div className="cartera-filters no-print">{searchBox}</div>}
+          {showFilters && (
+            <Dialog title="Filtros" className="watchlist-filter-dialog cartera-filter-dialog" onClose={() => setShowFilters(false)} footer={(
+              <>
+                <button type="button" className="btn" onClick={clearFilters} disabled={!activeFilters}>Limpiar</button>
+                <button type="button" className="btn btn--primary" onClick={() => setShowFilters(false)}>Listo</button>
+              </>
+            )}>
+              {tagFilters}
+              <div className="cartera-filters__extra" ref={setFilterSlot} />
+            </Dialog>
           )}
-          <TagFilters
-            type={filters.type}
-            onType={(type) => setFilters((f) => ({ ...f, type }))}
-            currency={filters.currency}
-            currencies={currencies}
-            onCurrency={(currency) => setFilters((f) => ({ ...f, currency }))}
-            names={{ ...DEFAULT_TAG_NAMES, equity: 'Acciones', etf: 'ETF' }}
-          />
+        </>
+      ) : (
+        <div className="cartera-filters no-print">
+          {tab !== 'resumen' && searchBox}
+          {tagFilters}
           {filtered && (
             <button type="button" className="btn btn--ghost" onClick={() => setFilters({ type: 'all', currency: 'all' })}>
               Quitar filtros
@@ -416,7 +454,7 @@ export function CarteraPage({ model: full, isPending, error, onRetry, draft, onD
           )}
           <div className="cartera-filters__extra" ref={setFilterSlot} />
         </div>
-      )}
+      ))}
       {full.ledger.issues.length > 0 && (
         <div className="error-box">
           El registro no cuadra:{' '}
@@ -449,9 +487,9 @@ export function CarteraPage({ model: full, isPending, error, onRetry, draft, onD
         <>
           {tab === 'resumen' && <ResumenView model={model} />}
           {tab === 'abiertas' && <HoldingsView model={model} onOpen={toggleOpen} onTag={onTag} expanded={expand} />}
-          {tab === 'exposicion' && <ExposureView model={model} onOpen={setTicker} search={search} filterSlot={filterSlot} />}
+          {tab === 'exposicion' && <ExposureView model={model} onOpen={setTicker} search={search} filterSlot={filterSlot} mobile={mobile} onFilters={setExtra} />}
           {tab === 'cerradas' && <ClosedView model={model} onOpen={toggleOpen} onTag={onTag} expanded={expand} />}
-          {tab === 'registro' && <RegistroView model={model} search={search} filterSlot={filterSlot} onImport={() => setImporting(true)} onEdit={(op) => setEditing({ op })} />}
+          {tab === 'registro' && <RegistroView model={model} search={search} filterSlot={filterSlot} mobile={mobile} onFilters={setExtra} onImport={() => setImporting(true)} onEdit={(op) => setEditing({ op })} />}
           {tab === 'renta' && <RentaView model={full} />}
         </>
       )}

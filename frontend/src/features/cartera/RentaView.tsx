@@ -49,7 +49,7 @@ export function RentaView({ model }: { model: CarteraModel }) {
 
   return (
     <div className="renta">
-      <div className="toolbar no-print">
+      <div className="toolbar renta-toolbar no-print">
         <label htmlFor="renta-year">Ejercicio</label>
         <SelectMenu<number>
           id="renta-year"
@@ -72,10 +72,10 @@ export function RentaView({ model }: { model: CarteraModel }) {
             }
           }}
         >
-          Descargar Excel
+          <span className="watchlist-desktop-hint">Descargar </span>Excel
         </button>
         <button type="button" className="btn" onClick={() => window.print()} title="Imprimir o guardar como PDF">
-          Imprimir / PDF
+          <span className="watchlist-desktop-hint">Imprimir / </span>PDF
         </button>
       </div>
 

@@ -270,7 +270,7 @@ p, li { text-wrap: pretty; }
 .chip--stale { color: var(--down); border-color: var(--down); }
 .warn-text { color: var(--down); }
 .updated--warn { color: color-mix(in oklab, var(--c-near), var(--text) 35%); cursor: help; }
-.mobile-primary-nav, .highlights-toggle { display: none; }
+.highlights-toggle { display: none; }
 
 /* ---------- Botones ---------- */
 .btn {
@@ -1099,7 +1099,8 @@ fieldset.form__section { min-inline-size: 0; }
 
 /* ---------- Móvil: cabecera compacta y barra de herramientas en menos líneas ---------- */
 @media (max-width: 700px) {
-  .topbar { position: static; padding: 6px 8px 8px 12px; padding-top: max(6px, env(safe-area-inset-top)); gap: 2px; }
+  /* Cabecera en una sola fila: lista (con su menú) y Cartera a la izquierda; lupa, actualizar, avisos y ajustes a la derecha. */
+  .topbar { position: relative; padding: 4px 6px 4px 8px; padding-top: max(4px, env(safe-area-inset-top)); gap: 2px; }
   .brand h1 { display: none; }
   .topbar__right { display: contents; }
   .content { padding: 12px 12px max(32px, env(safe-area-inset-bottom)); }
@@ -1108,12 +1109,15 @@ fieldset.form__section { min-inline-size: 0; }
   .toolbar .search { flex: 1 1 160px; width: auto; height: 44px; }
   .hl-cell { flex-basis: 100%; padding: 10px 12px; }
 
-  /* Cabecera: selector de lista a la izquierda y acciones a la derecha (sin logo ni pestañas). */
-  .topbar .brand, .topbar .tabs { display: none; }
-  .topbar .list-picker { display: flex; align-items: center; gap: 2px; flex: 1 1 calc(100% - 184px); min-width: 0; }
+  .topbar .brand, .topbar .tabs__sep, .topbar .tab__count { display: none; }
+  .topbar .tabs { order: 0; flex: 1 1 0; width: auto; min-width: 0; gap: 2px; overflow: visible; }
+  .topbar .list-menu__split { flex: 0 1 auto; min-width: 0; max-width: none; }
+  .topbar .list-menu__open { min-width: 0; min-height: 40px; padding-left: 8px; }
+  .topbar .list-menu__toggle { min-width: 26px; padding-inline: 2px 6px; justify-content: center; }
+  .topbar .tab { flex: none; min-height: 40px; padding: 0 8px; }
   .topbar__right .btn { flex: none; }
   .topbar .btn {
-    width: 44px; height: 44px; min-height: 44px; padding: 0; justify-content: center;
+    width: 36px; height: 44px; min-height: 44px; padding: 0; justify-content: center;
     border-color: transparent; background: transparent; color: var(--text);
   }
   .topbar .btn__label { display: none; }
@@ -1136,18 +1140,6 @@ fieldset.form__section { min-inline-size: 0; }
 
   .topbar .chip, .topbar .updated { display: none; }
   .topbar .updated--stale, .topbar .updated--warn { display: block; order: 11; flex: 1 1 100%; padding: 0 8px 4px; font-size: var(--fs-xs); text-align: left; }
-  .list-picker__title { padding-left: 10px; font-size: var(--fs-xl); }
-  .mobile-primary-nav {
-    display: flex; order: 10; flex: 1 1 100%; gap: 3px;
-    margin-top: 2px; padding: 3px; border-radius: 9px; background: var(--surface-2);
-  }
-  .mobile-primary-nav button {
-    flex: 1; min-height: 44px; border: 0; border-radius: 7px;
-    background: transparent; color: var(--text-2); font-weight: 600; cursor: pointer;
-  }
-  .mobile-primary-nav button[aria-current='page'] {
-    background: var(--surface); color: var(--text); box-shadow: var(--shadow);
-  }
   .highlights-toggle {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
     width: 100%; min-height: 44px; margin-bottom: 10px; padding: 0 12px;
@@ -1165,8 +1157,6 @@ fieldset.form__section { min-inline-size: 0; }
   .cartera .table-wrap { max-width: 100%; overflow-x: auto; }
 }
 
-/* Selector de lista e iconos de la cabecera: solo en el móvil. */
-.list-picker { display: none; }
 .btn__icon { display: none; }
 .btn__icon--spin .icon { animation: spin 0.9s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .btn__icon--spin .icon { animation: none; } }
@@ -1174,7 +1164,6 @@ fieldset.form__section { min-inline-size: 0; }
 :is(.btn--icon, .sync__btn) .btn__icon { display: inline-flex; }
 .topbar :is(.btn--icon, .sync__btn) { padding: 6px 8px; border: 0; border-radius: 8px; color: var(--text-2); }
 .topbar :is(.btn--icon, .sync__btn):hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
-.list-picker .icon-btn { color: var(--text-2); }
 
 /* Tablet en vertical: las tarjetas en dos columnas. */
 @media (min-width: 701px) and (max-width: 1023px) {
@@ -1766,6 +1755,30 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
   .select-menu.cartera-tab-select { display: inline-flex; height: 44px; }
   .cartera-tab-select { flex: 1; min-width: 0; font-size: var(--fs-lg); }
   .cartera-toolbar :is(.select, .select-menu, .btn) { min-height: 44px; }
+  /* Sección, filtros y añadir en una fila; el buscador debajo y los datos enseguida. */
+  .cartera-toolbar { flex-wrap: nowrap; gap: 6px; margin-bottom: 6px; }
+  .cartera-toolbar .btn { flex: none; padding-inline: 10px; }
+  .cartera-filters { margin-bottom: 8px; }
+  .cartera-filter-dialog .select-menu { width: 100%; height: 44px; }
+  .cartera-filter-dialog :is(.check, .exposure-filters__check) { font-size: var(--fs-md); }
+  .cartera-filter-dialog .exposure-filters__sources { margin: -8px 0 0; }
+  .cartera-filter-dialog .exposure-part { min-height: 40px; }
+  .exposure__count { margin: 0 0 6px; }
+  .exposure > .exposure__note:last-child { margin: 14px 0 0; }
+  .registro__count { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 6px; }
+  .registro__count .btn { flex: none; min-height: 36px; }
+  /* Escalera de precios del detalle: nombre, precio y distancia sin pisarse; la barra no cabe. */
+  .pmx-ladder { grid-template-columns: minmax(0, 1fr) max-content max-content; }
+  .pmx-ladder > div > span { padding-inline: 6px; }
+  .pmx-ladder__price, .pmx-ladder__dist { white-space: nowrap; min-width: max-content; }
+  .pmx-ladder > div > .pmx-ladder__name { display: block; }
+  .pmx-ladder__name .pmx-swatch { display: inline-block; margin-right: 6px; }
+  .pmx-ladder__name small { display: block; }
+  .pmx-dist-bar { display: none; }
+  .renta-toolbar { flex-wrap: nowrap; gap: 6px; }
+  .renta-toolbar > label { display: none; }
+  .renta-toolbar .select-menu { flex: 1; min-width: 0; height: 44px; }
+  .renta-toolbar .btn { flex: none; min-height: 44px; }
 }
 
 @media (max-width: 1023px) {
@@ -1791,11 +1804,15 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
   .cartera-compact > :is(thead, tbody, tfoot) > :is(tr, tr.row) > .col-name,
   .cartera-open > :is(thead, tbody, tfoot) > :is(tr, tr.row) > :is(.col-value, .col-unrealized),
   .cartera-closed > :is(thead, tbody, tfoot) > :is(tr, tr.row) > :is(.col-bought, .col-total),
+  .cartera-exposure > :is(thead, tbody, tfoot) > :is(tr, tr.row) > :is(.col-total, .col-weight),
   .registro-table :is(thead, tbody) > :is(tr, tr.row) > :is(.col-check, .col-instrument, .col-type, .col-amount) {
     display: table-cell; padding: 7px 6px; vertical-align: middle; overflow-wrap: anywhere; white-space: normal;
     border-bottom: 1px solid var(--border);
   }
   .cartera-compact .col-name { width: 44%; }
+  .cartera-exposure .col-name { width: 50%; }
+  .cartera-exposure .col-total { width: 29%; }
+  .cartera-exposure .col-weight { width: 21%; }
   .cartera-compact .col-type { width: 27%; }
   .cartera-compact .col-amount { width: 27%; }
   /* La casilla ocupa toda su celda: 44 px de zona táctil sin abrir la operación al fallar el toque. */
@@ -2071,10 +2088,21 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
 .combo--topbar input:focus { background-color: var(--surface); border-color: var(--accent); outline: none; }
 .combo--topbar .combo__list { width: min(560px, calc(100vw - 24px)); right: auto; max-height: min(440px, 70vh); }
 @media (max-width: 900px) { .topbar__search { order: 4; flex: 1 1 100%; } }
+.topbar__search-toggle, .topbar__search-close { display: none; }
 @media (max-width: 700px) {
-  .topbar__search { order: 11; margin-top: 6px; }
-  .combo--topbar input { height: 44px; }
+  /* El buscador se despliega sobre la cabecera al pulsar la lupa, en vez de ocupar una fila fija. */
+  .topbar .topbar__search-toggle { display: inline-flex; }
+  .topbar__search { display: none; }
+  .topbar--searching .topbar__search {
+    display: flex; align-items: center; gap: 2px; position: absolute; inset: 0; z-index: 2; margin: 0;
+    padding: 4px 6px 4px 8px; padding-top: max(4px, env(safe-area-inset-top)); background: var(--surface);
+  }
+  .topbar--searching .combo--topbar { flex: 1; min-width: 0; }
+  .topbar--searching .topbar__search-close { display: inline-flex; flex: none; width: 40px; height: 40px; }
+  .combo--topbar input { height: 40px; font-size: var(--fs-lg); }
   .combo--topbar .combo__list { width: 100%; }
+  .demo-banner { padding: 3px 10px; font-size: var(--fs-xs); }
+  .demo-banner__detail { display: none; }
 }
 
 .dialog--preview { width: min(1680px, calc(100vw - 24px)); max-width: none; max-height: none; padding: 0; background: var(--bg); overflow: hidden; }

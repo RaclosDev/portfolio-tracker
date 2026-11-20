@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { usePortfolioComposition } from '../../api/hooks.ts';
 import { money, share } from '../../lib/format.ts';
 import type { CarteraModel } from './model.ts';
+import { useReportFilters, type ExtraFilters } from './extraFilters.ts';
 import { DIRECT, exposureSources, filterExposure, NO_FILTER, type ExposureFilter } from './exposureFilter.ts';
 import { DataBar, SortTable, type Column } from './SortTable.tsx';
 import { SelectMenu } from '../../components/SelectMenu.tsx';
@@ -36,13 +37,22 @@ const origin = (c: FundComposition | null | undefined) =>
   c ? `${c.source}${c.asOf ? `, a ${c.asOf.split('-').reverse().join('/')}` : ''}` : '';
 
 /** Lo que se tiene de cada empresa sumando las acciones directas y las que llevan dentro los fondos y ETF. */
-export function ExposureView({ model, onOpen, search, filterSlot }: { model: CarteraModel; onOpen: (ticker: string) => void; search: string; filterSlot: HTMLElement | null }) {
+export function ExposureView({ model, onOpen, search, filterSlot, mobile = false, onFilters }: {
+  model: CarteraModel;
+  onOpen: (ticker: string) => void;
+  search: string;
+  filterSlot: HTMLElement | null;
+  /** En el móvil los filtros van todos al diálogo y la explicación baja al final: primero los datos. */
+  mobile?: boolean;
+  onFilters?: (f: ExtraFilters | null) => void;
+}) {
   const compositions = usePortfolioComposition(model.valuation.open.length > 0);
   const exposure = useMemo(() => computeExposure(model.valuation.open, compositions.data ?? {}), [model.valuation.open, compositions.data]);
   const [filter, setFilter] = useState<ExposureFilter>(NO_FILTER);
   const sources = useMemo(() => exposureSources(exposure.rows), [exposure.rows]);
   const shown = useMemo(() => filterExposure(exposure.rows, exposure.totalEur, { ...filter, q: search }), [exposure, filter, search]);
   const filtered = JSON.stringify(filter) !== JSON.stringify(NO_FILTER);
+  useReportFilters(onFilters, Number(filter.repeated) + Number(filter.minEur > 0) + filter.sources.length, () => setFilter(NO_FILTER));
   const set = (patch: Partial<ExposureFilter>) => setFilter((f) => ({ ...f, ...patch }));
   const toggleSource = (id: string) =>
     set({ sources: filter.sources.includes(id) ? filter.sources.filter((s) => s !== id) : [...filter.sources, id] });
@@ -100,14 +110,34 @@ export function ExposureView({ model, onOpen, search, filterSlot }: { model: Car
   ];
 
   if (!exposure.rows.length && !exposure.rest.length) return <p className="empty">No hay posiciones abiertas con precio.</p>;
+  const count = shown.length === exposure.rows.length ? `${shown.length} empresas` : `${shown.length} de ${exposure.rows.length} empresas`;
+  const loading = compositions.isLoading ? 'Cargando la composición de los fondos…' : compositions.isError ? 'No se ha podido cargar la composición de los fondos.' : '';
+  const note = (
+    <p className="muted exposure__note">
+      Suma lo que tienes en directo y lo que llevan dentro tus fondos y ETF. De la mayoría se conoce la cartera completa; de los que solo
+      se conocen sus mayores posiciones, la parte «vía fondos» es un mínimo. Lo que no se desglosa (liquidez, divisas o lo que falta) queda abajo.
+      {!mobile && loading && ` ${loading}`}
+    </p>
+  );
+  const sourceChips = sources.length > 1 && (
+    <div className="exposure-parts exposure-filters__sources" role="group" aria-label="Filtrar por origen">
+      {sources.map((s) => (
+        <button
+          key={s.id}
+          type="button"
+          className={`exposure-part${filter.sources.includes(s.id) ? ' on' : ''}`}
+          aria-pressed={filter.sources.includes(s.id)}
+          title={`${s.name}: ${money(s.eur, 'EUR', 2)}. Al marcarlo, los importes son solo lo que viene de aquí.`}
+          onClick={() => toggleSource(s.id)}
+        >
+          <span className={s.id === DIRECT ? '' : 'ticker'}>{s.label}</span> <span className="num sub">{money(s.eur, 'EUR', 0)}</span>
+        </button>
+      ))}
+    </div>
+  );
   return (
     <div className="exposure">
-      <p className="muted exposure__note">
-        Suma lo que tienes en directo y lo que llevan dentro tus fondos y ETF. De la mayoría se conoce la cartera completa; de los que solo
-        se conocen sus mayores posiciones, la parte «vía fondos» es un mínimo. Lo que no se desglosa (liquidez, divisas o lo que falta) queda abajo.
-        {compositions.isLoading && ' Cargando la composición de los fondos…'}
-        {compositions.isError && ' No se ha podido cargar la composición de los fondos.'}
-      </p>
+      {!mobile && note}
       {filterSlot && createPortal(<>
         <label className="exposure-filters__check" title="Empresas que tienes por dos o más vías: en directo y en fondos, o en varios fondos">
           <input type="checkbox" checked={filter.repeated} onChange={(e) => set({ repeated: e.target.checked })} /> Solo repetidas
@@ -118,31 +148,16 @@ export function ExposureView({ model, onOpen, search, filterSlot }: { model: Car
           onChange={(minEur) => set({ minEur })}
           options={[0, 10, 50, 100, 500, 1000].map((v) => ({ value: v, label: v ? `Desde ${money(v, 'EUR', 0)}` : 'Cualquier importe' }))}
         />
-        <span className="muted exposure-filters__count">
-          {shown.length === exposure.rows.length ? `${shown.length} empresas` : `${shown.length} de ${exposure.rows.length} empresas`}
-        </span>
-        {filtered && (
+        {mobile && sourceChips && <><span className="watchlist-filter-label">De dónde sale</span>{sourceChips}</>}
+        {!mobile && <span className="muted exposure-filters__count">{count}</span>}
+        {!mobile && filtered && (
           <button type="button" className="btn btn--ghost btn--small" onClick={() => setFilter(NO_FILTER)}>
             Quitar filtros
           </button>
         )}
       </>, filterSlot)}
-      {sources.length > 1 && (
-        <div className="exposure-parts exposure-filters__sources" role="group" aria-label="Filtrar por origen">
-          {sources.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className={`exposure-part${filter.sources.includes(s.id) ? ' on' : ''}`}
-              aria-pressed={filter.sources.includes(s.id)}
-              title={`${s.name}: ${money(s.eur, 'EUR', 2)}. Al marcarlo, los importes son solo lo que viene de aquí.`}
-              onClick={() => toggleSource(s.id)}
-            >
-              <span className={s.id === DIRECT ? '' : 'ticker'}>{s.label}</span> <span className="num sub">{money(s.eur, 'EUR', 0)}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      {!mobile && sourceChips}
+      {mobile && <p className="muted small exposure__count">{count}{loading && ` · ${loading}`}</p>}
       <SortTable
         rows={shown}
         columns={columns}
@@ -187,6 +202,7 @@ export function ExposureView({ model, onOpen, search, filterSlot }: { model: Car
           </div>
         </>
       )}
+      {mobile && note}
     </div>
   );
 }
