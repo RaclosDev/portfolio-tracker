@@ -299,7 +299,20 @@ function candles(symbol: string) {
   }
   return { candles: out, stale: false };
 }
-/** Velas intradía de la demo: 300 barras en horario de mercado (8:00 a 16:30 UTC) hasta ahora. */
+/** Velas intradía reales del servidor (GET /api/public/market/demo/candles/…); undefined si no las hay. */
+async function realIntraday(symbol: string, interval: string) {
+  if (!CATALOG.has(symbol)) return undefined;
+  try {
+    const res = await fetch(`/api/public/market/demo/candles/${encodeURIComponent(symbol)}?interval=${encodeURIComponent(interval)}`,
+      { signal: AbortSignal.timeout(6000) });
+    if (res.status !== 200) return undefined;
+    const list = await res.json() as RealCandle[];
+    return Array.isArray(list) && list.length > 1 ? { candles: list, stale: false } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+/** Velas intradía inventadas, de reserva si el servidor no las da: 300 barras en horario de mercado (8:00 a 16:30 UTC) hasta ahora. */
 function intradayCandles(symbol: string, interval: string) {
   if (!CATALOG.has(symbol)) throw new DemoError(404, `Símbolo ${symbol} no encontrado`);
   const minutes = ({ '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '4h': 240 } as Record<string, number>)[interval];
@@ -536,8 +549,14 @@ function handle(method: string, url: URL, body: unknown): unknown {
 export async function demoFetch(method: string, url: string, body?: unknown): Promise<Response> {
   const json = (status: number, data: unknown) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
   await ready;
+  const parsed = new URL(url, window.location.origin);
+  const interval = parsed.searchParams.get('interval');
+  if (method === 'GET' && parsed.pathname.startsWith('/api/market/candles/') && interval && interval !== '1d') {
+    const real = await realIntraday(parsed.pathname.slice('/api/market/candles/'.length).toUpperCase(), interval);
+    if (real) return json(200, real);
+  }
   try {
-    const data = handle(method, new URL(url, window.location.origin), body);
+    const data = handle(method, parsed, body);
     return data === undefined ? new Response(null, { status: 204 }) : json(200, data);
   } catch (error) {
     if (error instanceof DemoError) return json(error.status, { error: error.message });

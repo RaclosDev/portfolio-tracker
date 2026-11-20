@@ -39,4 +39,23 @@ class PublicMarketServiceTest {
         assertThat(service.landing()).isSameAs(first);
         verify(market, times(1)).getQuotes(PublicMarketService.LANDING);
     }
+
+    @Test
+    void demoIntradayOnlyServesItsCatalogAndCachesWhatItGets() {
+        MarketService market = mock(MarketService.class);
+        when(market.getCandles("MSFT", IntradayInterval.M15))
+                .thenReturn(new CandlesResult(List.of(new Candle("2026-11-20T15:30Z", 500, 502, 499, 501)), false));
+        when(market.getCandles("AAPL", IntradayInterval.M15)).thenReturn(new CandlesResult(List.of(), true));
+        PublicMarketService service = new PublicMarketService(market);
+
+        assertThat(service.demoIntraday("XYZ", IntradayInterval.M15)).isEmpty();
+        verify(market, times(0)).getCandles(eq("XYZ"), any());
+        assertThat(service.demoIntraday("MSFT", IntradayInterval.M15)).hasSize(1);
+        service.demoIntraday("MSFT", IntradayInterval.M15);
+        verify(market, times(1)).getCandles("MSFT", IntradayInterval.M15);
+        // Sin datos no se guarda: se vuelve a pedir.
+        service.demoIntraday("AAPL", IntradayInterval.M15);
+        service.demoIntraday("AAPL", IntradayInterval.M15);
+        verify(market, times(2)).getCandles("AAPL", IntradayInterval.M15);
+    }
 }

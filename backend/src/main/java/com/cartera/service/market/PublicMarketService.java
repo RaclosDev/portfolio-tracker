@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -30,12 +31,17 @@ public class PublicMarketService {
             "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "BRK-B", "JPM", "LLY", "AVGO", "V", "KO",
             "VWCE.DE", "SXR8.DE");
     private static final long TTL_MS = 5 * 60_000;
+    /** Las velas intradía de la demo se renuevan cada minuto: la última vela está viva. */
+    private static final long INTRADAY_TTL_MS = 60_000;
 
     public record Snapshot(Map<String, Quote> quotes, Map<String, List<Candle>> candles, long fetchedAt) {}
+
+    private record Intraday(List<Candle> candles, long fetchedAt) {}
 
     private final MarketService market;
     private volatile Snapshot landing;
     private volatile Snapshot demo;
+    private final Map<String, Intraday> intraday = new ConcurrentHashMap<>();
 
     /** Cotización y velas de 5 minutos de las últimas sesiones. */
     public synchronized Snapshot landing() {
@@ -49,6 +55,19 @@ public class PublicMarketService {
         if (fresh(demo)) return demo;
         demo = build(DEMO, s -> market.getCandles(s, null).candles());
         return demo;
+    }
+
+    /** Velas intradía reales de un valor del catálogo de la demo; vacío si no es de la lista o no hay datos. */
+    public List<Candle> demoIntraday(String symbol, IntradayInterval interval) {
+        if (!DEMO.contains(symbol)) return List.of();
+        String key = symbol + "|" + interval.id();
+        Intraday cached = intraday.get(key);
+        if (cached != null && System.currentTimeMillis() - cached.fetchedAt() < INTRADAY_TTL_MS) return cached.candles();
+        List<Candle> candles = market.getCandles(symbol, interval).candles();
+        List<Candle> list = candles == null ? List.of() : List.copyOf(candles);
+        // Un fallo de la fuente no se guarda: la siguiente visita lo vuelve a intentar.
+        if (!list.isEmpty()) intraday.put(key, new Intraday(list, System.currentTimeMillis()));
+        return list;
     }
 
     private static boolean fresh(Snapshot s) {
