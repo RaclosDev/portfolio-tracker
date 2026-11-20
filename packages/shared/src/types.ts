@@ -121,6 +121,27 @@ export interface RowMetrics {
   orderExpired: boolean;
 }
 
+/** Orden activa a cuyo precio ha llegado la cotización: queda pendiente hasta que se apunta la compra o se descarta. */
+export interface TouchedOrder {
+  itemId: number;
+  listId: number;
+  symbol: string;
+  ticker: string | null;
+  isin: string | null;
+  name: string | null;
+  currency: string;
+  orderPrice: number;
+  /** Cotización cuando se vio que la tocaba. */
+  price: number;
+  /** Acciones previstas para la compra (las fijadas a mano o las calculadas con el importe). */
+  shares: number | null;
+  broker: string | null;
+  /** Momento en que se detectó (ISO). */
+  at: string;
+  /** Descartada a mano: no se enseña, pero no se vuelve a apuntar mientras la orden siga igual. */
+  dismissed?: boolean;
+}
+
 export interface WatchlistRow {
   item: Item;
   quote: Quote | null;

@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, displayTicker, VISITED_LIST_ID, VISITED_LIST_NAME, type WatchlistRow } from '@watchlist/shared';
+import { DEFAULT_SETTINGS, displayTicker, VISITED_LIST_ID, VISITED_LIST_NAME, type Item, type TouchedOrder, type WatchlistRow } from '@watchlist/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { api, DEMO } from './api/client.ts';
@@ -21,6 +21,7 @@ import { PushBanner } from './components/PushBanner.tsx';
 import { QuoteSources } from './components/QuoteSources.tsx';
 import { HighlightsSkeleton, PortfolioSkeleton, TableSkeleton } from './components/Skeleton.tsx';
 import { SyncStatus } from './components/SyncStatus.tsx';
+import { LevelsAfterBuy, TouchedOrdersButton, touchedDraft, touchedKey, useTouchedOrders } from './components/TouchedOrders.tsx';
 import { UpdateBanner } from './components/UpdateBanner.tsx';
 import { SymbolPicker } from './features/items/SymbolPicker.tsx';
 import type { PreviewPick } from './features/search/SymbolPreview.tsx';
@@ -71,7 +72,7 @@ export function App() {
   }, [listId]);
 
   useEffect(() => applyColors(settings.colors), [settings.colors]);
-  useEffect(() => applyAppearance(settings), [settings.skin, settings.theme, settings.density, settings.fontSize]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => applyAppearance(settings), [settings.skin, settings.theme, settings.appIcon, settings.density, settings.fontSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Página visible: una lista de vigilancia o la cartera real.
   const [page, setPage] = useState<Page>(() => (localStorage.getItem(LS_PAGE) === 'cartera' ? 'cartera' : 'lista'));
@@ -103,6 +104,28 @@ export function App() {
   };
   const [buyDraft, setBuyDraft] = useState<OperationDraft | null>(null);
   const clearDraft = useCallback(() => setBuyDraft(null), []);
+  /** Tras apuntar la compra de una orden tocada: proponer cómo quedan los precios de compra. */
+  const [levelsAfter, setLevelsAfter] = useState<{ item: Item; bought: number; currency: string } | null>(null);
+  const reviewTouched = (o: TouchedOrder) => {
+    setBuyDraft({
+      ...touchedDraft(o),
+      onSaved: () => {
+        // La orden ya está en la cartera: se quita de la ficha y de la lista de tocadas.
+        void (async () => {
+          try {
+            const item = await api.updateItem(o.itemId, { orderActive: false, orderPrice: null, orderUntil: null });
+            await api.dismissTouchedOrder(o.itemId).catch(() => undefined);
+            void qc.invalidateQueries();
+            void qc.invalidateQueries({ queryKey: touchedKey });
+            setLevelsAfter({ item, bought: o.orderPrice, currency: o.currency });
+          } catch (e) {
+            toastError('La compra se ha guardado, pero no se pudo cerrar la orden de la ficha.')(e);
+          }
+        })();
+      },
+    });
+    setPage('cartera');
+  };
   const { create: createList, rename: renameList } = useListMutations();
   const selectedList = isVisited ? visitedList : lists.find((list) => list.id === listId);
   const [listError, setListError] = useState<string | null>(null);
@@ -154,6 +177,18 @@ export function App() {
   };
 
   const view = wl.data;
+  // Si en pantalla se ve que el precio ha llegado a una orden activa, se avisa al servidor sin esperar a su vuelta.
+  const touched = useTouchedOrders(!DEMO);
+  const touchKey = (view?.rows ?? [])
+    .filter(({ item, quote }) => item.orderActive && item.orderPrice != null && quote && !quote.stale && quote.price != null && quote.price <= item.orderPrice)
+    .filter(({ item }) => !touched.data?.some((o) => o.itemId === item.id))
+    .map(({ item }) => `${item.id}@${item.orderPrice}`)
+    .join(',');
+  useEffect(() => {
+    if (!touchKey || DEMO || !touched.isSuccess) return;
+    api.checkTouchedOrders().then((list) => qc.setQueryData(touchedKey, list), () => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [touchKey]);
   const symbols = useMemo(() => (view?.rows ?? []).map((r) => r.item.symbol).sort(), [view]);
   const sparks = useQuery({
     queryKey: ['sparks', symbols.join(',')],
@@ -433,6 +468,7 @@ export function App() {
             disabled={onPortfolio ? pfRefreshing : !listId || refresh.isPending}
             onRefresh={() => (onPortfolio ? void refreshPortfolio() : listId && refresh.mutate(listId, { onError: toastError('No se pudieron actualizar las cotizaciones.') }))}
           />
+          {!DEMO && <TouchedOrdersButton onReview={reviewTouched} />}
           <button type="button" className="btn btn--ghost btn--icon" data-tour="alerts" aria-label="Avisos" title="Avisos" onClick={() => setShowAlerts(true)}>
             <span className="btn__icon">
               <Icon name="bell" size={20} />
@@ -595,6 +631,7 @@ export function App() {
             }}
           />
         )}
+        {levelsAfter && <LevelsAfterBuy {...levelsAfter} onClose={() => setLevelsAfter(null)} />}
         {peek && (
           <SymbolPreview
             pick={peek}

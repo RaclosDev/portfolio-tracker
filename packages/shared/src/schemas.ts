@@ -190,7 +190,9 @@ export const settingsSchema = z.object({
   colors: colorsSchema.default(DEFAULT_COLORS),
   /** Aspecto: la skin (estilo visual) y, dentro de ella, claro u oscuro. */
   skin: z.enum(['classic', 'paper']).default('classic'),
-  theme:z.enum(['system', 'light', 'dark']).default('system'),
+  theme: z.enum(['system', 'light', 'dark']).default('system'),
+  /** Icono de la pestaña y de «Añadir a pantalla de inicio» (el de la app instalada es siempre el de serie). */
+  appIcon: z.enum(['ink', 'paper', 'night']).default('ink'),
   density: z.enum(['compact', 'normal', 'comfortable']).default('normal'),
   fontSize: z.enum(['small', 'normal', 'large']).default('normal'),
   /** Columnas ocultas de la tabla (ids). */

@@ -430,6 +430,21 @@ export async function registerRoutes(app: FastifyInstance) {
     return { alerts: alerts.length };
   });
 
+  // Órdenes activas que ha tocado el precio, pendientes de apuntar en la cartera
+  app.get('/api/orders/touched', async (req) => req.services.alerts.touchedOrders());
+  app.post('/api/orders/touched/check', async (req) => {
+    const lists = await req.services.lists.all();
+    const views = await Promise.all(lists.map((l) => req.services.watchlist.view(l.id)));
+    await req.services.alerts.recordTouched(views.flatMap((v) => v?.rows ?? []));
+    return req.services.alerts.touchedOrders();
+  });
+  app.delete('/api/orders/touched/:itemId', async (req, reply) => {
+    const itemId = Number((req.params as { itemId: string }).itemId);
+    if (!Number.isInteger(itemId) || itemId <= 0) return reply.code(400).send({ error: 'Valor no válido' });
+    await req.services.alerts.dismissTouched(itemId);
+    return reply.code(204).send();
+  });
+
   // Notificaciones (Web Push)
   app.get('/api/push/key', async (req) => ({ publicKey: req.services.push.publicKey, enabled: req.services.push.enabled }));
   app.get('/api/push/devices', async (req) => req.services.push.devices());

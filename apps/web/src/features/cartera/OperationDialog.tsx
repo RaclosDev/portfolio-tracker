@@ -36,6 +36,10 @@ export interface OperationDraft {
   price?: number;
   date?: string;
   broker?: string | null;
+  /** Aviso arriba del formulario (p. ej. de qué orden viene). */
+  note?: string;
+  /** Al guardar la operación nueva (p. ej. para cerrar la orden de la que viene). */
+  onSaved?: () => void;
 }
 
 interface Props {
@@ -237,6 +241,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, ho
         instrument: { symbol: quoteSymbol.trim() || null, name, currency, ...(isin ? { isin } : {}) },
       });
       onClose();
+      if (!op) draft?.onSaved?.();
     } catch (err) {
       setError(err instanceof ApiError && err.issues?.length ? err.issues.map((i) => i.message).join(' · ') : (err as Error).message);
     }
@@ -287,6 +292,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, ho
       }
     >
       <form id="op-form" className="form" onSubmit={submit} noValidate>
+        {!op && draft?.note && <p className="notice notice--order">{draft.note}</p>}
         <div className="op-types" role="group" aria-label="Tipo de operación">
           {MAIN_TYPES.map((k) => (
             <button key={k} type="button" aria-pressed={type === k} onClick={() => setType(k)} data-autofocus={op && type === k ? true : undefined}>

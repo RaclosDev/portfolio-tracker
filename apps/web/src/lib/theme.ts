@@ -98,8 +98,27 @@ export function applyColors(colors: Partial<Colors> | undefined) {
   derive();
 }
 
-/** Skin, tema, densidad y tamaño de letra (atributos data-* en <html> que usan styles.css y skin-paper.css). */
-export function applyAppearance(s: Pick<Settings, 'skin' | 'theme' | 'density' | 'fontSize'>) {
+/** Icono de la pestaña y de «Añadir a pantalla de inicio». Se recuerda en el navegador para que salga bien desde el primer momento. */
+export function applyIcon(icon: Settings['appIcon'] | undefined) {
+  const id = icon ?? 'ink';
+  document.querySelector<HTMLLinkElement>('link[rel="icon"]')?.setAttribute('href', `/icons/${id}.svg`);
+  document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]')?.setAttribute('href', `/icons/${id}-180.png`);
+  try {
+    localStorage.setItem('appIcon', id);
+  } catch {
+    /* sin almacenamiento: solo dura esta visita */
+  }
+}
+try {
+  const kept = localStorage.getItem('appIcon');
+  if (kept === 'paper' || kept === 'night') applyIcon(kept);
+} catch {
+  /* sin almacenamiento */
+}
+
+/** Skin, tema, icono, densidad y tamaño de letra (atributos data-* en <html> que usan styles.css y skin-paper.css). */
+export function applyAppearance(s: Pick<Settings, 'skin' | 'theme' | 'density' | 'fontSize'> & { appIcon?: Settings['appIcon'] }) {
+  applyIcon(s.appIcon);
   const el = document.documentElement;
   if (s.skin === 'paper') el.dataset.skin = s.skin;
   else delete el.dataset.skin; // la clásica es styles.css tal cual

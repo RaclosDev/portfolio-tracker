@@ -1,5 +1,6 @@
 import { VISITED_LIST_ID } from '@watchlist/shared';
 import type {
+  TouchedOrder,
   AlertRecord,
   AnalystTargets,
   Backup,
@@ -102,6 +103,9 @@ export const api = {
   removeDevice: (id: number) => request<void>('DELETE', `/api/push/devices/${id}`),
   pushTest: () => request<{ sent: number; failed: number }>('POST', '/api/push/test', {}),
   checkAlerts: () => request<{ alerts: number }>('POST', '/api/alerts/check', {}),
+  touchedOrders: () => request<TouchedOrder[]>('GET', '/api/orders/touched'),
+  checkTouchedOrders: () => request<TouchedOrder[]>('POST', '/api/orders/touched/check', {}),
+  dismissTouchedOrder: (itemId: number) => request<void>('DELETE', `/api/orders/touched/${itemId}`),
 
   snapshots: () => request<SnapshotInfo[]>('GET', '/api/snapshots'),
   restoreSnapshot: (id: number) =>

@@ -52,4 +52,27 @@ describe('AlertsService', () => {
     await ok.service.tick(new Date('2026-11-19T10:00:00Z'));
     expect(ok.state.get('ultimoResumen')).toBe('2026-11-19');
   });
+
+  it('apunta la orden tocada una vez, la descarta y la olvida si la orden se quita', async () => {
+    const order = { ...item(1, 1, [61, 55]), orderActive: true, orderPrice: 64.2 };
+    const { service, state } = setup([[row(order, 63.9)]]);
+    const live = { active: true };
+    (service as unknown as { db: unknown }).db = {
+      query: async () => [{ id: 1, order_active: live.active, order_price: '64.2' }],
+      tx: async (fn: (t: unknown) => unknown) => fn({ query: async () => [] }),
+    };
+    await service.tick(new Date('2026-11-19T10:00:00Z'));
+    await service.recordTouched([row(order, 63)], new Date('2026-11-19T10:05:00Z'));
+    const touched = await service.touchedOrders();
+    expect(touched).toHaveLength(1);
+    expect(touched[0]).toMatchObject({ itemId: 1, orderPrice: 64.2, price: 63.9, at: '2026-11-19T10:00:00.000Z' });
+
+    await service.dismissTouched(1);
+    await service.recordTouched([row(order, 63)]);
+    expect(await service.touchedOrders()).toEqual([]);
+
+    live.active = false;
+    await service.touchedOrders();
+    expect(state.get('ordenesTocadas')).toEqual([]);
+  });
 });

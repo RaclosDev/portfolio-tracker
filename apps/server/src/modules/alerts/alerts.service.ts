@@ -14,6 +14,7 @@ import {
   type Alert,
   type AlertMemory,
   type AlertRecord,
+  type TouchedOrder,
   type WatchlistRow,
 } from '@watchlist/shared';
 import { iso, type Db } from '../../db/database.ts';
@@ -24,6 +25,7 @@ import type { WatchlistService } from '../watchlist/watchlist.service.ts';
 import type { PushService } from './push.service.ts';
 
 const HISTORY_KEEP = 500;
+const TOUCHED_KEY = 'ordenesTocadas';
 const MIN_INTERVAL_S = 60;
 
 export class AlertsService {
@@ -72,13 +74,15 @@ export class AlertsService {
       const n = s.notifications;
       const day = now.getDay();
       if (!force) {
-        if (!n.enabled) return [];
         if (n.skipWeekends && (day === 0 || day === 6)) return [];
         if (n.quietHours && inTimeRange(hhmmOf(now), n.quietFrom, n.quietTo)) return [];
       }
 
       const rows = await this.loadRows();
       this.lastCheck = now;
+      // Las órdenes tocadas se apuntan siempre, también con los avisos apagados: quedan para revisarlas en la app.
+      await this.recordTouched(rows, now);
+      if (!force && !n.enabled) return [];
       const watched = rows.filter((r) => !isMuted(r.item.mutedUntil, today));
       const prefs = { reached: n.reached, near: n.near, orders: n.orders };
 
@@ -118,6 +122,57 @@ export class AlertsService {
     const views = await Promise.all(lists.map((l) => this.watchlist.view(l.id)));
     // Un mismo valor puede estar en varias listas con niveles distintos: se evalúa cada uno.
     return views.flatMap((v) => v?.rows ?? []);
+  }
+
+  /** Apunta las órdenes activas cuyo precio ya ha tocado la cotización (una vez por orden y precio). */
+  async recordTouched(rows: WatchlistRow[], now = new Date()) {
+    const before = await this.state.get<TouchedOrder[]>(TOUCHED_KEY, []);
+    const next = [...before];
+    for (const { item, quote, metrics } of rows) {
+      const price = quote?.stale ? null : quote?.price;
+      if (!item.orderActive || !item.orderPrice || price == null || price > item.orderPrice) continue;
+      if (next.some((o) => o.itemId === item.id && o.orderPrice === item.orderPrice)) continue;
+      next.push({
+        itemId: item.id,
+        listId: item.listId,
+        symbol: item.symbol,
+        ticker: item.ticker,
+        isin: item.isin ?? quote?.isin ?? null,
+        name: item.name ?? quote?.name ?? null,
+        currency: quote?.currency ?? 'EUR',
+        orderPrice: item.orderPrice,
+        price,
+        shares: item.sharesOverride ?? metrics.shares ?? null,
+        broker: item.brokerName,
+        at: now.toISOString(),
+      });
+    }
+    if (next.length !== before.length) await this.state.set(TOUCHED_KEY, next);
+  }
+
+  /** Órdenes tocadas pendientes de revisar. Se olvidan solas si la orden se quita o cambia de precio. */
+  async touchedOrders(): Promise<TouchedOrder[]> {
+    const saved = await this.state.get<TouchedOrder[]>(TOUCHED_KEY, []);
+    if (!saved.length) return [];
+    const live = await this.db.query<{ id: number; order_active: boolean; order_price: string | number | null }>(
+      'SELECT id, order_active, order_price FROM items WHERE id = ANY($1::int[])',
+      [saved.map((o) => o.itemId)],
+    );
+    const still = saved.filter((o) =>
+      live.some((r) => r.id === o.itemId && r.order_active && r.order_price != null && Number(r.order_price) === o.orderPrice),
+    );
+    if (still.length !== saved.length) await this.state.set(TOUCHED_KEY, still);
+    return still.filter((o) => !o.dismissed);
+  }
+
+  /**
+   * Descarta una orden tocada (ya apuntada en la cartera o no se ejecutó). Se recuerda como descartada mientras
+   * la orden siga activa a ese precio, para que no vuelva a salir en la siguiente vuelta.
+   */
+  async dismissTouched(itemId: number) {
+    const saved = await this.state.get<TouchedOrder[]>(TOUCHED_KEY, []);
+    if (!saved.some((o) => o.itemId === itemId && !o.dismissed)) return;
+    await this.state.set(TOUCHED_KEY, saved.map((o) => (o.itemId === itemId ? { ...o, dismissed: true } : o)));
   }
 
   private async saveHistory(alerts: Alert[]) {

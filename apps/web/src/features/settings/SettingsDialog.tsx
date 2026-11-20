@@ -78,6 +78,12 @@ interface Props {
   onStartTour: () => void;
 }
 
+const APP_ICONS: { id: Settings['appIcon']; label: string }[] = [
+  { id: 'ink', label: 'Papel oscuro' },
+  { id: 'paper', label: 'Papel claro' },
+  { id: 'night', label: 'Noche' },
+];
+
 function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div className="setting-row">
@@ -153,6 +159,7 @@ export function SettingsDialog({ settings, lists, onClose, onStartTour }: Props)
   const [blink, setBlink] = useState(settings.blinkReached);
   const [skin, setSkin] = useState(settings.skin ?? 'classic');
   const [theme, setTheme] = useState(settings.theme);
+  const [appIcon, setAppIcon] = useState(settings.appIcon ?? 'ink');
   const [density, setDensity] = useState(settings.density);
   const [fontSize, setFontSize] = useState(settings.fontSize);
   const [hidden, setHidden] = useState<string[]>(settings.hiddenColumns);
@@ -170,7 +177,7 @@ export function SettingsDialog({ settings, lists, onClose, onStartTour }: Props)
   // Vista previa en vivo del aspecto; si se cancela, se vuelve a lo guardado.
   const saved = useRef(settings);
   useEffect(() => applyColors(colors), [colors]);
-  useEffect(() => applyAppearance({ skin, theme, density, fontSize }), [skin, theme, density, fontSize]);
+  useEffect(() => applyAppearance({ skin, theme, appIcon, density, fontSize }), [skin, theme, appIcon, density, fontSize]);
   useEffect(
     () => () => {
       applyColors(saved.current.colors);
@@ -207,6 +214,7 @@ export function SettingsDialog({ settings, lists, onClose, onStartTour }: Props)
       blinkReached: blink,
       skin,
       theme,
+      appIcon,
       density,
       fontSize,
       notifications: notif,
@@ -389,6 +397,17 @@ export function SettingsDialog({ settings, lists, onClose, onStartTour }: Props)
             <option value="light">Claro</option>
             <option value="dark">Oscuro</option>
           </select>
+        </Row>
+        <Row label="Icono" hint="El de la pestaña y el de «Añadir a pantalla de inicio».">
+          <div className="icon-picker" role="radiogroup" aria-label="Icono">
+            {APP_ICONS.map((i) => (
+              <label key={i.id} className="icon-picker__opt">
+                <input type="radio" name="appIcon" value={i.id} checked={appIcon === i.id} onChange={() => setAppIcon(i.id)} />
+                <img src={`/icons/${i.id}.svg`} alt="" width={36} height={36} />
+                <span>{i.label}</span>
+              </label>
+            ))}
+          </div>
         </Row>
         <Row label="Densidad de la tabla">
           <select aria-label="Densidad" value={density} onChange={(e) => setDensity(e.target.value as Settings['density'])}>
