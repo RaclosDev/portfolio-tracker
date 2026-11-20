@@ -416,8 +416,39 @@ function useReveal(root: RefObject<HTMLElement | null>, active: boolean) {
 
 const HEADLINE = 'Ponle precio a tus próximas compras.';
 
-export function Landing({ canRegister, onEnter, children }: {
-  canRegister: boolean; onEnter: (register: boolean) => void; children: ReactNode;
+const icon = (d: ReactNode) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
+);
+
+const PERKS = [
+  {
+    title: 'Precios de compra por niveles. ',
+    text: 'Ves de un vistazo qué valores se acercan a tu zona.',
+    icon: icon(<><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" /></>),
+  },
+  {
+    title: 'Avisos en el móvil. ',
+    text: 'Te llega uno cuando un valor entra en zona de compra.',
+    icon: icon(<><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></>),
+  },
+  {
+    title: 'Cartera y operaciones. ',
+    text: 'Posiciones, rentabilidad y el registro de cada compra y venta.',
+    icon: icon(<><path d="M3 3v18h18" /><path d="m7 14 4-4 3 3 5-6" /></>),
+  },
+];
+
+/** Pantalla de paso al entrar: el logo se queda solo y la app aparece detrás tras recargar (ver Gate). */
+export const EnterSplash = ({ label = 'Abriendo tu cartera…', instant = false }: { label?: string; instant?: boolean }) => (
+  <div className={`enter-splash${instant ? ' enter-splash--instant' : ''}`} role="status">
+    <img src="/favicon.svg" alt="" width={44} height={44} />
+    <span className="enter-splash__bar" aria-hidden="true" />
+    <span className="sr-only">{label}</span>
+  </div>
+);
+
+export function Landing({ canRegister, onEnter, leaving = false, children }: {
+  canRegister: boolean; onEnter: (register: boolean) => void; leaving?: boolean; children: ReactNode;
 }) {
   const { open, enter, leave } = useAuthView(onEnter);
   const root = useRef<HTMLDivElement>(null);
@@ -425,7 +456,7 @@ export function Landing({ canRegister, onEnter, children }: {
 
   if (open) {
     return (
-      <div className="lp lp--auth">
+      <div className={`lp lp--auth${leaving ? ' lp--leaving' : ''}`}>
         <header className="lp-top">
           <Brand onClick={leave} />
           <nav className="lp-top__nav" aria-label="Acceso">
@@ -435,14 +466,27 @@ export function Landing({ canRegister, onEnter, children }: {
             </button>
           </nav>
         </header>
-        <main className="lp-auth">
+        <main className="lp-auth" inert={leaving}>
           <div className="lp-auth__copy">
-            <h1>Tu cartera, en una cuenta privada</h1>
-            <p>Empiezas con una cuenta vacía: añade los valores que sigues, ponles precio y deja que la lista te diga cuándo mirar.</p>
-            <p>¿Prefieres verla antes con datos? <a href="/demo">Abre la demo</a>.</p>
+            <h1 className="lp-intro">Tu cartera, en una cuenta privada</h1>
+            <p className="lp-intro" style={{ '--d': '80ms' } as CSSProperties}>
+              Empiezas con una cuenta vacía: añade los valores que sigues y ponles precio.
+            </p>
+            <ul className="lp-auth__perks">
+              {PERKS.map((perk, i) => (
+                <li key={perk.title} className="lp-intro" style={{ '--d': `${180 + i * 90}ms` } as CSSProperties}>
+                  <span className="lp-auth__icon" aria-hidden="true">{perk.icon}</span>
+                  <span><strong>{perk.title}</strong>{perk.text}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="lp-auth__demo lp-intro" style={{ '--d': '480ms' } as CSSProperties}>
+              ¿Prefieres verla antes con datos? <a href="/demo">Abre la demo</a>
+            </p>
           </div>
           {children}
         </main>
+        {leaving && <EnterSplash />}
       </div>
     );
   }

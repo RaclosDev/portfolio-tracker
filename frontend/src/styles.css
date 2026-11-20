@@ -2088,3 +2088,26 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
 .sheet--tappable .sheet-level--order[data-edit]:hover { background-color: color-mix(in oklab, var(--text) 6%, var(--order-bg)); box-shadow: inset 2px 0 0 var(--order-edge); }
 .sheet--tappable .sheet-kpi[data-edit]:hover, .sheet--tappable .sheet__notes p[data-edit]:hover { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--text-2) 50%, var(--border)); }
 .sheet--inline .sheet-input:not(:focus):not(:hover) { border-color: transparent; background: transparent; }
+/* Paso de la entrada a la app: el logo solo mientras recarga y la app aparece con un fundido. */
+.enter-splash {
+  position: fixed; inset: 0; z-index: 100; display: grid; place-content: center; justify-items: center; gap: 18px;
+  background: var(--bg); animation: enter-splash 320ms ease 150ms both;
+}
+.enter-splash--instant, .lp--leaving .enter-splash { animation-delay: 0ms; }
+.lp--leaving .enter-splash { animation-delay: 160ms; }
+.enter-splash img { animation: enter-logo 700ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.enter-splash--instant img { animation: none; }
+.enter-splash__bar { position: relative; width: 72px; height: 2px; border-radius: 2px; overflow: hidden; background: var(--border); }
+.enter-splash__bar::after {
+  content: ''; position: absolute; inset: 0; width: 40%; border-radius: inherit; background: var(--accent);
+  animation: enter-bar 1100ms cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+.is-entering #root > * { animation: enter-app 520ms ease both; }
+@keyframes enter-splash { from { opacity: 0; } }
+@keyframes enter-logo { from { opacity: 0; transform: scale(0.82); } }
+@keyframes enter-bar { from { translate: -100% 0; } to { translate: 250% 0; } }
+@keyframes enter-app { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .enter-splash, .enter-splash img { animation: none; }
+  .enter-splash__bar::after { animation-duration: 2400ms; }
+}

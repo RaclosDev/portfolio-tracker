@@ -1,8 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { ApiError, AUTH_CHANGED, SESSION_LOST, api, reloadSession } from '../../api/client.ts';
 import { GoogleSignInButton } from './GoogleSignInButton.tsx';
-import { AUTH_PATH, Landing } from './Landing.tsx';
+import { AUTH_PATH, EnterSplash, Landing } from './Landing.tsx';
+
+/** Marca que la recarga viene de entrar: la app aparece con un fundido en vez de un corte. */
+const ENTERING = 'watchlist.entrando';
+const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Muestra la app solo con la sesión iniciada; si no, la pantalla de entrada. */
 export function Gate({ children }: { children: ReactNode }) {
@@ -32,7 +36,18 @@ export function Gate({ children }: { children: ReactNode }) {
     };
   }, [qc]);
 
-  if (session.isPending) return <p className="muted center login-loading">Cargando…</p>;
+  const authenticated = session.data?.authenticated === true;
+  useLayoutEffect(() => {
+    if (!authenticated || sessionStorage.getItem(ENTERING) === null) return;
+    sessionStorage.removeItem(ENTERING);
+    if (reducedMotion()) return;
+    const root = document.documentElement;
+    root.classList.add('is-entering');
+    const t = window.setTimeout(() => root.classList.remove('is-entering'), 900);
+    return () => { window.clearTimeout(t); root.classList.remove('is-entering'); };
+  }, [authenticated]);
+
+  if (session.isPending) return <EnterSplash label="Cargando…" instant={sessionStorage.getItem(ENTERING) !== null} />;
   if (session.isError) {
     return (
       <main className="login">
@@ -68,13 +83,21 @@ function Login({ googleClientId, registrationEnabled, onDone }: {
   const [confirmation, setConfirmation] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+
+  // La vista se recoge hacia el logo y, al terminar, se recarga ya con la sesión abierta.
+  const finish = () => {
+    sessionStorage.setItem(ENTERING, '1');
+    setLeaving(true);
+    window.setTimeout(onDone, reducedMotion() ? 0 : 560);
+  };
 
   const enterWithGoogle = async (credential: string) => {
     setBusy(true);
     setError(null);
     try {
       await api.loginWithGoogle(credential);
-      onDone();
+      finish();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No se pudo entrar con Google. Vuelve a intentarlo.');
       setBusy(false);
@@ -92,7 +115,7 @@ function Login({ googleClientId, registrationEnabled, onDone }: {
     setError(null);
     try {
       await (registering ? api.register(email, password) : api.login(email, password));
-      onDone();
+      finish();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No se pudo conectar. Inténtalo de nuevo.');
       setBusy(false);
@@ -102,13 +125,13 @@ function Login({ googleClientId, registrationEnabled, onDone }: {
   return (
     <Landing
       canRegister={registrationEnabled}
+      leaving={leaving}
       onEnter={(register) => {
         if (register !== registering) { setRegistering(register); setPassword(''); setConfirmation(''); setError(null); }
       }}
     >
       <form className="login__card" onSubmit={submit}>
         <h3 className="login__title">{registering ? 'Crear cuenta' : 'Iniciar sesión'}</h3>
-        {!registering && <p className="muted small">Organiza tus listas de seguimiento y tu cartera en una cuenta privada.</p>}
         {registering && <p className="muted small">Tu cartera y tus listas serán privadas. Empieza con una cuenta vacía.</p>}
         <fieldset className="login__fields" disabled={busy}>
         <label htmlFor="login-email">Correo electrónico</label>
