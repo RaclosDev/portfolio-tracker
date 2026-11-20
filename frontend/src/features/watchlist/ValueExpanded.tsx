@@ -7,7 +7,8 @@ import { Icon } from '../../components/Icon.tsx';
 import { CompanyLogo } from '../../components/CompanyLogo.tsx';
 import { pct, price } from '../../lib/format.ts';
 import { tabListKeys } from '../../lib/tabs.ts';
-import { CandleChart, watchlistLines } from './CandleChart.tsx';
+import { watchlistLines } from './chartLines.ts';
+import { CandleChart } from './LazyCandleChart.tsx';
 import { PriceMapLarge } from './PriceMapLarge.tsx';
 import { QuoteSheet } from './QuoteSheet.tsx';
 

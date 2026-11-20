@@ -12,6 +12,7 @@ import com.cartera.dto.portfolio.PortfolioDtos.CarteraView;
 import com.cartera.dto.portfolio.PortfolioDtos.ExcludedInstrument;
 import com.cartera.dto.portfolio.PortfolioDtos.HistoryPoint;
 import com.cartera.dto.portfolio.PortfolioDtos.PortfolioHistory;
+import com.cartera.dto.portfolio.PortfolioDtos.PortfolioQuotes;
 import com.cartera.exception.ApiException;
 import com.cartera.model.Instrument;
 import com.cartera.model.Operation;
@@ -86,9 +87,29 @@ public class PortfolioService {
     public CarteraView view(UUID userId, boolean force, long maxAgeMs) {
         List<Operation> ops = operations.findAllOrdered(userId);
         List<Instrument> all = instruments.findByUserIdOrderByTicker(userId);
-        // Precio solo de lo que sigue en cartera; de una posición con varios tickers (mismo ISIN), todos ellos.
         Set<String> open = openTickers(Ledger.compute(ops, all));
         List<Instrument> held = all.stream().filter(i -> open.contains(i.getTicker())).toList();
+        PortfolioQuotes p = prices(held, force, maxAgeMs);
+
+        List<Instrument> profileOrder = new ArrayList<>(held);
+        all.stream().filter(i -> !open.contains(i.getTicker())).forEach(profileOrder::add);
+        fillProfilesInBackground(userId, profileOrder);
+
+        return new CarteraView(all.stream().map(InstrumentResponse::of).toList(),
+                ops.stream().map(OperationResponse::of).toList(), p.quotes(), p.fx(), p.fxStale(), p.generatedAt(),
+                p.throttledUntil());
+    }
+
+    /** Solo los precios y divisas de la cartera: lo que cambia cada dos segundos con ella en pantalla. */
+    public PortfolioQuotes quotes(UUID userId, long maxAgeMs) {
+        List<Operation> ops = operations.findAllOrdered(userId);
+        List<Instrument> all = instruments.findByUserIdOrderByTicker(userId);
+        Set<String> open = openTickers(Ledger.compute(ops, all));
+        return prices(all.stream().filter(i -> open.contains(i.getTicker())).toList(), false, maxAgeMs);
+    }
+
+    /** Precio solo de lo que sigue en cartera; de una posición con varios tickers (mismo ISIN), todos ellos. */
+    private PortfolioQuotes prices(List<Instrument> held, boolean force, long maxAgeMs) {
         List<String> symbols = held.stream().map(Instrument::getSymbol).filter(Objects::nonNull).distinct().toList();
         Map<String, Quote> quotes = market.getQuotes(symbols, force, maxAgeMs);
         // La cartera va siempre en euros (costes, Renta): no depende de la divisa base de la lista.
@@ -96,14 +117,8 @@ public class PortfolioService {
         List<String> currencies = Stream.concat(quotes.values().stream().map(Quote::currency),
                 held.stream().map(Instrument::getCurrency)).filter(Objects::nonNull).distinct().toList();
         Map<String, Double> fx = market.getFxRates("EUR", currencies, null, fxStale);
-
-        List<Instrument> profileOrder = new ArrayList<>(held);
-        all.stream().filter(i -> !open.contains(i.getTicker())).forEach(profileOrder::add);
-        fillProfilesInBackground(userId, profileOrder);
-
-        return new CarteraView(all.stream().map(InstrumentResponse::of).toList(),
-                ops.stream().map(OperationResponse::of).toList(), new LinkedHashMap<>(quotes), fx,
-                List.copyOf(fxStale), YahooProvider.ISO_MS.format(Instant.now()), market.throttledUntilIso());
+        return new PortfolioQuotes(new LinkedHashMap<>(quotes), fx, List.copyOf(fxStale),
+                YahooProvider.ISO_MS.format(Instant.now()), market.throttledUntilIso());
     }
 
     public PortfolioHistory history(UUID userId, LocalDate from, LocalDate to) {

@@ -81,7 +81,9 @@ class ApiIntegrationTest {
                 .andExpect(status().isUnauthorized());
         mvc.perform(post("/api/auth/password/login").header(HttpHeaders.ORIGIN, ORIGIN).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + email + "\",\"password\":\"" + PASSWORD + "\"}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.accessToken").isString());
+                .andExpect(status().isOk()).andExpect(jsonPath("$.accessToken").isString())
+                // El usuario viene con el token: el front no tiene que pedir /api/users/me al arrancar.
+                .andExpect(jsonPath("$.user.email").value(email)).andExpect(jsonPath("$.user.googleLinked").value(false));
         mvc.perform(auth(get("/api/users/me"), token)).andExpect(status().isOk()).andExpect(jsonPath("$.email").value(email));
     }
 
@@ -143,6 +145,12 @@ class ApiIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.listId").value(org.hamcrest.Matchers.not(mine)));
         mvc.perform(auth(get("/api/bootstrap").param("page", "otra"), ana)).andExpect(status().isBadRequest());
         mvc.perform(get("/api/bootstrap")).andExpect(status().isUnauthorized());
+        // En directo, la cartera solo pide precios y divisas: sin operaciones ni instrumentos.
+        mvc.perform(auth(get("/api/portfolio/quotes"), ana))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quotes").exists())
+                .andExpect(jsonPath("$.fx").exists())
+                .andExpect(jsonPath("$.operations").doesNotExist());
     }
 
     @Test

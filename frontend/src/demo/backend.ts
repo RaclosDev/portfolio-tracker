@@ -410,6 +410,10 @@ function handle(method: string, url: URL, body: unknown): unknown {
       return item;
     }
     case 'GET /api/portfolio': return portfolioView();
+    case 'GET /api/portfolio/quotes': {
+      const { quotes, fx, generatedAt } = portfolioView();
+      return { quotes, fx, generatedAt };
+    }
     case 'GET /api/portfolio/history': return portfolioHistory(query);
     case 'POST /api/operations': return saveOperation(body as { operation?: unknown; instrument?: unknown });
     case 'POST /api/operations/broker': {

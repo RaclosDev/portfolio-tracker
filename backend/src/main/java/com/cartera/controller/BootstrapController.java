@@ -51,28 +51,27 @@ public class BootstrapController {
     }
 
     /**
-     * {@code list}: la lista que el navegador tenía abierta (si ya no existe, la primera). {@code page}: la pantalla
-     * visible, que pide precios casi en directo como lo haría su propia petición.
+     * {@code list}: la lista que el navegador tenía abierta (si ya no existe, la primera). {@code page} (la pantalla
+     * visible) se acepta pero ya no cambia nada: los precios salen de la caché normal, no casi en directo, porque
+     * pedirlos a la fuente retrasaba la primera pantalla 2-3 s y la pantalla visible los refresca a los dos segundos.
      */
     @GetMapping
     public Bootstrap get(@AuthenticationPrincipal CurrentUser user,
                          @RequestParam(required = false) Long list,
                          @RequestParam(required = false) @Pattern(regexp = "lista|cartera") String page) {
         UUID id = user.id();
-        boolean onPortfolio = "cartera".equals(page);
-        Long live = MarketController.LIVE_MAX_AGE_MS;
+        long maxAge = portfolio.defaultMaxAgeMs();
         // La cartera en paralelo: si hay que pedir cotizaciones, las dos esperas a la fuente se solapan.
         CompletableFuture<CarteraView> pf = CompletableFuture.supplyAsync(
-                () -> portfolio.view(id, false, onPortfolio ? live : portfolio.defaultMaxAgeMs()),
+                () -> portfolio.view(id, false, maxAge),
                 Thread::startVirtualThread);
 
         List<ListResponse> all = lists.all(id);
         Long listId = list != null && list == VISITED_LIST_ID ? Long.valueOf(VISITED_LIST_ID)
                 : all.stream().map(ListResponse::id).filter(l -> l.equals(list)).findFirst()
                         .orElse(all.isEmpty() ? null : all.getFirst().id());
-        Long maxAge = onPortfolio ? null : live;
         WatchlistView wl = listId == null ? null
-                : listId == VISITED_LIST_ID ? views.visited(id, false, maxAge) : views.view(id, listId, false, maxAge);
+                : listId == VISITED_LIST_ID ? views.visited(id, false, null) : views.view(id, listId, false, null);
 
         try {
             return new Bootstrap(settings.get(id), all, visited.list(id), alerts.touchedOrders(id), listId, wl, pf.join());

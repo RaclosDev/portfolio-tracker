@@ -9,6 +9,7 @@ import type {
   ChartDrawing,
   CarteraImport,
   CarteraView,
+  PortfolioQuotes,
   FundComposition,
   PortfolioHistory,
   Instrument,
@@ -77,9 +78,14 @@ export const DEMO = window.location.pathname.startsWith('/demo');
 const SESSION_HINT = 'cartera.session';
 let accessToken: string | null = null;
 let refreshing: Promise<boolean> | null = null;
+/** Usuario que llegó con el último token: así arrancar no espera a pedir `/api/users/me`. */
+let tokenUser: SessionUser | null = null;
 
-function setAccessToken(token: string | null) {
+interface TokenResponse { accessToken: string; user?: SessionUser | null }
+
+function setAccessToken(token: string | null, user: SessionUser | null = null) {
   accessToken = token;
+  tokenUser = token ? user : null;
   if (token) localStorage.setItem(SESSION_HINT, '1');
   else localStorage.removeItem(SESSION_HINT);
 }
@@ -90,7 +96,8 @@ function refreshAccessToken(): Promise<boolean> {
     try {
       const res = await fetch('/api/auth/session/refresh', { method: 'POST', credentials: 'same-origin' });
       if (res.ok) {
-        setAccessToken(((await res.json()) as { accessToken: string }).accessToken);
+        const t = (await res.json()) as TokenResponse;
+        setAccessToken(t.accessToken, t.user);
         return true;
       }
       if (res.status === 401) { setAccessToken(null); return false; }
@@ -168,15 +175,19 @@ async function loadSession(): Promise<Session> {
     request<AuthConfig>('GET', '/api/auth/config'),
     DEMO || !!accessToken || (!!localStorage.getItem(SESSION_HINT) && refreshAccessToken()),
   ]);
-  const user = signedIn ? await request<SessionUser>('GET', '/api/users/me').catch((error: unknown) => {
+  // El del token solo vale una vez: después (p. ej. tras vincular Google) se pide de nuevo.
+  const fromToken = tokenUser;
+  tokenUser = null;
+  const user = !signedIn ? null : fromToken ?? await request<SessionUser>('GET', '/api/users/me').catch((error: unknown) => {
     if (error instanceof ApiError && error.status === 401) return null;
     throw error;
-  }) : null;
+  });
   return { ...config, authenticated: !!user, user };
 }
 
 async function startSession(url: string, body: unknown) {
-  setAccessToken((await request<{ accessToken: string }>('POST', url, body)).accessToken);
+  const t = await request<TokenResponse>('POST', url, body);
+  setAccessToken(t.accessToken, t.user);
 }
 
 export const api = {
@@ -232,6 +243,7 @@ export const api = {
   deleteItem: (id: number) => request<void>('DELETE', `/api/items/${id}`),
 
   portfolio: (force = false, live = false) => request<CarteraView>('GET', `/api/portfolio${force ? '?force=1' : live ? '?live=1' : ''}`),
+  portfolioQuotes: () => request<PortfolioQuotes>('GET', '/api/portfolio/quotes'),
   portfolioComposition: () => request<Record<string, FundComposition | null>>('GET', '/api/portfolio/composition'),
   portfolioHistory: (from: string, to: string) => request<PortfolioHistory>('GET', `/api/portfolio/history?${new URLSearchParams({ from, to })}`),
   createOperation: (operation: OperationInput, instrument?: Partial<InstrumentInput>) =>

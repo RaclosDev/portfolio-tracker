@@ -6,6 +6,7 @@ import com.cartera.dto.portfolio.PortfolioDtos.CarteraView;
 import com.cartera.dto.portfolio.PortfolioDtos.ImportRequest;
 import com.cartera.dto.portfolio.PortfolioDtos.ImportResponse;
 import com.cartera.dto.portfolio.PortfolioDtos.PortfolioHistory;
+import com.cartera.dto.portfolio.PortfolioDtos.PortfolioQuotes;
 import com.cartera.exception.ApiException;
 import com.cartera.service.portfolio.OperationService;
 import com.cartera.service.portfolio.PortfolioService;
@@ -39,6 +40,12 @@ public class PortfolioController {
                             @RequestParam(required = false) @Pattern(regexp = "1|true") String live) {
         return portfolio.view(user.id(), force != null,
                 live != null ? MarketController.LIVE_MAX_AGE_MS : portfolio.defaultMaxAgeMs());
+    }
+
+    /** Solo precios y divisas, casi en directo: la cartera en pantalla los pide cada dos segundos. */
+    @GetMapping("/quotes")
+    public PortfolioQuotes quotes(@AuthenticationPrincipal CurrentUser user) {
+        return portfolio.quotes(user.id(), MarketController.LIVE_MAX_AGE_MS);
     }
 
     @GetMapping("/history")
