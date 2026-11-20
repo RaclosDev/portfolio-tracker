@@ -1,8 +1,10 @@
 import { KNOWN_BROKERS, OPERATION_LABELS, OPERATION_TYPES, sortOperations, type Operation, type OperationType } from '@watchlist/shared';
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useOperationMutations } from '../../api/hooks.ts';
 import { money, num, qty, price, shortDate } from '../../lib/format.ts';
 import type { CarteraModel } from './model.ts';
+import { SelectMenu } from '../../components/SelectMenu.tsx';
 
 const PAGE = 200;
 
@@ -11,13 +13,16 @@ export function RegistroView({
   model,
   onEdit,
   onImport,
+  search: q,
+  filterSlot,
 }: {
   model: CarteraModel;
+  search: string;
+  filterSlot: HTMLElement | null;
   onEdit: (op: Operation) => void;
   onImport: () => void;
 }) {
   const ops = model.view.operations;
-  const [q, setQ] = useState('');
   const [type, setType] = useState<OperationType | ''>('');
   const [broker, setBroker] = useState('');
   const [year, setYear] = useState('');
@@ -69,47 +74,32 @@ export function RegistroView({
 
   return (
     <>
-      <div className="toolbar">
-        <input
-          type="search"
-          className="search"
-          placeholder="Buscar ticker, nombre o nota"
-          aria-label="Buscar en el registro"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
+      {filterSlot && createPortal(<>
+        <SelectMenu<OperationType | ''>
+          label="Tipo"
+          value={type}
+          onChange={setType}
+          options={[{ value: '', label: 'Todos los tipos' }, ...OPERATION_TYPES.map((t) => ({ value: t, label: OPERATION_LABELS[t] }))]}
         />
-        <select className="select" aria-label="Tipo" value={type} onChange={(e) => setType(e.target.value as OperationType | '')}>
-          <option value="">Todos los tipos</option>
-          {OPERATION_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {OPERATION_LABELS[t]}
-            </option>
-          ))}
-        </select>
-        <select className="select" aria-label="Bróker" value={broker} onChange={(e) => setBroker(e.target.value)}>
-          <option value="">Todos los brókers</option>
-          {model.brokers.map((b) => (
-            <option key={b} value={b}>
-              {b}
-            </option>
-          ))}
-          <option value="-">Sin bróker</option>
-        </select>
-        <select className="select" aria-label="Año" value={year} onChange={(e) => setYear(e.target.value)}>
-          <option value="">Todos los años</option>
-          {years.map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
+        <SelectMenu
+          label="Bróker"
+          value={broker}
+          onChange={setBroker}
+          options={[{ value: '', label: 'Todos los brókers' }, ...model.brokers.map((b) => ({ value: b, label: b })), { value: '-', label: 'Sin bróker' }]}
+        />
+        <SelectMenu
+          label="Año"
+          value={year}
+          onChange={setYear}
+          options={[{ value: '', label: 'Todos los años' }, ...years.map((y) => ({ value: y, label: y }))]}
+        />
         {reviewCount > 0 && (
           <label className="check" style={{ marginBottom: 0 }}>
             <input type="checkbox" checked={review} onChange={(e) => setReview(e.target.checked)} /> Por revisar ({reviewCount})
           </label>
         )}
-        <button type="button" className="btn" onClick={onImport}>Importar operaciones</button>
-      </div>
+        <button type="button" className="btn cartera-filters__end" onClick={onImport}>Importar operaciones</button>
+      </>, filterSlot)}
 
       {selected.size > 0 && (
         <div className="toolbar bulkbar" role="region" aria-label="Operaciones seleccionadas">

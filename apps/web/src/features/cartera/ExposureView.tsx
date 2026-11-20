@@ -1,10 +1,12 @@
 import { computeExposure, type ExposurePart, type ExposureRow, type FundComposition } from '@watchlist/shared';
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { usePortfolioComposition } from '../../api/hooks.ts';
 import { money, share } from '../../lib/format.ts';
 import type { CarteraModel } from './model.ts';
 import { DIRECT, exposureSources, filterExposure, NO_FILTER, type ExposureFilter } from './exposureFilter.ts';
 import { DataBar, SortTable, type Column } from './SortTable.tsx';
+import { SelectMenu } from '../../components/SelectMenu.tsx';
 
 const eur = (v: number) => <span className="num">{v ? money(v, 'EUR', 2) : '–'}</span>;
 
@@ -34,12 +36,12 @@ const origin = (c: FundComposition | null | undefined) =>
   c ? `${c.source}${c.asOf ? `, a ${c.asOf.split('-').reverse().join('/')}` : ''}` : '';
 
 /** Lo que se tiene de cada empresa sumando las acciones directas y las que llevan dentro los fondos y ETF. */
-export function ExposureView({ model, onOpen }: { model: CarteraModel; onOpen: (ticker: string) => void }) {
+export function ExposureView({ model, onOpen, search, filterSlot }: { model: CarteraModel; onOpen: (ticker: string) => void; search: string; filterSlot: HTMLElement | null }) {
   const compositions = usePortfolioComposition(model.valuation.open.length > 0);
   const exposure = useMemo(() => computeExposure(model.valuation.open, compositions.data ?? {}), [model.valuation.open, compositions.data]);
   const [filter, setFilter] = useState<ExposureFilter>(NO_FILTER);
   const sources = useMemo(() => exposureSources(exposure.rows), [exposure.rows]);
-  const shown = useMemo(() => filterExposure(exposure.rows, exposure.totalEur, filter), [exposure, filter]);
+  const shown = useMemo(() => filterExposure(exposure.rows, exposure.totalEur, { ...filter, q: search }), [exposure, filter, search]);
   const filtered = JSON.stringify(filter) !== JSON.stringify(NO_FILTER);
   const set = (patch: Partial<ExposureFilter>) => setFilter((f) => ({ ...f, ...patch }));
   const toggleSource = (id: string) =>
@@ -106,25 +108,16 @@ export function ExposureView({ model, onOpen }: { model: CarteraModel; onOpen: (
         {compositions.isLoading && ' Cargando la composición de los fondos…'}
         {compositions.isError && ' No se ha podido cargar la composición de los fondos.'}
       </p>
-      <div className="toolbar exposure-filters">
-        <input
-          type="search"
-          className="search"
-          placeholder="Buscar empresa, ticker o ISIN"
-          aria-label="Buscar empresa"
-          value={filter.q}
-          onChange={(e) => set({ q: e.target.value })}
-        />
+      {filterSlot && createPortal(<>
         <label className="exposure-filters__check" title="Empresas que tienes por dos o más vías: en directo y en fondos, o en varios fondos">
           <input type="checkbox" checked={filter.repeated} onChange={(e) => set({ repeated: e.target.checked })} /> Solo repetidas
         </label>
-        <select className="select" aria-label="Importe mínimo" value={filter.minEur} onChange={(e) => set({ minEur: Number(e.target.value) })}>
-          {[0, 10, 50, 100, 500, 1000].map((v) => (
-            <option key={v} value={v}>
-              {v ? `Desde ${money(v, 'EUR', 0)}` : 'Cualquier importe'}
-            </option>
-          ))}
-        </select>
+        <SelectMenu
+          label="Importe mínimo"
+          value={filter.minEur}
+          onChange={(minEur) => set({ minEur })}
+          options={[0, 10, 50, 100, 500, 1000].map((v) => ({ value: v, label: v ? `Desde ${money(v, 'EUR', 0)}` : 'Cualquier importe' }))}
+        />
         <span className="muted exposure-filters__count">
           {shown.length === exposure.rows.length ? `${shown.length} empresas` : `${shown.length} de ${exposure.rows.length} empresas`}
         </span>
@@ -133,7 +126,7 @@ export function ExposureView({ model, onOpen }: { model: CarteraModel; onOpen: (
             Quitar filtros
           </button>
         )}
-      </div>
+      </>, filterSlot)}
       {sources.length > 1 && (
         <div className="exposure-parts exposure-filters__sources" role="group" aria-label="Filtrar por origen">
           {sources.map((s) => (

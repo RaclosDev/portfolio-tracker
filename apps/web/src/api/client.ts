@@ -1,5 +1,7 @@
+import { VISITED_LIST_ID } from '@watchlist/shared';
 import type {
   AlertRecord,
+  AnalystTargets,
   Backup,
   Candle,
   IntradayInterval,
@@ -26,6 +28,7 @@ import type {
   SymbolSearchResult,
   WatchList,
   WatchlistView,
+  VisitedSymbol,
 } from '@watchlist/shared';
 
 export const SESSION_LOST = 'watchlist:sin-sesion';
@@ -111,14 +114,22 @@ export const api = {
   createList: (name: string) => request<WatchList>('POST', '/api/lists', { name }),
   renameList: (id: number, name: string) => request<WatchList>('PATCH', `/api/lists/${id}`, { name }),
   deleteList: (id: number) => request<void>('DELETE', `/api/lists/${id}`),
-  watchlist: (id: number, force = false) =>
-    request<WatchlistView>('GET', `/api/lists/${id}/watchlist${force ? '?force=1' : ''}`),
+  /** `live`: precios casi en directo (caché de 1,5 s en el servidor) para la lista en pantalla. */
+  watchlist: (id: number, force = false, live = false) =>
+    request<WatchlistView>(
+      'GET',
+      `${id === VISITED_LIST_ID ? '/api/visited' : `/api/lists/${id}`}/watchlist${force ? '?force=1' : live ? '?live=1' : ''}`,
+    ),
+  /** «Visitados»: lo abierto desde el buscador de la cabecera. */
+  visited: () => request<VisitedSymbol[]>('GET', '/api/visited'),
+  visit: (r: SymbolSearchResult) => request<VisitedSymbol[]>('POST', '/api/visited', r),
+  unvisit: (symbol: string) => request<VisitedSymbol[]>('DELETE', `/api/visited/${encodeURIComponent(symbol)}`),
 
   createItem: (data: ItemInput) => request<Item>('POST', '/api/items', data),
   updateItem: (id: number, patch: ItemPatch) => request<Item>('PATCH', `/api/items/${id}`, patch),
   deleteItem: (id: number) => request<void>('DELETE', `/api/items/${id}`),
 
-  portfolio: (force = false) => request<CarteraView>('GET', `/api/portfolio${force ? '?force=1' : ''}`),
+  portfolio: (force = false, live = false) => request<CarteraView>('GET', `/api/portfolio${force ? '?force=1' : live ? '?live=1' : ''}`),
   portfolioComposition: () => request<Record<string, FundComposition | null>>('GET', '/api/portfolio/composition'),
   portfolioHistory: (from: string, to: string) => request<PortfolioHistory>('GET', `/api/portfolio/history?${new URLSearchParams({ from, to })}`),
   createOperation: (operation: OperationInput, instrument?: Partial<InstrumentInput>) =>
@@ -142,6 +153,7 @@ export const api = {
   importRows: (listId: number, items: ImportRow[]) =>
     request<{ created: number; updated: number }>('POST', `/api/lists/${listId}/import`, { items }),
   quote: (symbol: string) => request<Quote>('GET', `/api/market/quote/${encodeURIComponent(symbol)}`),
+  targets: (symbol: string) => request<{ targets: AnalystTargets | null }>('GET', `/api/market/targets/${encodeURIComponent(symbol)}`),
   /** Cotización casi en directo (caché de 1,5 s en el servidor) para el gráfico abierto. */
   live: (symbol: string) => request<Quote>('GET', `/api/market/live/${encodeURIComponent(symbol)}`),
   history: (symbol: string, range: HistoryRange) =>
@@ -151,6 +163,9 @@ export const api = {
       'GET',
       `/api/market/candles/${encodeURIComponent(symbol)}${interval === '1d' ? '' : `?interval=${interval}`}`,
     ),
+  /** Velas diarias de toda la historia del valor (se piden al alejar el gráfico). */
+  allCandles: (symbol: string) =>
+    request<{ candles: Candle[]; stale: boolean }>('GET', `/api/market/candles/${encodeURIComponent(symbol)}?range=max`),
   drawings: (symbol: string) => request<ChartDrawing[]>('GET', `/api/drawings/${encodeURIComponent(symbol)}`),
   saveDrawings: (symbol: string, drawings: ChartDrawing[]) =>
     request<ChartDrawing[]>('PUT', `/api/drawings/${encodeURIComponent(symbol)}`, drawings),

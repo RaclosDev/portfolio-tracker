@@ -28,6 +28,8 @@ const PATHS = {
   fullscreen: 'M2 6V2h4M12 2h4v4M16 12v4h-4M6 16H2v-4',
   indicators: 'M2 14l4-5 3 3 6-8',
   caret: 'M6 7l3 3 3-3',
+  reset: 'M3.5 6.5A6 6 0 1 1 3 10M3 2.5v4h4',
+  copy: 'M6 6h9v10H6zM3 12V2h9',
 } as const;
 export type IconName = keyof typeof PATHS;
 

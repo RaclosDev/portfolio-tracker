@@ -3,6 +3,8 @@
  *  - pencil: editar la fila (acción repetida en cada fila, donde un texto ocuparía demasiado),
  *  - note: la fila tiene una nota (se lee al pasar el ratón o al pulsar),
  *  - alert: dato de cotización antiguo (sin conexión), junto al precio afectado,
+ *  - locate: volver a centrar en pantalla el detalle abierto,
+ *  - chevron, check: desplegables (abrir y opción elegida),
  *  - refresh, bell, gear, plus: botones de la cabecera en el móvil, donde no cabe el texto
  *    (en el escritorio esos botones siguen llevando texto, que es más claro).
  */
@@ -13,6 +15,9 @@ const PATHS = {
   bell: 'M4.5 12.5V8.2a4.5 4.5 0 0 1 9 0v4.3l1.5 1.5H3l1.5-1.5ZM7.3 15.6a1.8 1.8 0 0 0 3.4 0',
   gear: 'M14.35 7.35L16.19 7.76L16.19 10.24L14.35 10.65L13.95 11.61L14.96 13.21L13.21 14.96L11.61 13.95L10.65 14.35L10.24 16.19L7.76 16.19L7.35 14.35L6.39 13.95L4.79 14.96L3.04 13.21L4.05 11.61L3.65 10.65L1.81 10.24L1.81 7.76L3.65 7.35L4.05 6.39L3.04 4.79L4.79 3.04L6.39 4.05L7.35 3.65L7.76 1.81L10.24 1.81L10.65 3.65L11.61 4.05L13.21 3.04L14.96 4.79L13.95 6.39ZM9 6.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8Z',
   plus: 'M9 3.5v11M3.5 9h11',
+  chevron: 'M4.5 7 9 11.5 13.5 7',
+  check: 'M3.5 9.5 7.2 13 14.5 5',
+  locate: 'M9 1.5v3M9 13.5v3M1.5 9h3M13.5 9h3M9 4.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9ZM9 8.2a.8.8 0 1 1 0 1.6.8.8 0 0 1 0-1.6Z',
   note: 'M4.5 2.5h6l3 3v10h-9v-13Zm6 0v3h3M6.8 9h4.4M6.8 12h4.4',
 };
 

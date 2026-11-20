@@ -2,6 +2,7 @@ import { HISTORY_RANGES, type HistoryRange, type WatchlistRow } from '@watchlist
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../../api/client.ts';
+import { ChartSkeleton } from '../../components/Skeleton.tsx';
 import { HistoryChart, type RefLine } from '../detail/HistoryChart.tsx';
 
 const RANGE_KEY = 'watchlist.ficha.periodo';
@@ -41,11 +42,11 @@ export function HistoryView({ row }: { row: WatchlistRow }) {
           </button>
         ))}
       </div>
-      {history.isPending && <p className="muted chart-empty">Cargando el histórico…</p>}
+      {history.isPending && <ChartSkeleton label="Cargando el histórico…" />}
       {history.isError && <p className="error-box">No se pudo cargar el histórico. Prueba otro periodo.</p>}
       {history.data && (
         <>
-          <HistoryChart points={history.data.points} refs={refs} range={range} current={row.quote?.price} currency={row.quote?.currency} />
+          <HistoryChart points={history.data.points} refs={refs} range={range} current={row.quote?.price} currency={row.quote?.currency} fill />
           {history.data.stale && <p className="muted small">Sin conexión: se muestra el último histórico guardado.</p>}
         </>
       )}

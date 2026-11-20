@@ -5,8 +5,10 @@ import { api } from '../../api/client.ts';
 import { price, shortDate } from '../../lib/format.ts';
 import { SymbolPicker } from '../items/SymbolPicker.tsx';
 
-export function QuoteSymbolField({ inputId, label = 'Cotización automática (opcional)', autoFocus, value, onChange, onPick, onQuote }: {
+export function QuoteSymbolField({ inputId, label = 'Cotización automática (opcional)', autoFocus, value, onChange, onPick, onQuote,
+  help = 'Busca por nombre, ISIN o ticker y elige la bolsa. En fondos, comprueba el ISIN, la clase y la divisa. Puedes dejarlo vacío para guardar sin cotización.' }: {
   inputId: string;
+  help?: string;
   label?: string;
   autoFocus?: boolean;
   value: string;
@@ -40,6 +42,6 @@ export function QuoteSymbolField({ inputId, label = 'Cotización automática (op
           : result.isSuccess ? 'Las fuentes disponibles no devuelven precio. Revisa el código o busca por nombre.' : ''}
       </>}
     </div>
-    <span className="field__help">Busca por nombre, ISIN o ticker y elige la bolsa. En fondos, comprueba el ISIN, la clase y la divisa. Puedes dejarlo vacío para guardar sin cotización.</span>
+    {help && <span className="field__help">{help}</span>}
   </>;
 }

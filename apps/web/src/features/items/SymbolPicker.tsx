@@ -21,6 +21,11 @@ interface Props {
   onChange: (symbol: string) => void;
   onPick: (r: SymbolSearchResult) => void;
   autoFocus?: boolean;
+  placeholder?: string;
+  /** Clase extra del contenedor (p. ej. el buscador de la cabecera). */
+  className?: string;
+  /** Valores buscados antes: se ofrecen al entrar en el campo vacío. */
+  recent?: SymbolSearchResult[];
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -40,7 +45,7 @@ type Option =
  * Campo de símbolo en dos pasos, como en los brókers: se busca el producto por nombre, ISIN o WKN y después
  * se elige en qué bolsa seguirlo, cada una con su precio y divisa. Los tickers directos siguen debajo.
  */
-export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'symbol' }: Props) {
+export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'symbol', placeholder, className, recent }: Props) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [product, setProduct] = useState<InstrumentHit | null>(null);
@@ -63,7 +68,10 @@ export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'sy
   });
   const queryClient = useQueryClient();
 
-  const options: Option[] = product
+  const showRecent = !product && !value.trim() && !!recent?.length;
+  const options: Option[] = showRecent
+    ? recent!.map((result) => ({ kind: 'ticker' as const, key: `r:${result.symbol}`, result }))
+    : product
     ? [{ kind: 'back', key: 'back' }, ...(listings.data ?? []).map((listing) => ({ kind: 'listing' as const, key: `l:${listing.symbol}`, listing }))]
     : (() => {
         // Si escribes un ticker exacto (AAPL, SAN.MC), ese va el primero, antes que los productos que lo mencionan.
@@ -101,6 +109,7 @@ export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'sy
 
   const heading = (o: Option, i: number) => {
     if (product) return null;
+    if (showRecent) return i === 0 ? 'Buscados recientemente' : null;
     const prev = options[i - 1];
     if (o.kind === 'product' && prev?.kind !== 'product') return 'Productos: elige uno para ver dónde cotiza';
     if (o.kind === 'ticker' && prev?.kind === 'product') return 'Tickers';
@@ -109,7 +118,7 @@ export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'sy
   };
 
   return (
-    <div className="combo">
+    <div className={`combo${className ? ` ${className}` : ''}`}>
       <input
         id={inputId}
         role="combobox"
@@ -119,7 +128,7 @@ export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'sy
         aria-activedescendant={showList && options[active] ? `${listId}-${active}` : undefined}
         autoComplete="off"
         data-autofocus={autoFocus || undefined}
-        placeholder="Nombre, ticker, ISIN o WKN (p. ej. Inditex, ITX.MC)"
+        placeholder={placeholder ?? 'Nombre, ticker, ISIN o WKN (p. ej. Inditex, ITX.MC)'}
         value={value}
         onChange={(e) => {
           onChange(e.target.value);
@@ -127,6 +136,8 @@ export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'sy
           setOpen(true);
           setActive(0);
         }}
+        onFocus={() => recent?.length && !value.trim() && (setOpen(true), setActive(0))}
+        onClick={() => recent?.length && !value.trim() && setOpen(true)}
         onBlur={() => setTimeout(() => (setOpen(false), setProduct(null)), 150)}
         onKeyDown={(e) => {
           // Escape en las bolsas vuelve a los productos; en la lista de productos, la cierra.

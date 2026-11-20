@@ -58,8 +58,8 @@ export const TOUR_STEPS: TourStep[] = [
     body: (
       <>
         <p>
-          Las cotizaciones se refrescan solas cada minuto (configurable en Ajustes). Aquí ves cuándo fue la última vez y
-          puedes forzarla con <strong>Actualizar</strong>.
+          Con la lista en pantalla, los precios se refrescan solos cada pocos segundos. Pasa el ratón por este icono para
+          ver cuándo fue la última vez, de dónde vienen los precios y si alguno no ha cargado; púlsalo para forzarla.
         </p>
         <p className="muted">
           Las bolsas europeas suelen ir unos 15 min retrasadas. El consenso de analistas se renueva cada 12 h.
@@ -299,8 +299,8 @@ export const TOUR_STEPS: TourStep[] = [
     ),
   },
   {
-    target: '[data-tour="tour"]',
+    target: '[data-tour="settings"]',
     title: '¡Listo!',
-    body: <p>Cuando quieras repasar esta explicación, pulsa «Guía» y empezará de nuevo.</p>,
+    body: <p>Cuando quieras repasar esta explicación, ábrela desde <strong>Ajustes → General → Ver la guía</strong>.</p>,
   },
 ];

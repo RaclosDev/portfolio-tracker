@@ -17,6 +17,8 @@ interface Props {
   onClose: () => void;
   /** «Lo he comprado»: abre el alta en la cartera con los datos de la compra prevista. */
   onBought?: (draft: OperationDraft) => void;
+  /** Alta desde el buscador de la cabecera: el valor ya viene elegido. */
+  prefill?: { symbol: string; name?: string | null; isin?: string | null };
 }
 
 const str = (v: number | null | undefined) => (v == null ? '' : String(v).replace('.', ','));
@@ -27,18 +29,20 @@ const str = (v: number | null | undefined) => (v == null ? '' : String(v).replac
  */
 function understood(raw: string, n: number | null) {
   if (n == null || !/[.,]/.test(raw)) return '';
+  // «64,2» se lee igual: solo se aclara cuando hay puntos o más de una coma.
+  if (/^\d+(,\d+)?$/.test(raw.trim())) return '';
   return `= ${n.toLocaleString('es-ES', { maximumFractionDigits: 6, useGrouping: 'always' as unknown as boolean })}`;
 }
 
 const joinHelp = (...parts: string[]) => parts.filter(Boolean).join(' · ') || ' ';
 
-export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Props) {
+export function ItemDialog({ listId, row, settings, fx, onClose, onBought, prefill }: Props) {
   const item = row?.item;
-  const [symbol, setSymbol] = useState(item?.symbol ?? '');
-  const [checkedSymbol, setCheckedSymbol] = useState(item?.symbol ?? '');
+  const [symbol, setSymbol] = useState(item?.symbol ?? prefill?.symbol ?? '');
+  const [checkedSymbol, setCheckedSymbol] = useState(item?.symbol ?? prefill?.symbol ?? '');
   const [ticker, setTicker] = useState(item ? displayTicker(item) : '');
-  const [isin, setIsin] = useState(item?.isin ?? '');
-  const [name, setName] = useState(item?.name ?? '');
+  const [isin, setIsin] = useState(item?.isin ?? prefill?.isin ?? '');
+  const [name, setName] = useState(item?.name ?? prefill?.name ?? '');
   const [levels, setLevels] = useState<string[]>(
     Array.from({ length: MAX_BUY_LEVELS }, (_, i) => str(item?.buyPrices[i])),
   );
@@ -53,6 +57,8 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
   /** '' = avisos activados · 'always' · o una fecha AAAA-MM-DD hasta la que se silencian */
   const [muted, setMuted] = useState<string>(item?.mutedUntil ?? '');
   const [error, setError] = useState<string | null>(null);
+  /** Al editar: muestra el buscador y los campos de identificación en vez del resumen. */
+  const [changingId, setChangingId] = useState(false);
   // Hay cambios sin guardar si el formulario difiere de como se abrió (para no perderlos al cerrar sin querer).
   const formState = JSON.stringify([symbol, ticker, isin, name, levels, brokerTarget, brokerName, invest, shares, orderActive, orderPrice, orderUntil, notes, muted]);
   const [initialForm] = useState(formState);
@@ -200,20 +206,37 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
       }
     >
       <form id="item-form" className="form" onSubmit={submit} noValidate>
+        {/* Al editar, el valor se resume en una línea; buscar otro o tocar ticker, ISIN y nombre queda a un clic. */}
         <fieldset className="form__section">
-          <legend>Valor</legend>
+          <legend className="sr-only">Valor</legend>
+          {item && !changingId ? (
+            <div className="item-id">
+              <div className="item-id__text">
+                <strong>{name.trim() || quote?.name || item.symbol}</strong>
+                <span className="muted">
+                  {[ticker || displayTicker(item), isin, quote?.exchange, quote?.price != null ? `${price(quote.price)} ${quote.currency ?? ''}`.trim() : '']
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+              </div>
+              <button type="button" className="btn btn--small" onClick={() => setChangingId(true)}>
+                Cambiar
+              </button>
+            </div>
+          ) : (
+          <>
           <div className="field field--wide">
             <label htmlFor="symbol">Buscar el valor (nombre, ISIN o ticker)</label>
             <SymbolPicker
               value={symbol}
-              autoFocus={!item}
+              autoFocus={!item || changingId}
               onChange={setSymbol}
               onPick={(r) => {
                 setSymbol(r.symbol);
                 setCheckedSymbol(r.symbol);
                 setTicker(tickerFromSymbol(r.symbol));
                 setIsin(r.isin ?? isinInSymbol(r.symbol) ?? '');
-                if (!name) setName(r.name);
+                if (!name || name === item?.name) setName(r.name);
               }}
             />
             <div className="field__help" aria-live="polite">
@@ -232,18 +255,25 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
               )}
             </div>
           </div>
-          <div className="field">
-            <label htmlFor="item-ticker">Ticker</label>
-            <input id="item-ticker" value={ticker} onChange={(e) => setTicker(e.target.value.toUpperCase())} placeholder={symbol ? tickerFromSymbol(symbol) : 'Se rellena al elegir el valor'} />
-          </div>
-          <div className="field">
-            <label htmlFor="item-isin">ISIN</label>
-            <input id="item-isin" value={isin} onChange={(e) => setIsin(e.target.value.toUpperCase())} placeholder={quote?.isin ?? isinInSymbol(symbol) ?? 'Se rellena al elegir el valor'} maxLength={12} />
-          </div>
-          <div className="field field--wide">
-            <label htmlFor="name">Nombre (opcional)</label>
-            <input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Se toma del mercado si lo dejas vacío" />
-          </div>
+          <details className="item-id__more" open={!!item}>
+            <summary>Ticker, ISIN y nombre</summary>
+            <div className="grid-3">
+              <div className="field">
+                <label htmlFor="item-ticker">Ticker</label>
+                <input id="item-ticker" value={ticker} onChange={(e) => setTicker(e.target.value.toUpperCase())} placeholder={symbol ? tickerFromSymbol(symbol) : 'Automático'} />
+              </div>
+              <div className="field">
+                <label htmlFor="item-isin">ISIN</label>
+                <input id="item-isin" value={isin} onChange={(e) => setIsin(e.target.value.toUpperCase())} placeholder={quote?.isin ?? isinInSymbol(symbol) ?? 'Automático'} maxLength={12} />
+              </div>
+              <div className="field">
+                <label htmlFor="name">Nombre</label>
+                <input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder={quote?.name ?? 'El del mercado'} />
+              </div>
+            </div>
+          </details>
+          </>
+          )}
         </fieldset>
 
         <fieldset className="form__section">
@@ -272,68 +302,11 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
           </div>
         </fieldset>
 
-        <fieldset className="form__section">
-          <legend>Precio objetivo</legend>
-          <div className="grid-3">
-            <div className="field">
-              <label htmlFor="bt">Objetivo bróker</label>
-              <input id="bt" inputMode="decimal" value={brokerTarget} onChange={(e) => setBrokerTarget(e.target.value)} />
-              <span className="field__help">
-                {joinHelp(understood(brokerTarget, parseDecimal(brokerTarget)), parseDecimal(brokerTarget) && current ? `${pct((parseDecimal(brokerTarget)! - current) / current)} potencial` : '')}
-              </span>
-            </div>
-            <div className="field">
-              <label htmlFor="bn">Bróker</label>
-              <input id="bn" value={brokerName} onChange={(e) => setBrokerName(e.target.value)} />
-            </div>
-            <div className="field field--readonly">
-              <span className="label">Consenso analistas</span>
-              <span className="field__value">
-                {row?.targets?.mean != null
-                  ? `${price(row.targets.mean, row.quote?.currency)} (${row.targets.analysts ?? '?'} analistas)`
-                  : 'Se obtiene automáticamente'}
-              </span>
-            </div>
-          </div>
-        </fieldset>
-
-        <fieldset className="form__section">
-          <legend>Tamaño de la compra</legend>
-          <div className="grid-3">
-            <div className="field">
-              <label htmlFor="inv">Importe a invertir ({settings.baseCurrency})</label>
-              <input id="inv" inputMode="decimal" value={invest} placeholder={num(settings.defaultInvest)} onChange={(e) => setInvest(e.target.value)} />
-              <span className="field__help">{joinHelp(understood(invest, parseDecimal(invest)))}</span>
-            </div>
-            <div className="field">
-              <label htmlFor="sh">Acciones a comprar</label>
-              <input
-                id="sh"
-                inputMode="numeric"
-                value={shares}
-                placeholder={sharesCalc != null ? num(roundUpShares(sharesCalc)) : ''}
-                onChange={(e) => setShares(e.target.value)}
-              />
-              <span className="field__help">
-                {sharesCalc != null ? `Calculadas: ${num(sharesCalc, 2)} · vacío = automático` : ' '}
-              </span>
-            </div>
-            <div className="field field--readonly">
-              <span className="label">Importe resultante</span>
-              <span className="field__value">
-                {entry && fxRate
-                  ? money(((parseDecimal(shares) ?? (sharesCalc != null ? roundUpShares(sharesCalc) : 0)) * entry) / fxRate, settings.baseCurrency)
-                  : '–'}
-              </span>
-            </div>
-          </div>
-        </fieldset>
-
         <fieldset className={`form__section${orderActive ? ' form__section--order' : ''}`}>
           <legend>Orden en el banco</legend>
           <label className="check">
             <input type="checkbox" checked={orderActive} onChange={(e) => setOrderActive(e.target.checked)} />
-            Tengo una orden de compra puesta
+            Tengo una orden puesta
           </label>
           {orderActive && (
             <div className="grid-3">
@@ -350,13 +323,69 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
           )}
         </fieldset>
 
+        <fieldset className="form__section">
+          <legend>Objetivo del bróker</legend>
+          <div className="grid-3">
+            <div className="field">
+              <label htmlFor="bt">Precio objetivo</label>
+              <input id="bt" inputMode="decimal" value={brokerTarget} onChange={(e) => setBrokerTarget(e.target.value)} />
+              <span className="field__help">
+                {joinHelp(understood(brokerTarget, parseDecimal(brokerTarget)), parseDecimal(brokerTarget) && current ? `${pct((parseDecimal(brokerTarget)! - current) / current)} potencial` : '')}
+              </span>
+            </div>
+            <div className="field">
+              <label htmlFor="bn">Bróker</label>
+              <input id="bn" value={brokerName} onChange={(e) => setBrokerName(e.target.value)} />
+            </div>
+            {/* El consenso no se edita: se queda como referencia junto al objetivo. */}
+            {row?.targets?.mean != null && (
+              <div className="field field--readonly">
+                <span className="label">Consenso · {row.targets.analysts ?? '?'} analistas</span>
+                <span className="field__value">{price(Math.round(row.targets.mean * 100) / 100, row.quote?.currency)}</span>
+              </div>
+            )}
+          </div>
+        </fieldset>
+
+        <fieldset className="form__section">
+          <legend>Compra prevista</legend>
+          <div className="grid-3">
+            <div className="field">
+              <label htmlFor="inv">Importe ({settings.baseCurrency})</label>
+              <input id="inv" inputMode="decimal" value={invest} placeholder={num(settings.defaultInvest)} onChange={(e) => setInvest(e.target.value)} />
+              <span className="field__help">{joinHelp(understood(invest, parseDecimal(invest)))}</span>
+            </div>
+            <div className="field">
+              <label htmlFor="sh">Acciones</label>
+              <input
+                id="sh"
+                inputMode="numeric"
+                value={shares}
+                placeholder={sharesCalc != null ? num(roundUpShares(sharesCalc)) : ''}
+                onChange={(e) => setShares(e.target.value)}
+              />
+              <span className="field__help">
+                {sharesCalc != null ? (shares.trim() ? `Automático: ${num(sharesCalc, 2)}` : `Automático (${num(sharesCalc, 2)})`) : ' '}
+              </span>
+            </div>
+            <div className="field field--readonly">
+              <span className="label">Total</span>
+              <span className="field__value">
+                {entry && fxRate
+                  ? money(((parseDecimal(shares) ?? (sharesCalc != null ? roundUpShares(sharesCalc) : 0)) * entry) / fxRate, settings.baseCurrency)
+                  : '–'}
+              </span>
+            </div>
+          </div>
+        </fieldset>
+
         <div className="field field--wide">
           <label htmlFor="notes">Notas</label>
-          <textarea id="notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <textarea id="notes" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
 
         <div className="field field--wide">
-          <label htmlFor="muted">Avisos de este valor</label>
+          <label htmlFor="muted">Avisos</label>
           <select
             id="muted"
             className="select"
@@ -377,7 +406,7 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought }: Pro
             <option value="always">Silenciar hasta que los vuelva a activar</option>
             {muted && muted !== 'always' && <option value="fecha">Silenciados hasta el {shortDate(muted)}</option>}
           </select>
-          <span className="field__help">Sigue en la lista y en la tabla; solo deja de enviar notificaciones.</span>
+          <span className="field__help">Silenciar solo quita las notificaciones; el valor sigue en la lista.</span>
         </div>
 
         {error && (

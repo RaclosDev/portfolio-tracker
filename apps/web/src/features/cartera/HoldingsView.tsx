@@ -1,5 +1,7 @@
-import type { ClosedRow, HoldingRow } from '@watchlist/shared';
-import { useSparklines1y } from '../../api/hooks.ts';
+import { DEFAULT_TAG_NAMES, instrumentKind, type CarteraRowBase, type ClosedRow, type HoldingRow } from '@watchlist/shared';
+import type { ReactNode } from 'react';
+import { useSettings, useSparklines1y } from '../../api/hooks.ts';
+import type { TypeFilter } from '../watchlist/TagFilters.tsx';
 import { Icon } from '../../components/Icon.tsx';
 import { anyQuoteToday, QuoteAge } from '../../components/QuoteAge.tsx';
 import { MINOR_CURRENCY, money, num, qty, pct, price, shortDate } from '../../lib/format.ts';
@@ -14,7 +16,31 @@ const Delta = ({ v, sub }: { v: number | null | undefined; sub?: number | null }
   </div>
 );
 
-function NameCell({ r, onOpen }: { r: HoldingRow | ClosedRow; onOpen: (ticker: string) => void }) {
+/** Etiqueta pulsable de una fila (divisa o tipo): filtra la tabla por ella, como en Vigilar. */
+export type CarteraTag = { kind: 'currency'; value: string } | { kind: 'type'; value: TypeFilter };
+type OnTag = (tag: CarteraTag) => void;
+
+function Tag({ tag, className, title, label, onTag }: { tag: CarteraTag; className: string; title: string; label: string; onTag?: OnTag }) {
+  if (!onTag) return <span className={`badge ${className}`} title={title}>{label}</span>;
+  return (
+    <button
+      type="button"
+      className={`badge badge--btn ${className}`}
+      title={`${title}Pulsa para ver solo ${label}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onTag(tag);
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function NameCell({ r, onOpen, onTag }: { r: HoldingRow | ClosedRow; onOpen: (ticker: string) => void; onTag?: OnTag }) {
+  const names = useSettings().data?.tagNames ?? DEFAULT_TAG_NAMES;
+  const kind = instrumentKind(r.instrument ?? { ticker: r.ticker, name: r.name }, r.quote?.quoteType);
+  const kindLabel = kind === 'ETF' ? names.etf : kind === 'EQUITY' ? names.equity : kind === 'FUND' ? 'Fondo' : null;
   return (
     <div className="stack">
       <button type="button" className="name name-btn" onClick={(event) => {
@@ -23,10 +49,23 @@ function NameCell({ r, onOpen }: { r: HoldingRow | ClosedRow; onOpen: (ticker: s
       }}>{r.name}</button>
       <span className="sub">
         <span className="ticker">{r.ticker}</span>
-        {r.currency !== 'EUR' && (
-          <span className="badge badge--fx" title={MINOR_CURRENCY[r.currency]}>
-            {r.currency}
-          </span>
+        {r.quote?.exchange && <> · {r.quote.exchange}</>}
+        {/* Divisa y tipo en todas las filas, como en Vigilar; la divisa distinta del euro lleva color. */}
+        <Tag
+          tag={{ kind: 'currency', value: r.currency }}
+          className={r.currency !== 'EUR' ? 'badge--fx' : ''}
+          title={MINOR_CURRENCY[r.currency] ? `${MINOR_CURRENCY[r.currency]}. ` : ''}
+          label={r.currency}
+          onTag={onTag}
+        />
+        {kindLabel && (
+          <Tag
+            tag={{ kind: 'type', value: kind as TypeFilter }}
+            className={kind === 'ETF' ? 'badge--etf' : kind === 'EQUITY' ? 'badge--equity' : ''}
+            title=""
+            label={kindLabel}
+            onTag={onTag}
+          />
         )}
         {r.sector && <span className="muted">{r.sector}</span>}
       </span>
@@ -35,7 +74,7 @@ function NameCell({ r, onOpen }: { r: HoldingRow | ClosedRow; onOpen: (ticker: s
 }
 
 /** «En cartera»: lo que tienes hoy, cuánto vale y cuánto llevas ganado con cada valor. */
-export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (ticker: string) => void }) {
+export function HoldingsView({ model, onOpen, onTag, expanded }: { model: CarteraModel; onOpen: (ticker: string) => void; onTag?: OnTag; expanded?: (ticker: string, rows: CarteraRowBase[]) => ReactNode | null }) {
   const { open, summary: s } = model.valuation;
   const symbols = open.map((r) => r.instrument?.symbol).filter((x): x is string => !!x);
   const sparks = useSparklines1y(symbols);
@@ -43,7 +82,7 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
   const maxHist = Math.max(0, ...open.map((r) => Math.abs(r.historicEur ?? 0)));
 
   const columns: Column<HoldingRow>[] = [
-    { id: 'name', label: 'Valor', sort: (r) => r.name.toLowerCase(), cell: (r) => <NameCell r={r} onOpen={onOpen} />, total: `Total · ${open.length} valores` },
+    { id: 'name', label: 'Valor', sort: (r) => r.name.toLowerCase(), cell: (r) => <NameCell r={r} onOpen={onOpen} onTag={onTag} />, total: `Total · ${open.length} valores` },
     {
       id: 'shares',
       label: 'Acciones',
@@ -137,12 +176,17 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
       align: 'right',
       title: 'Resultado de las ventas ya hechas y dividendos cobrados de este valor',
       sort: (r) => r.ledger.realizedEur + r.ledger.dividendsEur + r.ledger.otherIncomeEur,
-      cell: (r) => (
-        <div className="stack stack--right">
-          <span className={`num delta ${signed(r.ledger.realizedEur)}`}>{money(r.ledger.realizedEur, 'EUR', 2)}</span>
-          <span className="sub num">{money(r.ledger.dividendsEur + r.ledger.otherIncomeEur, 'EUR', 2)} cobros</span>
-        </div>
-      ),
+      cell: (r) => {
+        const income = r.ledger.dividendsEur + r.ledger.otherIncomeEur;
+        // Sin ventas ni cobros, un guion: una columna llena de «0,00 €» tapa las filas que sí tienen.
+        if (!r.ledger.realizedEur && !income) return <span className="muted">–</span>;
+        return (
+          <div className="stack stack--right">
+            <span className={`num delta ${signed(r.ledger.realizedEur)}`}>{money(r.ledger.realizedEur, 'EUR', 2)}</span>
+            {income !== 0 && <span className="sub num">{money(income, 'EUR', 2)} cobros</span>}
+          </div>
+        );
+      },
     },
     {
       id: 'historic',
@@ -175,17 +219,18 @@ export function HoldingsView({ model, onOpen }: { model: CarteraModel; onOpen: (
       defaultSort={{ id: 'value', dir: 'desc' }}
       className="cartera-compact cartera-open"
       onRowClick={(r) => onOpen(r.ticker)}
+      expanded={expanded && ((r, rows) => expanded(r.ticker, rows))}
     />
   );
 }
 
 /** «Cerradas»: valores que ya no tienes, con lo que ganaste o perdiste en total. */
-export function ClosedView({ model, onOpen }: { model: CarteraModel; onOpen: (ticker: string) => void }) {
+export function ClosedView({ model, onOpen, onTag, expanded }: { model: CarteraModel; onOpen: (ticker: string) => void; onTag?: OnTag; expanded?: (ticker: string, rows: CarteraRowBase[]) => ReactNode | null }) {
   const { closed } = model.valuation;
   const max = Math.max(0, ...closed.map((r) => Math.abs(r.totalEur)));
   const sum = (f: (r: ClosedRow) => number) => closed.reduce((s, r) => s + f(r), 0);
   const columns: Column<ClosedRow>[] = [
-    { id: 'name', label: 'Valor', sort: (r) => r.name.toLowerCase(), cell: (r) => <NameCell r={r} onOpen={onOpen} />, total: `Total · ${closed.length} valores` },
+    { id: 'name', label: 'Valor', sort: (r) => r.name.toLowerCase(), cell: (r) => <NameCell r={r} onOpen={onOpen} onTag={onTag} />, total: `Total · ${closed.length} valores` },
     {
       id: 'dates',
       label: 'Periodo',
@@ -243,6 +288,7 @@ export function ClosedView({ model, onOpen }: { model: CarteraModel; onOpen: (ti
       defaultSort={{ id: 'total', dir: 'desc' }}
       className="cartera-compact cartera-closed"
       onRowClick={(r) => onOpen(r.ticker)}
+      expanded={expanded && ((r, rows) => expanded(r.ticker, rows))}
     />
   );
 }

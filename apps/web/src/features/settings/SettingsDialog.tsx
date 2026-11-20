@@ -74,6 +74,8 @@ interface Props {
   settings: Settings;
   lists: WatchList[];
   onClose: () => void;
+  /** Cierra los ajustes y abre la guía de la sección que se está viendo. */
+  onStartTour: () => void;
 }
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -108,7 +110,7 @@ function NumberInput({ value, onChange, suffix, label }: { value: string; onChan
 
 const str = (n: number) => String(n).replace('.', ',');
 
-export function SettingsDialog({ settings, lists, onClose }: Props) {
+export function SettingsDialog({ settings, lists, onClose, onStartTour }: Props) {
   const [section, setSection] = useState<Section>('general');
   const update = useUpdateSettings();
   const qc = useQueryClient();
@@ -288,6 +290,9 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
         </Row>
         <Row label="Actualizar cotizaciones cada" hint="Con la web abierta (mínimo 15 s). Los avisos se comprueban como mucho cada minuto.">
           <NumberInput label="Segundos entre actualizaciones" value={refresh} onChange={setRefresh} suffix="segundos" />
+        </Row>
+        <Row label="Guía de la app" hint="Recorrido por la pantalla que tienes abierta: la lista o la cartera.">
+          <button type="button" className="btn" onClick={onStartTour}>Ver la guía</button>
         </Row>
       </>
     ),
@@ -502,7 +507,7 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
     listas: (
       <>
         <h3>Listas</h3>
-        <p className="intro">Para crear una lista nueva usa «+ Lista» junto a las pestañas.</p>
+        <p className="intro">También puedes crear una desde el selector de listas, con «+ Nueva lista…».</p>
         <ul className="list-admin">
           {lists.map((l) => (
             <li key={l.id}>
@@ -544,6 +549,17 @@ export function SettingsDialog({ settings, lists, onClose }: Props) {
             </li>
           ))}
         </ul>
+        <button
+          type="button"
+          className="btn btn--small"
+          disabled={listsM.create.isPending}
+          onClick={async () => {
+            const name = await ask('Nueva lista', 'Nombre de la lista', '', 'Crear lista');
+            if (name) listsM.create.mutate(name, { onSuccess: () => toast(`Lista «${name}» creada.`), onError: toastError('No se pudo crear la lista.') });
+          }}
+        >
+          Nueva lista
+        </button>
       </>
     ),
     copias: (

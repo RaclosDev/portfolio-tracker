@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, displayTicker, type WatchlistRow } from '@watchlist/shared';
+import { DEFAULT_SETTINGS, displayTicker, VISITED_LIST_ID, VISITED_LIST_NAME, type WatchlistRow } from '@watchlist/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { api, DEMO } from './api/client.ts';
@@ -16,9 +16,15 @@ import { num, timeAgo } from './lib/format.ts';
 import { applyAppearance, applyColors } from './lib/theme.ts';
 import { usePrompt } from './components/usePrompt.tsx';
 import { Icon } from './components/Icon.tsx';
+import { ListMenu } from './components/ListMenu.tsx';
 import { PushBanner } from './components/PushBanner.tsx';
 import { QuoteSources } from './components/QuoteSources.tsx';
+import { HighlightsSkeleton, PortfolioSkeleton, TableSkeleton } from './components/Skeleton.tsx';
+import { SyncStatus } from './components/SyncStatus.tsx';
 import { UpdateBanner } from './components/UpdateBanner.tsx';
+import { SymbolPicker } from './features/items/SymbolPicker.tsx';
+import type { PreviewPick } from './features/search/SymbolPreview.tsx';
+import { useRecentSymbols, useRememberSymbol } from './lib/recentSymbols.ts';
 
 // Lo que no hace falta para pintar la lista va en trozos aparte, que se descargan al usarlos.
 const loadCartera = () => import('./features/cartera/CarteraPage.tsx').then((m) => ({ default: m.CarteraPage }));
@@ -26,6 +32,7 @@ const CarteraPage = lazy(loadCartera);
 const ItemDialog = lazy(() => import('./features/items/ItemDialog.tsx').then((m) => ({ default: m.ItemDialog })));
 const SettingsDialog = lazy(() => import('./features/settings/SettingsDialog.tsx').then((m) => ({ default: m.SettingsDialog })));
 const AlertsDialog = lazy(() => import('./features/alerts/AlertsDialog.tsx').then((m) => ({ default: m.AlertsDialog })));
+const SymbolPreview = lazy(() => import('./features/search/SymbolPreview.tsx').then((m) => ({ default: m.SymbolPreview })));
 const AppTour = lazy(() => import('./features/tour/AppTour.tsx'));
 
 const LS_LIST = 'watchlist.listId';
@@ -50,8 +57,14 @@ export function App() {
   const lists = useMemo(() => listsQ.data ?? [], [listsQ.data]);
 
   const [listId, setListId] = useState<number | null>(() => Number(localStorage.getItem(LS_LIST)) || null);
+  const isVisited = listId === VISITED_LIST_ID;
+  const recent = useRecentSymbols();
+  const rememberSymbol = useRememberSymbol();
+  const visitedList = useMemo(() => ({ id: VISITED_LIST_ID, name: VISITED_LIST_NAME, itemCount: recent.length }), [recent.length]);
+  /** Las listas del selector: las propias y, aparte, «Visitados». */
+  const menuLists = useMemo(() => [...lists, visitedList], [lists, visitedList]);
   useEffect(() => {
-    if (lists.length && !lists.some((l) => l.id === listId)) setListId(lists[0]!.id);
+    if (lists.length && listId !== VISITED_LIST_ID && !lists.some((l) => l.id === listId)) setListId(lists[0]!.id);
   }, [lists, listId]);
   useEffect(() => {
     if (listId) localStorage.setItem(LS_LIST, String(listId));
@@ -70,9 +83,10 @@ export function App() {
     return () => window.clearTimeout(id);
   }, []);
 
-  const wl = useWatchlist(listId, settings.refreshSeconds);
+  // Precios casi en directo solo de la pantalla abierta: la lista en «Vigilar», la cartera en «Cartera».
+  const wl = useWatchlist(listId, settings.refreshSeconds, !onPortfolio);
   // La cartera se refresca al ritmo normal solo cuando se está viendo; si no, cada 5 min (para el contador).
-  const pf = usePortfolio(onPortfolio ? settings.refreshSeconds : 300);
+  const pf = usePortfolio(onPortfolio ? settings.refreshSeconds : 300, true, onPortfolio);
   const carteraModel = useCarteraModel(pf.data);
   const refresh = useForceRefresh();
   const qc = useQueryClient();
@@ -90,7 +104,7 @@ export function App() {
   const [buyDraft, setBuyDraft] = useState<OperationDraft | null>(null);
   const clearDraft = useCallback(() => setBuyDraft(null), []);
   const { create: createList, rename: renameList } = useListMutations();
-  const selectedList = lists.find((list) => list.id === listId);
+  const selectedList = isVisited ? visitedList : lists.find((list) => list.id === listId);
   const [listError, setListError] = useState<string | null>(null);
   const now = useNow(10_000);
 
@@ -99,6 +113,13 @@ export function App() {
   const [showFilters, setShowFilters] = useState(false);
   const [locateId, setLocateId] = useState<number | null>(null);
   const [editing, setEditing] = useState<WatchlistRow | 'new' | null>(null);
+  /** Buscador de la cabecera: texto escrito y valor abierto en la ficha (esté o no en la lista). */
+  const [peekQ, setPeekQ] = useState('');
+  const [peek, setPeek] = useState<PreviewPick | null>(null);
+  /** Valor ya elegido al añadirlo desde esa ficha. */
+  const [prefill, setPrefill] = useState<PreviewPick | undefined>();
+  /** Lista a la que se añade desde la ficha (puede no ser la abierta). */
+  const [addTo, setAddTo] = useState<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
@@ -230,11 +251,15 @@ export function App() {
   const refetchFailed = onPortfolio ? pf.isRefetchError : wl.isRefetchError;
   const shownQuotes = onPortfolio ? Object.values(pf.data?.quotes ?? {}) : (view?.rows.map((r) => r.quote) ?? []);
   const sources = fetching || refetchFailed ? null : <QuoteSources quotes={shownQuotes} />;
-  const updateLabel = fetching ? 'Actualizando…'
+  // Solo la actualización pedida a mano: el refresco automático (cada 2 s) no cambia la cabecera.
+  const manualRefreshing = onPortfolio ? pfRefreshing : refresh.isPending;
+  const missingQuotes = onPortfolio
+    ? (pf.data?.instruments ?? []).filter((i) => i.symbol && pf.data!.quotes[i.symbol]?.stale).map((i) => i.name ?? i.symbol!)
+    : (view?.rows ?? []).filter((r) => !r.quote || r.quote.stale).map((r) => r.item.name ?? r.quote?.name ?? r.item.symbol);
+  const updateLabel = manualRefreshing ? 'Actualizando…'
     : refetchFailed ? `Sin conexión con el servidor · precios de ${timeAgo(generatedAt, now)}`
     : anyStale ? 'Sin conexión: datos guardados'
     : `Actualizado ${timeAgo(generatedAt, now)}${anyFallback ? ' · fuente alternativa' : ''}`;
-  const updateState = anyStale || refetchFailed ? ' updated--stale' : anyFallback ? ' updated--warn' : '';
   const fxBadges = fxChips.map(([currency, rate]) => (
     <span key={currency} className={fxStale.has(currency) ? 'chip chip--stale' : 'chip'}
       title={`1 ${base} = ${rate} ${currency}${fxStale.has(currency) ? ' · cambio guardado: la fuente no responde y la valoración en esta divisa no está al día' : ''}`}>
@@ -257,21 +282,40 @@ export function App() {
   const throttleLeftMs = throttledUntil ? Date.parse(throttledUntil) - now : 0;
   const throttleMin = throttleLeftMs > 3 * 60_000 ? Math.ceil(throttleLeftMs / 60_000) : null;
 
-  const newList = async () => {
+  const newList = async (): Promise<number | undefined> => {
     const name = await ask('Nueva lista', 'Nombre de la lista', '', 'Crear lista');
     if (name) {
       setListError(null);
       try {
-        setListId((await createList.mutateAsync(name)).id);
+        const { id } = await createList.mutateAsync(name);
+        setListId(id);
         setPage('lista');
+        return id;
       } catch {
         setListError('No se ha podido crear la lista. Vuelve a intentarlo.');
       }
     }
   };
 
+  /** Lista propia donde se añade por defecto (en «Visitados», la primera). */
+  const ownListId = isVisited ? (lists[0]?.id ?? null) : (listId ?? null);
+  /** En «Visitados» no hay nada que editar: se abre la ficha, con «Añadir a…». */
+  const peekRow = (row: WatchlistRow) => setPeek({ symbol: row.item.symbol, name: row.item.name, isin: row.item.isin });
+
+  const addFromPreview = (to: number) => {
+    setPrefill(peek ?? undefined);
+    setAddTo(to);
+    setPeek(null);
+    setEditing('new');
+  };
+
+  const openList = (id: number) => {
+    setListId(id);
+    setPage('lista');
+  };
+
   const renameCurrentList = async () => {
-    if (!selectedList) return;
+    if (!selectedList || isVisited) return;
     const name = await ask('Renombrar lista', 'Nuevo nombre', selectedList.name, 'Renombrar');
     if (!name || name === selectedList.name) return;
     setListError(null);
@@ -298,46 +342,34 @@ export function App() {
         </div>
 
         <nav className="tabs" aria-label="Listas">
-          {lists.length > 1 ? (
-            <select
-              className={`tabs__select${!onPortfolio ? ' tab--active' : ''}`}
-              aria-label="Seleccionar lista"
-              value={onPortfolio ? '' : String(listId ?? '')}
-              onChange={(e) => {
-                setListId(Number(e.target.value));
-                setPage('lista');
-              }}
-            >
-              <option value="" disabled>Listas</option>
-              {lists.map((list) => (
-                <option key={list.id} value={list.id}>{list.name} ({list.itemCount})</option>
-              ))}
-            </select>
+          {lists.length > 0 ? (
+            <ListMenu
+              variant="tab"
+              onRename={() => void renameCurrentList()}
+              lists={menuLists}
+              currentId={listId ?? null}
+              active={!onPortfolio}
+              creating={createList.isPending}
+              onSelect={openList}
+              onNew={newList}
+            />
           ) : lists.map((l) => (
             <button
               key={l.id}
               type="button"
               className={`tab tab--list${!onPortfolio && l.id === listId ? ' tab--active' : ''}`}
-              title={l.name}
+              title={`${l.name} · doble clic para renombrar`}
               aria-current={!onPortfolio && l.id === listId ? 'page' : undefined}
               onClick={() => {
                 setListId(l.id);
                 setPage('lista');
               }}
+              onDoubleClick={() => l.id === listId && void renameCurrentList()}
             >
               <span className="tab__name">{l.name}</span>
               <span className="tab__count">{l.itemCount}</span>
             </button>
           ))}
-          {!onPortfolio && selectedList && (
-            <button type="button" className="tab" onClick={renameCurrentList} disabled={renameList.isPending} title="Cambiar el nombre de la lista">
-              <Icon name="pencil" size={16} />
-              Renombrar
-            </button>
-          )}
-          <button type="button" className="tab tab--add" title="Nueva lista" onClick={newList} disabled={createList.isPending}>
-            Nueva lista
-          </button>
           <span className="tabs__sep" aria-hidden />
           <button
             type="button"
@@ -352,34 +384,34 @@ export function App() {
           </button>
         </nav>
 
+        <div className="topbar__search" role="search">
+          <SymbolPicker
+            inputId="buscar-cualquier-valor"
+            className="combo--topbar"
+            placeholder="Buscar cualquier valor…"
+            value={peekQ}
+            onChange={setPeekQ}
+            recent={recent}
+            onPick={(r) => {
+              rememberSymbol(r);
+              setPeek({ symbol: r.symbol, name: r.name, isin: r.isin ?? null });
+              setPeekQ('');
+            }}
+          />
+        </div>
+
         <div className="list-picker">
           {onPortfolio ? <strong className="list-picker__title">Cartera</strong> : (
             <>
-              <select
-                className="list-picker__select"
-                aria-label="Seleccionar lista"
-                value={String(listId ?? '')}
-                onChange={(e) => {
-                  setListId(Number(e.target.value));
-                  setPage('lista');
-                }}
-              >
-                <optgroup label="Listas">
-                  {lists.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-              {selectedList && (
-                <button type="button" className="icon-btn" aria-label="Renombrar lista" title="Renombrar lista" onClick={renameCurrentList} disabled={renameList.isPending}>
-                  <Icon name="pencil" size={18} />
-                </button>
-              )}
-              <button type="button" className="icon-btn" aria-label="Nueva lista" title="Nueva lista" onClick={newList} disabled={createList.isPending}>
-                <Icon name="plus" size={20} />
-              </button>
+              <ListMenu
+                variant="title"
+                lists={menuLists}
+                currentId={listId ?? null}
+                active={false}
+                creating={createList.isPending}
+                onSelect={openList}
+                onNew={newList}
+              />
             </>
           )}
         </div>
@@ -395,42 +427,21 @@ export function App() {
 
         <div className="topbar__right">
           {fxBadges}
-          <span
-            className={`updated${updateState}`}
-            aria-live="polite"
-            title={updateState === ' updated--warn' ? 'La consulta principal de cotizaciones está fallando: los precios llegan por una vía alternativa y pueden tardar hasta 2 minutos más.' : undefined}
-          >
-            {updateLabel}
-          </span>
-          {sources}
-          <button
-            type="button"
-            className="btn"
-            data-tour="refresh"
-            onClick={() => (onPortfolio ? void refreshPortfolio() : listId && refresh.mutate(listId, { onError: toastError('No se pudieron actualizar las cotizaciones.') }))}
+          {(anyStale || refetchFailed) && <span className="updated updated--stale" aria-live="polite">{updateLabel}</span>}
+          <SyncStatus
+            label={updateLabel}
+            tone={anyStale || refetchFailed ? 'stale' : anyFallback ? 'warn' : 'ok'}
+            hint={anyFallback ? 'La consulta principal de cotizaciones está fallando: los precios llegan por una vía alternativa y pueden tardar hasta 2 minutos más.' : undefined}
+            quotes={shownQuotes}
+            missing={missingQuotes}
+            spinning={manualRefreshing}
             disabled={onPortfolio ? pfRefreshing : !listId || refresh.isPending}
-            title="Forzar actualización de cotizaciones"
-            aria-label="Actualizar"
-          >
-            <span className={`btn__icon${fetching ? ' btn__icon--spin' : ''}`}>
-              <Icon name="refresh" size={20} />
-            </span>
-            <span className="btn__label">Actualizar</span>
-          </button>
-          <button type="button" className="btn btn--ghost" data-tour="alerts" aria-label="Avisos" title="Avisos" onClick={() => setShowAlerts(true)}>
+            onRefresh={() => (onPortfolio ? void refreshPortfolio() : listId && refresh.mutate(listId, { onError: toastError('No se pudieron actualizar las cotizaciones.') }))}
+          />
+          <button type="button" className="btn btn--ghost btn--icon" data-tour="alerts" aria-label="Avisos" title="Avisos" onClick={() => setShowAlerts(true)}>
             <span className="btn__icon">
               <Icon name="bell" size={20} />
             </span>
-            <span className="btn__label">Avisos</span>
-          </button>
-          <button
-            type="button"
-            className="btn btn--ghost"
-            data-tour="tour"
-            onClick={startTour}
-            title="Volver a ver la explicación de la app"
-          >
-            Guía
           </button>
           <button type="button" className="btn btn--ghost" data-tour="settings" aria-label="Ajustes" title="Ajustes" onClick={() => setShowSettings(true)}>
             <span className="btn__icon">
@@ -452,7 +463,7 @@ export function App() {
           </p>
         )}
         {onPortfolio ? (
-          <Suspense fallback={<p className="muted center">Cargando la cartera…</p>}>
+          <Suspense fallback={<PortfolioSkeleton />}>
             <CarteraPage
               model={carteraModel}
               isPending={pf.isPending}
@@ -464,7 +475,8 @@ export function App() {
           </Suspense>
         ) : (
           <>
-            {view && <Highlights rows={view.rows} base={base} onLocate={locateRow} quoteInfo={<>{updateLabel} {sources} {fxBadges}</>} />}
+            {view ? <Highlights rows={view.rows} base={base} onLocate={locateRow} quoteInfo={<>{updateLabel} {sources} {fxBadges}</>} />
+              : wl.isPending && listId ? <HighlightsSkeleton /> : null}
 
             <div className="toolbar watchlist-toolbar">
               <div className="watchlist-desktop-filters">{filterControls}</div>
@@ -480,7 +492,7 @@ export function App() {
               <button type="button" className="btn watchlist-filter-trigger" onClick={() => setShowFilters(true)}>
                 Filtros{activeFilters > 0 ? ` (${activeFilters})` : ''}
               </button>
-              <button
+              {!isVisited && <button
                 type="button"
                 className="btn btn--primary"
                 data-tour="add"
@@ -489,7 +501,7 @@ export function App() {
                 disabled={!listId}
               >
                 Añadir<span className="watchlist-desktop-hint"> valor</span>
-              </button>
+              </button>}
             </div>
             {showFilters && (
               <Dialog title="Filtros" className="watchlist-filter-dialog" onClose={() => setShowFilters(false)} footer={(
@@ -508,8 +520,13 @@ export function App() {
                 <button type="button" className="btn" onClick={() => void wl.refetch()}>Reintentar</button>
               </div>
             )}
-            {wl.isPending && listId && <p className="muted center">Cargando cotizaciones…</p>}
-            {view && view.rows.length === 0 && (
+            {wl.isPending && listId && <TableSkeleton rows={8} cols={6} label="Cargando cotizaciones…" />}
+            {view && view.rows.length === 0 && isVisited && (
+              <div className="empty">
+                <p>Aquí irán los valores que abras desde «Buscar cualquier valor…».</p>
+              </div>
+            )}
+            {view && view.rows.length === 0 && !isVisited && (
               <div className="empty">
                 <p>Esta lista está vacía.</p>
                 <button type="button" className="btn btn--primary" onClick={() => setEditing('new')}>
@@ -527,9 +544,9 @@ export function App() {
                   hiddenColumns={settings.hiddenColumns}
                   extraColumns={settings.extraColumns ?? []}
                   sparks={sparks.data}
-                  onEdit={setEditing}
+                  onEdit={isVisited ? peekRow : setEditing}
                   onTag={onTag}
-                  onSaveLevel={onSaveLevel}
+                  onSaveLevel={isVisited ? peekRow : onSaveLevel}
                 />
                 {rows.length === 0 && (
                   <div className="empty">
@@ -554,29 +571,64 @@ export function App() {
           </>
         )}
         <p className="footnote">
-          Cotizaciones y composición de fondos: Financial Hub; de respaldo, Yahoo Finance, Borsa Italiana / FIDA, Quefondos / VDOS, onvista, justETF y FT Markets. Consenso: Yahoo Finance. Los datos pueden tener retraso.
+          Cotizaciones y composición de fondos: Financial Hub; de respaldo, Yahoo Finance, Borsa Italiana / FIDA, Quefondos / VDOS, onvista, justETF y FT Markets. Consenso: Yahoo Finance. Gráficos:{' '}
+          <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">TradingView Lightweight Charts</a>. Los datos pueden tener retraso.
           {!onPortfolio && <span className="watchlist-desktop-hint"> Doble clic en una fila para editarla.</span>}
         </p>
       </main>
 
       {promptEl}
       <Suspense fallback={null}>
-        {editing && listId && (
+        {editing && (addTo ?? ownListId) && (
           <ItemDialog
-            listId={listId}
+            listId={(addTo ?? ownListId)!}
             row={editing === 'new' ? null : editing}
             settings={view?.settings ?? settings}
             fx={view?.fx ?? {}}
-            onClose={() => setEditing(null)}
+            prefill={editing === 'new' ? prefill : undefined}
+            onClose={() => {
+              setEditing(null);
+              setPrefill(undefined);
+              setAddTo(null);
+            }}
             onBought={(draft) => {
               setEditing(null);
+              setPrefill(undefined);
+              setAddTo(null);
               setBuyDraft(draft);
               setPage('cartera');
             }}
           />
         )}
+        {peek && (
+          <SymbolPreview
+            pick={peek}
+            existing={isVisited ? undefined : view?.rows.find((r) => r.item.symbol === peek.symbol.toUpperCase())}
+            settings={view?.settings ?? settings}
+            lists={lists}
+            listId={ownListId}
+            onAdd={addFromPreview}
+            onNewList={() => void newList().then((id) => id && addFromPreview(id))}
+            onPick={setPeek}
+            onEdit={(row) => {
+              setPeek(null);
+              setEditing(row);
+            }}
+            onClose={() => setPeek(null)}
+          />
+        )}
         {tourOpen && <AppTour key={page} portfolio={onPortfolio} onClose={closeTour} />}
-        {showSettings && <SettingsDialog settings={settings} lists={lists} onClose={() => setShowSettings(false)} />}
+        {showSettings && (
+          <SettingsDialog
+            settings={settings}
+            lists={lists}
+            onClose={() => setShowSettings(false)}
+            onStartTour={() => {
+              setShowSettings(false);
+              startTour();
+            }}
+          />
+        )}
         {showAlerts && (
           <AlertsDialog
             itemIds={new Map((view?.rows ?? []).map((r) => [r.item.symbol, r.item.id]))}

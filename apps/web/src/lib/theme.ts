@@ -63,6 +63,8 @@ function derive() {
   const css = getComputedStyle(root);
   const surface = hexToRgb(css.getPropertyValue('--surface'));
   const text = hexToRgb(css.getPropertyValue('--text'));
+  // Paneles y cajas secundarias (ficha, vista previa de colores, avisos): las cifras también se leen ahí.
+  const surface2 = hexToRgb(css.getPropertyValue('--surface-2')) ?? surface;
   if (!surface || !text) return; // sin tema resuelto: se quedan los valores de reserva de styles.css
   const color = (key: keyof Colors) => hexToRgb(current?.[key] ?? COLOR_DEFS.find((c) => c.key === key)!.default)!;
   // Sobre fondo oscuro el mismo % de color satura mucho más: se rebajan los tintes para que las filas no parezcan bloques.
@@ -75,11 +77,11 @@ function derive() {
     if (b.key === 'reached') rowBgs.push(bg);
     root.style.setProperty(b.bg, rgbToCss(bg));
     // El texto también se usa sobre la superficie (p. ej. en el gráfico): se exige en ambos fondos.
-    root.style.setProperty(b.fg, rgbToCss(readableOn(color(b.key), [bg, surface], text)));
+    root.style.setProperty(b.fg, rgbToCss(readableOn(color(b.key), [bg, surface, surface2!], text)));
   }
   root.style.setProperty('--order-bg', rgbToCss(rowBgs[1]!));
   for (const k of ['up', 'down'] as const) {
-    root.style.setProperty(`--${k}`, rgbToCss(readableOn(color(k), [surface], text)));
+    root.style.setProperty(`--${k}`, rgbToCss(readableOn(color(k), [surface, surface2!], text)));
     // Solo dentro de las filas tintadas (styles.css): así el color elegido no se apaga en el resto de la app.
     root.style.setProperty(`--${k}-tint`, rgbToCss(readableOn(color(k), rowBgs, text)));
   }
