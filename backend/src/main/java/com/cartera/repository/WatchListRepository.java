@@ -5,6 +5,7 @@ import com.cartera.model.WatchList;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
@@ -31,4 +32,8 @@ public interface WatchListRepository extends JpaRepository<WatchList, Long> {
     @Query("select coalesce(max(l.position), 0) from WatchList l where l.userId = :userId")
     int maxPosition(UUID userId);
 
+    /** Borra todas las listas del usuario (sus valores se van con ellas en la base de datos). */
+    @Modifying
+    @Query("delete from WatchList l where l.userId = :userId")
+    int deleteByUser(UUID userId);
 }
