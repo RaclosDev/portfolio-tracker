@@ -1,6 +1,7 @@
 import { DEFAULT_SETTINGS, displayTicker, VISITED_LIST_ID, VISITED_LIST_NAME, type Item, type TouchedOrder, type WatchlistRow } from '@/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { api, DEMO } from './api/client.ts';
 import { EMBED } from './demo/embed.ts';
 import { LS_LIST, LS_PAGE } from './api/bootstrap.ts';
@@ -254,6 +255,17 @@ export function App() {
     </>
   );
 
+  // Móvil: el buscador de la cabecera se despliega sobre ella al pulsar la lupa.
+  const [searching, setSearching] = useState(false);
+  const openSearch = () => {
+    flushSync(() => setSearching(true)); // el foco va en el mismo toque: así el iPhone abre el teclado
+    document.getElementById('buscar-cualquier-valor')?.focus();
+  };
+  const closeSearch = () => {
+    setSearching(false);
+    setPeekQ('');
+  };
+
   // El tour se abre solo la primera vez, cuando ya hay datos que enseñar.
   const hasTourData = onPortfolio ? (pf.data?.operations.length ?? 0) > 0 : (view?.rows.length ?? 0) > 0;
   const tourKey = onPortfolio ? LS_CARTERA_TOUR : LS_TOUR;
@@ -364,12 +376,12 @@ export function App() {
     <div className="app">
       {DEMO && !EMBED && (
         <p className="demo-banner" role="status">
-          <strong>Modo demo.</strong> Datos ficticios: los cambios se pierden al recargar.
+          <strong>Modo demo.</strong> <span className="demo-banner__detail">Datos ficticios: los cambios se pierden al recargar.</span>
           <a href="/">Salir y crear una cuenta</a>
         </p>
       )}
       <a className="skip-link" href="#contenido">Saltar al contenido</a>
-      <header className="topbar">
+      <header className={`topbar${searching ? ' topbar--searching' : ''}`} onKeyDown={(e) => e.key === 'Escape' && searching && closeSearch()}>
         <div className="brand">
           <img src="/favicon.svg" alt="" width={24} height={24} />
           <h1>Portfolio Tracker</h1>
@@ -430,36 +442,18 @@ export function App() {
               rememberSymbol(r);
               setPeek({ symbol: r.symbol, name: r.name, isin: r.isin ?? null });
               setPeekQ('');
+              setSearching(false);
             }}
           />
+          <button type="button" className="icon-btn topbar__search-close" aria-label="Cerrar el buscador" onClick={closeSearch}>✕</button>
         </div>
-
-        <div className="list-picker">
-          {onPortfolio ? <strong className="list-picker__title">Cartera</strong> : (
-            <>
-              <ListMenu
-                variant="title"
-                lists={menuLists}
-                currentId={listId ?? null}
-                active={false}
-                creating={createList.isPending}
-                onSelect={openList}
-                onNew={newList}
-              />
-            </>
-          )}
-        </div>
-
-        <nav className="mobile-primary-nav" aria-label="Secciones">
-          <button type="button" aria-current={!onPortfolio ? 'page' : undefined} onClick={() => setPage('lista')}>
-            Lista
-          </button>
-          <button type="button" aria-current={onPortfolio ? 'page' : undefined} onClick={() => setPage('cartera')}>
-            Cartera
-          </button>
-        </nav>
 
         <div className="topbar__right">
+          <button type="button" className="btn btn--ghost btn--icon topbar__search-toggle" aria-label="Buscar cualquier valor" title="Buscar cualquier valor" onClick={openSearch}>
+            <span className="btn__icon">
+              <Icon name="search" size={20} />
+            </span>
+          </button>
           {fxBadges}
           {(anyStale || refetchFailed) && <span className="updated updated--stale" aria-live="polite">{updateLabel}</span>}
           <SyncStatus

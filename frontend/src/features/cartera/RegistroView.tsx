@@ -1,6 +1,7 @@
 import { KNOWN_BROKERS, OPERATION_LABELS, OPERATION_TYPES, sortOperations, type Operation, type OperationType } from '@/shared';
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useReportFilters, type ExtraFilters } from './extraFilters.ts';
 import { useOperationMutations } from '../../api/hooks.ts';
 import { money, num, qty, price, shortDate } from '../../lib/format.ts';
 import type { CarteraModel } from './model.ts';
@@ -15,10 +16,15 @@ export function RegistroView({
   onImport,
   search: q,
   filterSlot,
+  mobile = false,
+  onFilters,
 }: {
   model: CarteraModel;
   search: string;
   filterSlot: HTMLElement | null;
+  /** En el móvil los filtros van en un diálogo: «Importar» sale junto al recuento. */
+  mobile?: boolean;
+  onFilters?: (f: ExtraFilters | null) => void;
   onEdit: (op: Operation) => void;
   onImport: () => void;
 }) {
@@ -57,6 +63,12 @@ export function RegistroView({
           (!review || o.needsReview),
       );
   }, [ops, q, type, broker, year, review, model.names]);
+  useReportFilters(onFilters, Number(!!type) + Number(!!broker) + Number(!!year) + Number(review), () => {
+    setType('');
+    setBroker('');
+    setYear('');
+    setReview(false);
+  });
   const reviewCount = ops.filter((o) => o.needsReview).length;
   const allSelected = filtered.length > 0 && filtered.every((o) => selected.has(o.id));
   const toggle = (id: number) =>
@@ -98,7 +110,7 @@ export function RegistroView({
             <input type="checkbox" checked={review} onChange={(e) => setReview(e.target.checked)} /> Por revisar ({reviewCount})
           </label>
         )}
-        <button type="button" className="btn cartera-filters__end" onClick={onImport}>Importar operaciones</button>
+        {!mobile && <button type="button" className="btn cartera-filters__end" onClick={onImport}>Importar operaciones</button>}
       </>, filterSlot)}
 
       {selected.size > 0 && (
@@ -120,9 +132,12 @@ export function RegistroView({
         </div>
       )}
 
-      <p className="muted small">
-        {filtered.length === ops.length ? `${ops.length} operaciones` : `${filtered.length} de ${ops.length} operaciones`}. Pulsa
-        una fila para editarla.
+      <p className="muted small registro__count">
+        <span>
+          {filtered.length === ops.length ? `${ops.length} operaciones` : `${filtered.length} de ${ops.length} operaciones`}. Pulsa
+          una fila para editarla.
+        </span>
+        {mobile && <button type="button" className="btn btn--small" onClick={onImport}>Importar</button>}
       </p>
       <div className="table-wrap">
         <table className="wl-table cartera-table cartera-compact registro-table">
