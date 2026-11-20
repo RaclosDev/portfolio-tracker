@@ -141,7 +141,7 @@
 .lp-cta p { margin-top: 14px; max-width: 48ch; color: var(--text-2); }
 .lp-cta .lp-hero__actions { margin-top: 0; }
 
-/* Vista de entrada (/entrar) */
+/* Vista de entrada (/login) */
 .lp-brand { color: inherit; text-decoration: none; }
 .lp--auth .lp-top__nav .btn { gap: 6px; }
 .lp-auth {

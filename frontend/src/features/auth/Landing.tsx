@@ -3,7 +3,7 @@ import './landing.css';
 
 /*
  * Portada pública: lo que ve quien llega sin sesión. Explica el producto con la propia interfaz
- * (el mapa de precios, con la última sesión real, y capturas de la demo) y abre la entrada en su propia vista, /entrar.
+ * (el mapa de precios, con la última sesión real, y capturas de la demo) y abre la entrada en su propia vista, /login.
  */
 
 const eur = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -203,10 +203,10 @@ function Screens() {
   );
 }
 
-export const AUTH_PATH = '/entrar';
+export const AUTH_PATH = '/login';
 const onAuthPath = () => window.location.pathname === AUTH_PATH;
 
-/** La entrada vive en su propia vista (/entrar): se abre sin bajar por la página y «atrás» vuelve a la portada. */
+/** La entrada vive en su propia vista (/login): se abre sin bajar por la página y «atrás» vuelve a la portada. */
 function useAuthView(onEnter: (register: boolean) => void) {
   const [open, setOpen] = useState(onAuthPath);
   useEffect(() => {
