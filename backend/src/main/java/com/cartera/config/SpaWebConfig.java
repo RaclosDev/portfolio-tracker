@@ -32,6 +32,9 @@ public class SpaWebConfig implements WebMvcConfigurer {
         registry.addResourceHandler("/**")
                 .addResourceLocations(STATIC)
                 .setCacheControl(CacheControl.noCache())
+                // Los ficheros del jar tienen todos la fecha de 1980: con Last-Modified, el navegador recibía un 304
+                // tras cada despliegue y se quedaba con el index.html (y el front) anterior.
+                .setUseLastModified(false)
                 .resourceChain(true)
                 .addResolver(new SpaResolver());
     }

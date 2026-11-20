@@ -43,6 +43,17 @@ class SpaWebTest {
     }
 
     @Test
+    void indexIsNeverAStale304AfterADeploy() throws Exception {
+        // Los ficheros del jar llevan todos la fecha de 1980; con Last-Modified, el navegador recibía un 304 y se
+        // quedaba con el index.html (y el front) del despliegue anterior.
+        for (String path : new String[] {"/", "/index.html", "/demo"}) {
+            mvc.perform(get(path).header(HttpHeaders.IF_MODIFIED_SINCE, "Fri, 01 Feb 1980 00:00:00 GMT"))
+                    .andExpect(status().isOk())
+                    .andExpect(header().doesNotExist(HttpHeaders.LAST_MODIFIED));
+        }
+    }
+
+    @Test
     void hashedAssetsAreImmutable() throws Exception {
         mvc.perform(get("/assets/app-abc123.js")).andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("immutable")));
