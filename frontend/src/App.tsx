@@ -12,7 +12,7 @@ import { Dialog } from './components/Dialog.tsx';
 import { toastError } from './components/feedback.tsx';
 import { StatusFilter, filterRow, type Filter } from './features/watchlist/StatusFilter.tsx';
 import { WatchlistTable, type Tag } from './features/watchlist/WatchlistTable.tsx';
-import { TagFilters, rowType, type TypeFilter } from './features/watchlist/TagFilters.tsx';
+import { TagFilters, filterMarket, rowType, type MarketFilter, type TypeFilter } from './features/watchlist/TagFilters.tsx';
 import { num, timeAgo } from './lib/format.ts';
 import { applyAppearance, applyColors } from './lib/theme.ts';
 import { usePrompt } from './components/usePrompt.tsx';
@@ -150,23 +150,25 @@ export function App() {
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [currencyFilter, setCurrencyFilter] = useState<string>('all');
+  const [marketFilter, setMarketFilter] = useState<MarketFilter>('all');
 
   // Los filtros se recuerdan por lista (se restauran al volver a ella o al reabrir la app).
   const filtersKey = listId ? `watchlist.filtros.${listId}` : null;
   useEffect(() => {
     if (!filtersKey) return;
     try {
-      const f = JSON.parse(localStorage.getItem(filtersKey) ?? '{}') as { status?: Filter; type?: TypeFilter; currency?: string };
+      const f = JSON.parse(localStorage.getItem(filtersKey) ?? '{}') as { status?: Filter; type?: TypeFilter; currency?: string; market?: MarketFilter };
       setFilter(f.status ?? 'all');
       setTypeFilter(f.type ?? 'all');
       setCurrencyFilter(f.currency ?? 'all');
+      setMarketFilter(f.market ?? 'all');
     } catch {
       /* filtros guardados no válidos: se ignoran */
     }
   }, [filtersKey]);
   useEffect(() => {
-    if (filtersKey) localStorage.setItem(filtersKey, JSON.stringify({ status: filter, type: typeFilter, currency: currencyFilter }));
-  }, [filtersKey, filter, typeFilter, currencyFilter]);
+    if (filtersKey) localStorage.setItem(filtersKey, JSON.stringify({ status: filter, type: typeFilter, currency: currencyFilter, market: marketFilter }));
+  }, [filtersKey, filter, typeFilter, currencyFilter, marketFilter]);
 
   const saveItem = useSaveItem();
   const onSaveLevel = (row: WatchlistRow, index: number, value: number | null) => {
@@ -204,9 +206,10 @@ export function App() {
       (view?.rows ?? []).filter(
         (r) =>
           (typeFilter === 'all' || rowType(r) === typeFilter) &&
-          (currencyFilter === 'all' || (r.quote?.currency ?? '') === currencyFilter),
+          (currencyFilter === 'all' || (r.quote?.currency ?? '') === currencyFilter) &&
+          filterMarket(marketFilter)(r),
       ),
-    [view, typeFilter, currencyFilter],
+    [view, typeFilter, currencyFilter, marketFilter],
   );
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -247,7 +250,7 @@ export function App() {
   const filterControls = (
     <>
       {view && <StatusFilter rows={tagged} bands={settings.bands} names={settings.statusNames} value={filter} onChange={setFilter} />}
-      <TagFilters type={typeFilter} onType={setTypeFilter} currency={currencyFilter} currencies={currencies} onCurrency={setCurrencyFilter} names={settings.tagNames} />
+      <TagFilters type={typeFilter} onType={setTypeFilter} currency={currencyFilter} currencies={currencies} onCurrency={setCurrencyFilter} market={marketFilter} onMarket={setMarketFilter} names={settings.tagNames} />
     </>
   );
 
