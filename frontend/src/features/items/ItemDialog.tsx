@@ -8,6 +8,7 @@ import { toast } from '../../components/feedback.tsx';
 import { MINOR_CURRENCY, money, num, parseDecimal, pct, price, shortDate } from '../../lib/format.ts';
 import type { OperationDraft } from '../cartera/OperationDialog.tsx';
 import { SymbolPicker } from './SymbolPicker.tsx';
+import { boughtDraft } from './boughtDraft.ts';
 
 interface Props {
   listId: number;
@@ -179,18 +180,7 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought, prefi
               type="button"
               className="btn"
               title="Pasar este valor a la cartera con la compra prevista"
-              onClick={() =>
-                onBought({
-                  type: 'buy',
-                  ticker: displayTicker(item),
-                  symbol: item.symbol,
-                  isin: item.isin ?? quote?.isin ?? null,
-                  name: item.name,
-                  shares: row?.metrics.shares ?? undefined,
-                  price: row?.metrics.entryPrice ?? undefined,
-                  date: localToday(),
-                })
-              }
+              onClick={() => row && onBought(boughtDraft(row, quote?.isin))}
             >
               Lo he comprado
             </button>

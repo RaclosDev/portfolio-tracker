@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client.ts';
 import { useSettings } from '../../api/hooks.ts';
 import { Icon } from '../../components/Icon.tsx';
+import { CompanyLogo } from '../../components/CompanyLogo.tsx';
 import { pct, price } from '../../lib/format.ts';
 import { tabListKeys } from '../../lib/tabs.ts';
 import { CandleChart, watchlistLines } from './CandleChart.tsx';
@@ -21,6 +22,8 @@ interface Props {
   width?: number;
   /** Sin él la ficha no se edita (valor abierto desde el buscador, que aún no está en la lista). */
   onEdit?: () => void;
+  /** «Lo he comprado»: pasa el valor a la cartera con la compra prevista, como desde el lápiz. */
+  onBought?: () => void;
   /** Botones de la cabecera junto a cerrar (p. ej. «Añadir a Vigilar»). */
   actions?: ReactNode;
   onClose: () => void;
@@ -55,7 +58,7 @@ function useFillScreen(box: React.RefObject<HTMLDivElement | null>) {
  * Detalle de un valor bajo su fila. A la izquierda, a elegir, el mapa de precios o el gráfico
  * histórico; a la derecha, la ficha con todos sus datos.
  */
-export function ValueExpanded({ row, base, width, onEdit, onClose, onRecenter, rail, active, actions }: Props) {
+export function ValueExpanded({ row, base, width, onEdit, onBought, onClose, onRecenter, rail, active, actions }: Props) {
   const settings = useSettings().data;
   const names = settings?.statusNames ?? DEFAULT_STATUS_NAMES;
   /** La ficha de la derecha en edición: todo (lápiz) o el campo pulsado (clic para editar). */
@@ -87,6 +90,7 @@ export function ValueExpanded({ row, base, width, onEdit, onClose, onRecenter, r
       <div className="xp__main">
       <header className="xp__head">
         {/* En escritorio la fila del valor se oculta al abrirlo: su nombre pasa aquí. */}
+        <CompanyLogo className="xp__logo" isin={item.isin ?? quote?.isin} symbol={item.symbol} name={item.name ?? displayTicker(item)} size={36} />
         <div className="xp__id" aria-hidden>
           <span className="xp__name" title={item.name ?? item.symbol}>{item.name ?? item.symbol}</span>
           <span className="sub">
@@ -106,6 +110,11 @@ export function ValueExpanded({ row, base, width, onEdit, onClose, onRecenter, r
           {item.orderActive && <span className="pill watchlist-order-pill">Con orden</span>}
         </p>
         <div className="xp__tools">
+          {onBought && (
+            <button type="button" className="btn btn--small" onClick={onBought} title="Pasar este valor a la cartera con la compra prevista">
+              <Icon name="check" size={14} /> Lo he comprado
+            </button>
+          )}
           {actions}
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Cerrar el detalle" title="Cerrar">
             ×

@@ -1,4 +1,5 @@
 import { instrumentKind, tradingViewSymbol, type Operation } from '@/shared';
+import { CompanyLogo } from '../../components/CompanyLogo.tsx';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { money, pct, price, qty, share } from '../../lib/format.ts';
 import { tabListKeys } from '../../lib/tabs.ts';
@@ -134,6 +135,7 @@ export function HoldingExpanded({ model, ticker, onClose, onEditOperation, onAdd
       {rail}
       <div className="xp__main">
         <header className="xp__head">
+          <CompanyLogo className="xp__logo" isin={inst?.isin} symbol={symbol} name={name} size={36} />
           <div className="xp__id" aria-hidden>
             <span className="xp__name" title={name}>{name}</span>
             <span className="sub">

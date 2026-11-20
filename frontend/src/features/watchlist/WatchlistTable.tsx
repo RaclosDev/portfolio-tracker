@@ -20,6 +20,7 @@ import { NoteCell } from './NoteCell.tsx';
 import { PriceMap } from './PriceMap.tsx';
 import { Sparkline } from './Sparkline.tsx';
 import { ValueExpanded } from './ValueExpanded.tsx';
+import { CompanyLogo } from '../../components/CompanyLogo.tsx';
 import { TickerRail, type RailItem } from './TickerRail.tsx';
 import { flushSync } from 'react-dom';
 import { useWidth } from '../../lib/useWidth.ts';
@@ -221,6 +222,8 @@ const columns: Column[] = [
     cell: (r, { base, onTag, onToggle, isOpen }) => {
       const { item, quote } = r;
       return (
+        <div className="with-logo">
+        <CompanyLogo isin={item.isin ?? quote?.isin} symbol={item.symbol} name={item.name ?? displayTicker(item)} />
         <div className="stack">
           <button
             type="button"
@@ -264,6 +267,7 @@ const columns: Column[] = [
               </span>
             )}
           </span>
+        </div>
         </div>
       );
     },
@@ -487,6 +491,8 @@ interface Props {
   extraColumns: string[];
   sparks: Record<string, number[]> | undefined;
   onEdit: (row: WatchlistRow) => void;
+  /** «Lo he comprado» desde el detalle abierto; sin él (lista ajena) no sale el botón. */
+  onBought?: (row: WatchlistRow) => void;
   onTag: (tag: Tag) => void;
   onSaveLevel: CellCtx['onSaveLevel'];
 }
@@ -502,7 +508,7 @@ export const isColumnVisible = (c: { id: string; optional?: boolean }, hidden: s
 
 const DEFAULT_SORT = { id: 'map', dir: 'desc' as SortDir }; // lo más cercano a un nivel de compra, arriba
 const sortKey = (listId: number) => `watchlist.orden.${listId}`;
-export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumns, extraColumns, sparks, onEdit, onTag, onSaveLevel }: Props) {
+export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumns, extraColumns, sparks, onEdit, onBought, onTag, onSaveLevel }: Props) {
   const [wrapRef, wrapWidth] = useWidth<HTMLDivElement>();
   const statusNames = useSettings().data?.statusNames ?? DEFAULT_STATUS_NAMES;
   const visible = useMemo(
@@ -600,6 +606,8 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
         id: r.item.id,
         ticker: displayTicker(r.item),
         name: r.item.name,
+        isin: r.item.isin ?? r.quote?.isin ?? null,
+        symbol: r.item.symbol,
         price: r.quote?.price ?? null,
         currency: r.quote?.currency ?? null,
         changePct: r.quote?.changePct ?? null,
@@ -718,6 +726,7 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
                     base={baseCurrency}
                     width={wrapWidth || undefined}
                     onEdit={() => onEdit(r)}
+                    onBought={onBought && (() => onBought(r))}
                     onClose={() => onToggle(r)}
                     onRecenter={() => scrollToRow(r.item.id)}
                     active={r.item.id === activeId}

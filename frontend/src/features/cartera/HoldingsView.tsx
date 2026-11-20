@@ -1,4 +1,5 @@
 import { DEFAULT_TAG_NAMES, instrumentKind, type CarteraRowBase, type ClosedRow, type HoldingRow } from '@/shared';
+import { CompanyLogo } from '../../components/CompanyLogo.tsx';
 import type { ReactNode } from 'react';
 import { useSettings, useSparklines1y } from '../../api/hooks.ts';
 import type { TypeFilter } from '../watchlist/TagFilters.tsx';
@@ -42,6 +43,8 @@ function NameCell({ r, onOpen, onTag }: { r: HoldingRow | ClosedRow; onOpen: (ti
   const kind = instrumentKind(r.instrument ?? { ticker: r.ticker, name: r.name }, r.quote?.quoteType);
   const kindLabel = kind === 'ETF' ? names.etf : kind === 'EQUITY' ? names.equity : kind === 'FUND' ? 'Fondo' : null;
   return (
+    <div className="with-logo">
+    <CompanyLogo isin={r.instrument?.isin} symbol={r.instrument?.symbol} name={r.name} />
     <div className="stack">
       <button type="button" className="name name-btn" onClick={(event) => {
         event.stopPropagation();
@@ -69,6 +72,7 @@ function NameCell({ r, onOpen, onTag }: { r: HoldingRow | ClosedRow; onOpen: (ti
         )}
         {r.sector && <span className="muted">{r.sector}</span>}
       </span>
+    </div>
     </div>
   );
 }

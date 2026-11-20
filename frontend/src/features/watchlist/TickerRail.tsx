@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type KeyboardEvent } from 'react';
 import { pct, price } from '../../lib/format.ts';
+import { CompanyLogo } from '../../components/CompanyLogo.tsx';
 
 /**
  * El carril se monta de nuevo con cada valor abierto (el detalle va bajo su fila). Guardamos su
@@ -13,6 +14,9 @@ export interface RailItem {
   id: string | number;
   ticker: string;
   name: string | null;
+  /** Para el logo junto al ticker. */
+  isin?: string | null;
+  symbol?: string | null;
   price: number | null;
   currency: string | null;
   changePct: number | null;
@@ -85,6 +89,7 @@ export function TickerRail({ items, currentId, onPick, label = 'Otros valores de
                 {on && <span className="xp-rail__mark" aria-hidden />}
                 <span className="xp-rail__ticker">
                   {r.signal && <i className={`xp-rail__dot xp-rail__dot--${r.signal}`} aria-hidden />}
+                  <CompanyLogo isin={r.isin} symbol={r.symbol} name={r.name ?? r.ticker} size={16} />
                   {r.ticker}
                 </span>
                 <span className="xp-rail__price num">{price(r.price, r.currency ?? undefined)}</span>

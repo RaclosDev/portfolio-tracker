@@ -25,6 +25,7 @@ import { SyncStatus } from './components/SyncStatus.tsx';
 import { LevelsAfterBuy, TouchedOrdersButton, touchedDraft, touchedKey, useTouchedOrders } from './components/TouchedOrders.tsx';
 import { UpdateBanner } from './components/UpdateBanner.tsx';
 import { SymbolPicker } from './features/items/SymbolPicker.tsx';
+import { boughtDraft } from './features/items/boughtDraft.ts';
 import type { PreviewPick } from './features/search/SymbolPreview.tsx';
 import { useRecentSymbols, useRememberSymbol } from './lib/recentSymbols.ts';
 
@@ -575,6 +576,10 @@ export function App() {
                   extraColumns={settings.extraColumns ?? []}
                   sparks={sparks.data}
                   onEdit={isVisited ? peekRow : setEditing}
+                  onBought={isVisited ? undefined : (row) => {
+                    setBuyDraft(boughtDraft(row));
+                    setPage('cartera');
+                  }}
                   onTag={onTag}
                   onSaveLevel={isVisited ? peekRow : onSaveLevel}
                 />
