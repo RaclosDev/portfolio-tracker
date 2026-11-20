@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import './landing.css';
 
 /*
@@ -115,16 +115,19 @@ const LABEL: Record<Status, string> = { reached: 'En zona de compra', veryNear: 
 const statusOf = (gap: number): Status => (gap <= 0 ? 'reached' : gap <= 5 ? 'veryNear' : gap <= 10 ? 'near' : gap <= 20 ? 'far' : 'veryFar');
 const gapTo = (price: number, level: number) => ((price - level) / level) * 100;
 
-function useReducedMotion() {
-  const [reduced, setReduced] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+function useMedia(query: string) {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
   useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const on = () => setReduced(mq.matches);
+    const mq = window.matchMedia(query);
+    const on = () => setMatches(mq.matches);
+    on();
     mq.addEventListener('change', on);
     return () => mq.removeEventListener('change', on);
-  }, []);
-  return reduced;
+  }, [query]);
+  return matches;
 }
+
+const useReducedMotion = () => useMedia('(prefers-reduced-motion: reduce)');
 
 function useDark() {
   const read = () => {
@@ -269,6 +272,8 @@ function Screens() {
   const dark = useDark();
   const [active, setActive] = useState(0);
   const screen = SCREENS[active]!;
+  // En pantallas anchas va la demo de verdad; en el móvil no cabe usable y se queda la captura.
+  const live = useMedia('(min-width: 1024px)');
   // La pastilla de la pestaña activa se desliza hasta la elegida en lugar de saltar.
   const tabs = useRef<HTMLDivElement>(null);
   const [pill, setPill] = useState<{ x: number; w: number } | null>(null);
@@ -286,9 +291,9 @@ function Screens() {
   }, [active]);
   return (
     <section className="lp-screens" aria-labelledby="lp-screens-title">
-      <h2 id="lp-screens-title">De la lista de vigilancia al registro de operaciones</h2>
+      <h2 id="lp-screens-title" data-reveal>De la lista de vigilancia al registro de operaciones</h2>
       <div
-        ref={tabs} className={`lp-tabs${pill ? ' lp-tabs--pill' : ''}`} role="tablist" aria-label="Pantallas de la aplicación"
+        ref={tabs} data-reveal className={`lp-tabs${pill ? ' lp-tabs--pill' : ''}`} role="tablist" aria-label="Pantallas de la aplicación"
         style={pill ? ({ '--pill-x': `${pill.x}px`, '--pill-w': `${pill.w}px` } as CSSProperties) : undefined}
       >
         <span className="lp-tabs__pill" aria-hidden="true" />
@@ -307,17 +312,42 @@ function Screens() {
           >{s.tab}</button>
         ))}
       </div>
-      <div id="lp-screen" role="tabpanel" aria-labelledby={`lp-tab-${screen.id}`} className="lp-screen">
+      <div id="lp-screen" data-reveal role="tabpanel" aria-labelledby={`lp-tab-${screen.id}`} className="lp-screen">
         <p key={screen.id} className="lp-screen__text">{screen.text}</p>
-        <div className="lp-screen__frame">
+        <div className={`lp-screen__frame${live ? ' lp-screen__frame--live' : ''}`}>
           <img
             key={`${screen.id}-${dark}`} src={`/landing/${screen.id}-${dark ? 'dark' : 'light'}.webp`}
             width={1600} height={1000} loading="lazy" decoding="async"
-            alt={`Pantalla «${screen.tab}» de Portfolio Tracker con datos de ejemplo`}
+            alt={live ? '' : `Pantalla «${screen.tab}» de Portfolio Tracker con datos de ejemplo`}
           />
+          {live && <LiveDemo key={screen.id} view={screen.id} label={screen.tab} />}
         </div>
+        <p className="lp-screen__more">
+          {live ? 'Es la demo de verdad: toca, filtra y abre valores. ' : null}
+          <a href="/demo" className={live ? undefined : 'btn lp-btn'}>
+            {live ? 'Abrirla a pantalla completa' : 'Probar la demo'}
+          </a>
+        </p>
       </div>
     </section>
+  );
+}
+
+/**
+ * La demo dentro de la portada: se carga al acercarse con el scroll y aparece sobre la captura cuando ya ha
+ * pintado sus datos. Va en su propia memoria (ver demo/embed.ts), así que no toca nada del visitante.
+ */
+function LiveDemo({ view, label }: { view: string; label: string }) {
+  const [ready, setReady] = useState(false);
+  const timer = useRef<number>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  return (
+    <iframe
+      className={`lp-live${ready ? ' lp-live--ready' : ''}`}
+      src={`/demo?vista=${view}`} title={`Demo de Portfolio Tracker: ${label}`} loading="lazy"
+      // El documento carga antes de que la app traiga datos: un respiro para no enseñar el «Cargando…».
+      onLoad={() => { timer.current = window.setTimeout(() => setReady(true), 700); }}
+    />
   );
 }
 
@@ -357,10 +387,38 @@ const Brand = ({ onClick }: { onClick?: () => void }) => (
   </a>
 );
 
+/**
+ * Lo marcado con data-reveal entra con un fundido al aparecer en pantalla, una sola vez. Solo se esconde si hay
+ * con qué enseñarlo (IntersectionObserver y movimiento permitido): sin eso, todo está visible desde el principio.
+ */
+function useReveal(root: RefObject<HTMLElement | null>, active: boolean) {
+  const reduced = useReducedMotion();
+  useLayoutEffect(() => {
+    const el = root.current;
+    if (!el || !active || reduced || !('IntersectionObserver' in window)) return;
+    el.classList.add('lp--reveal');
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        // Lo que ya quedó por encima (al recargar a media página) se enseña sin esperar.
+        if (e.isIntersecting || e.boundingClientRect.top < 0) {
+          e.target.classList.add('is-in');
+          io.unobserve(e.target);
+        }
+      }
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.1 });
+    el.querySelectorAll('[data-reveal]').forEach((n) => io.observe(n));
+    return () => { io.disconnect(); el.classList.remove('lp--reveal'); };
+  }, [root, active, reduced]);
+}
+
+const HEADLINE = 'Ponle precio a tus próximas compras.';
+
 export function Landing({ canRegister, onEnter, children }: {
   canRegister: boolean; onEnter: (register: boolean) => void; children: ReactNode;
 }) {
   const { open, enter, leave } = useAuthView(onEnter);
+  const root = useRef<HTMLDivElement>(null);
+  useReveal(root, !open);
 
   if (open) {
     return (
@@ -387,8 +445,8 @@ export function Landing({ canRegister, onEnter, children }: {
   }
 
   return (
-    <div className="lp">
-      <header className="lp-top">
+    <div className="lp" ref={root}>
+      <header className="lp-top lp-intro">
         <Brand />
         <nav className="lp-top__nav" aria-label="Acceso">
           <a className="btn btn--ghost" href="/demo">Demo</a>
@@ -399,18 +457,27 @@ export function Landing({ canRegister, onEnter, children }: {
       <main>
         <section className="lp-hero">
           <div className="lp-hero__copy">
-            <h1>Ponle precio a tus próximas compras.</h1>
-            <p className="lp-hero__lede">
+            <h1 className="lp-split" aria-label={HEADLINE}>
+              {HEADLINE.split(' ').map((word, i) => (
+                <Fragment key={i}>
+                  {i > 0 && ' '}
+                  <span className="lp-split__w" aria-hidden="true">
+                    <span style={{ '--i': i } as CSSProperties}>{word}</span>
+                  </span>
+                </Fragment>
+              ))}
+            </h1>
+            <p className="lp-hero__lede lp-intro" style={{ '--d': '380ms' } as CSSProperties}>
               Portfolio Tracker vigila acciones, ETF y fondos por ti. Marcas hasta tres precios de compra por valor
               y ves de un vistazo cuánto le falta a cada uno. Cuando compras, la misma aplicación lleva tu cartera.
             </p>
-            <div className="lp-hero__actions">
+            <div className="lp-hero__actions lp-intro" style={{ '--d': '480ms' } as CSSProperties}>
               <a className="btn btn--primary lp-btn" href="/demo">Ver la demo</a>
               <button type="button" className="btn lp-btn" onClick={() => enter(canRegister)}>
                 {canRegister ? 'Crear cuenta' : 'Entrar'}
               </button>
             </div>
-            <p className="lp-hero__note">La demo abre sin registro y con datos ficticios.</p>
+            <p className="lp-hero__note lp-intro" style={{ '--d': '560ms' } as CSSProperties}>La demo abre sin registro y con datos ficticios.</p>
           </div>
           <PriceMap />
         </section>
@@ -418,19 +485,19 @@ export function Landing({ canRegister, onEnter, children }: {
         <Screens />
 
         <section className="lp-details" aria-labelledby="lp-details-title">
-          <h2 id="lp-details-title">Lo que lleva dentro</h2>
+          <h2 id="lp-details-title" data-reveal>Lo que lleva dentro</h2>
           <dl>
-            <div><dt>Avisos en el móvil</dt><dd>Una notificación cuando un valor llega al precio que marcaste, sin tener la aplicación abierta.</dd></div>
-            <div><dt>Tu histórico, importado</dt><dd>Trae las operaciones que ya tienes desde Excel o CSV en lugar de teclearlas una a una.</dd></div>
-            <div><dt>Instalable, en claro y oscuro</dt><dd>Se instala como aplicación en el móvil y en el ordenador y sigue el tema del sistema.</dd></div>
-            <div><dt>Copias de seguridad</dt><dd>Tus listas y tu cartera se exportan y se restauran cuando quieras.</dd></div>
+            <div data-reveal style={{ '--i': 0 } as CSSProperties}><dt>Avisos en el móvil</dt><dd>Una notificación cuando un valor llega al precio que marcaste, sin tener la aplicación abierta.</dd></div>
+            <div data-reveal style={{ '--i': 1 } as CSSProperties}><dt>Tu histórico, importado</dt><dd>Trae las operaciones que ya tienes desde Excel o CSV en lugar de teclearlas una a una.</dd></div>
+            <div data-reveal style={{ '--i': 2 } as CSSProperties}><dt>Instalable, en claro y oscuro</dt><dd>Se instala como aplicación en el móvil y en el ordenador y sigue el tema del sistema.</dd></div>
+            <div data-reveal style={{ '--i': 3 } as CSSProperties}><dt>Copias de seguridad</dt><dd>Tus listas y tu cartera se exportan y se restauran cuando quieras.</dd></div>
           </dl>
-          <p className="lp-details__limit">
+          <p className="lp-details__limit" data-reveal>
             Hace seguimiento y nada más: no envía órdenes a ningún bróker ni recomienda qué comprar.
           </p>
         </section>
 
-        <section className="lp-cta" aria-labelledby="lp-cta-title">
+        <section className="lp-cta" data-reveal aria-labelledby="lp-cta-title">
           <div>
             <h2 id="lp-cta-title">Tu cartera, en una cuenta privada</h2>
             <p>Empiezas con una cuenta vacía: añade los valores que sigues, ponles precio y deja que la lista te diga cuándo mirar.</p>

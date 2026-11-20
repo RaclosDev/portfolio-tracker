@@ -1,3 +1,4 @@
+import { EMBED } from './demo/embed.ts'; // antes que nada: cambia el almacenamiento si va dentro de la portada
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -16,7 +17,7 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: true, retry: 1 } },
 });
 
-registerServiceWorker();
+if (!EMBED) registerServiceWorker();
 
 // Tras una publicación los trozos de la versión anterior dejan de existir: si uno no carga, se
 // recarga para coger la nueva (una vez por minuto como mucho, para no entrar en bucle).

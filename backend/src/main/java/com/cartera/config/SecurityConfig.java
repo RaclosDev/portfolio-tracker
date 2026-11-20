@@ -73,7 +73,7 @@ public class SecurityConfig {
             .formLogin(form -> form.disable())
             .logout(logout -> logout.disable())
             .headers(headers -> headers
-                .frameOptions(frame -> frame.deny())
+                .frameOptions(frame -> frame.sameOrigin())
                 .contentTypeOptions(content -> {})
                 .referrerPolicy(ref -> ref.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
                 .httpStrictTransportSecurity(hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31536000))
@@ -84,9 +84,10 @@ public class SecurityConfig {
                         + "font-src 'self'; "
                         + "img-src 'self' data: blob: https:; "
                         + "connect-src 'self' https://accounts.google.com/gsi/; "
-                        + "frame-src https://accounts.google.com/gsi/; "
+                        // La portada incrusta la demo (/demo); fuera de la propia web no se puede enmarcar.
+                        + "frame-src 'self' https://accounts.google.com/gsi/; "
                         + "worker-src 'self'; manifest-src 'self'; "
-                        + "base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'"))
+                        + "base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'self'"))
                 .permissionsPolicyHeader(perm -> perm.policy("camera=(), microphone=(), geolocation=()"))
             )
             .addFilterBefore(rateLimitingFilter, UsernamePasswordAuthenticationFilter.class)
