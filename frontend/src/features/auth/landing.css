@@ -25,6 +25,13 @@
 .lp-top__name { font-size: var(--fs-xl); font-weight: 700; letter-spacing: -0.01em; }
 .lp-top__nav { display: flex; align-items: center; gap: 6px; }
 .lp-top__nav .btn { text-decoration: none; }
+/* Atajos a las secciones de la portada; en pantallas estrechas sobran. */
+.lp-top__links { display: flex; align-items: center; gap: 2px; margin-right: 8px; }
+.lp-top__links a.btn { color: var(--text-2); }
+.lp-top__links a.btn:hover { color: var(--text); }
+:is(#lp-screens-title, #lp-details-title, #lp-cta-title) { scroll-margin-top: 24px; }
+@media (max-width: 760px) { .lp-top__links { display: none; } }
+@media (prefers-reduced-motion: no-preference) { html:has(.lp) { scroll-behavior: smooth; } }
 
 /* Hero */
 .lp-hero {
@@ -161,7 +168,9 @@
 .lp-screen__text { margin-top: 18px; max-width: 68ch; min-height: 3.1em; color: var(--text-2); animation: lp-fade 260ms ease-out; }
 /* La captura sale de la columna de texto y usa más ancho: así la tabla se lee. */
 .lp-screen__frame {
-  width: min(var(--lp-wide), calc(100vw - 2 * var(--lp-pad))); margin-left: 50%; translate: -50% 0;
+  /* Centrado con margen y no con translate: un medio píxel deja la demo incrustada borrosa. */
+  --lp-frame-w: min(var(--lp-wide), calc(100vw - 2 * var(--lp-pad)));
+  width: var(--lp-frame-w); margin-left: round(down, calc(50% - var(--lp-frame-w) / 2), 1px);
   margin-top: 22px; overflow: hidden; border: 1px solid var(--border); border-radius: 12px;
   background: var(--surface); box-shadow: var(--lp-lift);
 }
@@ -293,8 +302,9 @@
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) and (min-width: 1024px) {
     .lp-screen__frame {
-      transform-origin: 50% 0; animation: lp-tilt linear both;
-      animation-timeline: view(); animation-range: entry 0% entry 100%;
+      /* Termina pronto y sin dejar transformación: la demo queda nítida aunque el marco no quepa entero. */
+      transform-origin: 50% 0; animation: lp-tilt linear backwards;
+      animation-timeline: view(); animation-range: entry 0% entry 40%;
     }
   }
 }

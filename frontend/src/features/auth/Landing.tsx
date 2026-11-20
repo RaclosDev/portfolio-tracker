@@ -344,12 +344,18 @@ function LiveDemo({ view, label }: { view: string; label: string }) {
   const [ready, setReady] = useState(false);
   const timer = useRef<number>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
+  // El documento carga antes de que la app pinte: se espera a que no quede la pantalla de carga (máx. 6 s).
+  const waitForApp = (frame: HTMLIFrameElement, since = Date.now()) => {
+    const doc = frame.contentDocument;
+    const painted = doc?.getElementById('root')?.firstElementChild && !doc.querySelector('.enter-splash');
+    if (painted || Date.now() - since > 6000) { timer.current = window.setTimeout(() => setReady(true), 250); return; }
+    timer.current = window.setTimeout(() => waitForApp(frame, since), 120);
+  };
   return (
     <iframe
       className={`lp-live${ready ? ' lp-live--ready' : ''}`}
       src={`/demo?vista=${view}`} title={`Demo de Portfolio Tracker: ${label}`} loading="lazy"
-      // El documento carga antes de que la app traiga datos: un respiro para no enseñar el «Cargando…».
-      onLoad={() => { timer.current = window.setTimeout(() => setReady(true), 700); }}
+      onLoad={(e) => waitForApp(e.currentTarget)}
     />
   );
 }
@@ -495,7 +501,11 @@ export function Landing({ canRegister, onEnter, leaving = false, children }: {
     <div className="lp" ref={root}>
       <header className="lp-top lp-intro">
         <Brand />
-        <nav className="lp-top__nav" aria-label="Acceso">
+        <nav className="lp-top__nav" aria-label="Portada">
+          <div className="lp-top__links">
+            <a className="btn btn--ghost" href="#lp-screens-title">Pantallas</a>
+            <a className="btn btn--ghost" href="#lp-details-title">Funciones</a>
+          </div>
           <a className="btn btn--ghost" href="/demo">Demo</a>
           <a className="btn" href={AUTH_PATH} onClick={(e) => { e.preventDefault(); enter(false); }}>Entrar</a>
         </nav>
