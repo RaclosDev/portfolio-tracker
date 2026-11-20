@@ -1,4 +1,4 @@
-import type { Candle, ChartDrawing, ChartDrawingType, ChartPoint, LevelStatus, WatchlistRow } from '@/shared';
+import type { Candle, ChartDrawing, ChartDrawingType, ChartPoint } from '@/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CandlestickSeries,
@@ -21,6 +21,7 @@ import {
 } from 'lightweight-charts';
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type MutableRefObject } from 'react';
 import { api } from '../../api/client.ts';
+import type { ChartLine } from './chartLines.ts';
 import { decimals } from '../../lib/format.ts';
 import {
   aggregate,
@@ -191,24 +192,6 @@ function pricePrecision(bars: Candle[], ...prices: (number | null | undefined)[]
   return Math.min(6, d);
 }
 const fmtPct = (r: number) => `${r >= 0 ? '+' : ''}${(r * 100).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
-
-/** Línea fija de referencia sobre el gráfico (compras de la lista, orden, coste medio…). */
-export interface ChartLine {
-  price: number;
-  title: string;
-  /** Discontinua en el color de acento (por defecto) o punteada en el color del texto. */
-  style?: 'dashed' | 'dotted';
-  /** Estado de una compra (alcanzada, cerca…), orden u objetivo: la línea toma su color, el mismo de la tabla. */
-  status?: LevelStatus | 'order' | 'broker' | 'consensus';
-}
-
-/** Líneas de un valor de la lista: sus compras, la orden activa y los objetivos del bróker y del consenso. */
-export const watchlistLines = ({ item, metrics, targets }: WatchlistRow): ChartLine[] => [
-  ...metrics.levels.map((l, i) => ({ price: l.price, title: `Compra ${i + 1}`, status: l.status })),
-  ...(item.orderActive && item.orderPrice ? [{ price: item.orderPrice, title: 'Orden', style: 'dotted' as const, status: 'order' as const }] : []),
-  ...(item.brokerTarget ? [{ price: item.brokerTarget, title: item.brokerName ?? 'Bróker', status: 'broker' as const }] : []),
-  ...(targets?.mean ? [{ price: targets.mean, title: 'Consenso', style: 'dotted' as const, status: 'consensus' as const }] : []),
-];
 
 /** Color de una línea fija, ya resuelto para el gráfico. */
 function lineColor(l: ChartLine, c: Colors) {

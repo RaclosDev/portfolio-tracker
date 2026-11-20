@@ -1,5 +1,6 @@
 import type { InstrumentInput, InstrumentPatch, ItemInput, ItemPatch, OperationInput, Settings } from '@/shared';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { api } from './client.ts';
 
 export const keys = {
@@ -80,14 +81,29 @@ export function useImportBackup() {
   return useMutation({ mutationFn: api.importBackup, onSuccess: invalidate });
 }
 
+/**
+ * Cartera. Con `live`, sus precios cada dos segundos sin volver a traer operaciones ni instrumentos (eran
+ * 166 kB de JSON cada vez): se mezclan sobre la última cartera completa, que se pide cada `refreshSeconds`.
+ */
 export function usePortfolio(refreshSeconds: number, enabled = true, live = false) {
-  return useQuery({
+  const full = useQuery({
     queryKey: keys.portfolio,
-    queryFn: () => api.portfolio(false, live),
+    queryFn: () => api.portfolio(),
     enabled,
-    refetchInterval: live ? LIVE_REFRESH_MS : refreshSeconds * 1000,
+    refetchInterval: refreshSeconds * 1000,
     placeholderData: keepPreviousData,
   });
+  const prices = useQuery({
+    queryKey: [...keys.portfolio, 'quotes'],
+    queryFn: api.portfolioQuotes,
+    enabled: enabled && live && full.data != null,
+    refetchInterval: LIVE_REFRESH_MS,
+  });
+  const data = useMemo(
+    () => full.data && prices.data && prices.dataUpdatedAt > full.dataUpdatedAt ? { ...full.data, ...prices.data } : full.data,
+    [full.data, full.dataUpdatedAt, prices.data, prices.dataUpdatedAt],
+  );
+  return data === full.data ? full : { ...full, data };
 }
 
 export function useOperationMutations() {

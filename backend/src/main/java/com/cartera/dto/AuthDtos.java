@@ -27,11 +27,14 @@ public final class AuthDtos {
     public record GoogleLoginRequest(@NotBlank @Size(max = 4096) String credential) {
     }
 
-    /** Access token recién emitido. El refresh token va aparte, en su cookie. */
-    public record AccessTokenResponse(String accessToken) {
+    /** Access token recién emitido y su usuario. El refresh token va aparte, en su cookie. */
+    public record AccessTokenResponse(String accessToken, UserResponse user) {
     }
 
     public record UserResponse(UUID id, String email, boolean googleLinked) {
+        public static UserResponse of(com.cartera.model.User u) {
+            return new UserResponse(u.getId(), u.getEmail(), u.getGoogleSubject() != null);
+        }
     }
 
     /** Lo que necesita la pantalla de entrada antes de iniciar sesión. */

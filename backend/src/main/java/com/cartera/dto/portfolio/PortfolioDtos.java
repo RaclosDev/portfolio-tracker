@@ -23,6 +23,11 @@ public final class PortfolioDtos {
                               String generatedAt, String throttledUntil) {
     }
 
+    /** Lo que cambia de {@link CarteraView} entre dos refrescos en directo: sin operaciones ni instrumentos. */
+    public record PortfolioQuotes(Map<String, Quote> quotes, Map<String, Double> fx, List<String> fxStale,
+                                  String generatedAt, String throttledUntil) {
+    }
+
     /** Cambia el bróker de varias operaciones a la vez. */
     public record BulkBrokerRequest(@NotEmpty @Size(max = 5000) List<@NotNull @Positive Long> ids,
                                     @Size(max = 40) String broker, Boolean needsReview) {

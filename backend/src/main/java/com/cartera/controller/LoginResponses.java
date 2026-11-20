@@ -1,6 +1,7 @@
 package com.cartera.controller;
 
 import com.cartera.dto.AuthDtos.AccessTokenResponse;
+import com.cartera.dto.AuthDtos.UserResponse;
 import com.cartera.service.auth.SessionService.SessionTokens;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -16,6 +17,6 @@ final class LoginResponses {
         return ResponseEntity.status(status)
                 .header(HttpHeaders.SET_COOKIE, RefreshTokenCookie.of(tokens.refreshToken(), tokens.refreshExpiresAt()))
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                .body(new AccessTokenResponse(tokens.accessToken()));
+                .body(new AccessTokenResponse(tokens.accessToken(), UserResponse.of(tokens.user())));
     }
 }

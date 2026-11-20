@@ -225,3 +225,6 @@ export interface CarteraView {
   generatedAt: string;
   throttledUntil?: string | null;
 }
+
+/** Lo que cambia de {@link CarteraView} entre dos refrescos en directo. */
+export type PortfolioQuotes = Pick<CarteraView, 'quotes' | 'fx' | 'fxStale' | 'generatedAt' | 'throttledUntil'>;

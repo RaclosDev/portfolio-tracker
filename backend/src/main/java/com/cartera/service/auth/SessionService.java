@@ -110,7 +110,7 @@ public class SessionService {
                 .expiresAt(expiresAt)
                 .createdAt(now)
                 .build());
-        return new SessionTokens(jwtUtil.generateAccessToken(user.getId(), user.getEmail()), refreshToken, expiresAt);
+        return new SessionTokens(jwtUtil.generateAccessToken(user.getId(), user.getEmail()), refreshToken, expiresAt, user);
     }
 
     static String hash(String token) {
@@ -122,6 +122,7 @@ public class SessionService {
         }
     }
 
-    public record SessionTokens(String accessToken, String refreshToken, Instant refreshExpiresAt) {
+    /** {@code user}: quien entra, para devolverlo con el token y ahorrarle al front pedir {@code /api/users/me}. */
+    public record SessionTokens(String accessToken, String refreshToken, Instant refreshExpiresAt, User user) {
     }
 }

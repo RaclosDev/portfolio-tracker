@@ -23,7 +23,7 @@ public class UserController {
     @GetMapping("/api/users/me")
     public UserResponse me(@AuthenticationPrincipal CurrentUser current) {
         return users.findById(current.id())
-                .map(u -> new UserResponse(u.getId(), u.getEmail(), u.getGoogleSubject() != null))
+                .map(UserResponse::of)
                 .orElseThrow(() -> ApiException.unauthorized("Tienes que iniciar sesión"));
     }
 

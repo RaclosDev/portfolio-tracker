@@ -3,7 +3,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } f
 import { money, pct, price, qty, share } from '../../lib/format.ts';
 import { tabListKeys } from '../../lib/tabs.ts';
 import { useSize } from '../../lib/useSize.ts';
-import { CandleChart } from '../watchlist/CandleChart.tsx';
+import { CandleChart } from '../watchlist/LazyCandleChart.tsx';
 import { signed, type CarteraModel } from './model.ts';
 import { FundHoldings, InstrumentForm, LotsTable, OperationActions, OperationsTable, compositionSource, useTicker } from './TickerParts.tsx';
 import type { OperationDraft } from './OperationDialog.tsx';
