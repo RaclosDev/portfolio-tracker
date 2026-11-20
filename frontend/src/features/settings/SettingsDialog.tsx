@@ -15,7 +15,8 @@ import {
 } from '@/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { api, DEMO, reloadSession } from '../../api/client.ts';
+import { ApiError, api, DEMO, downloadFile, reloadSession } from '../../api/client.ts';
+import { GoogleSignInButton } from '../auth/GoogleSignInButton.tsx';
 import { buildModel } from '../cartera/model.ts';
 import { useImportBackup, useListMutations, useUpdateSettings } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
@@ -283,7 +284,14 @@ export function SettingsDialog({ settings, lists, onClose, onStartTour }: Props)
         <h3>General</h3>
         {session?.user && <Row label="Tu cuenta" hint={session.user.email}>
           {session.user.googleLinked ? <span className="muted small">Google vinculado</span>
-            : session.googleEnabled && <a className="btn" href="/api/auth/google">Vincular Google</a>}
+            : session.googleClientId && <GoogleSignInButton clientId={session.googleClientId} text="signin_with"
+              onCredential={(credential) => {
+                setError(null);
+                api.linkGoogle(credential)
+                  .then(() => qc.invalidateQueries({ queryKey: ['session'] }))
+                  .catch((err: unknown) => setError(err instanceof ApiError ? err.message : 'No se pudo vincular Google.'));
+              }}
+              onError={() => setError('No se pudo vincular Google.')} />}
         </Row>}
         <p className="intro">Cálculos y actualización de precios. Se guardan con tus datos y valen para todos los PCs.</p>
         <Row label="Importe a invertir por defecto" hint="Se usa en los valores que no tienen un importe propio.">
@@ -627,9 +635,10 @@ export function SettingsDialog({ settings, lists, onClose, onStartTour }: Props)
                   </span>
                 </span>
                 <span className="list-admin__actions">
-                  <a className="btn btn--small" href={`/api/snapshots/${c.id}`} download>
+                  <button type="button" className="btn btn--small"
+                    onClick={() => void downloadFile(`/api/snapshots/${c.id}`, `copia-${c.id}.json`).catch(toastError('No se pudo descargar la copia.'))}>
                     Descargar
-                  </a>
+                  </button>
                   <button
                     type="button"
                     className="btn btn--small"
@@ -659,9 +668,10 @@ export function SettingsDialog({ settings, lists, onClose, onStartTour }: Props)
         )}
         <h4 className="settings-sub">Copia completa (JSON)</h4>
         <div className="row-actions">
-          {!DEMO && <a className="btn" href="/api/backup" download>
+          {!DEMO && <button type="button" className="btn"
+            onClick={() => void downloadFile('/api/backup', 'cartera-backup.json').catch(toastError('No se pudo exportar la copia.'))}>
             Exportar JSON
-          </a>}
+          </button>}
           <button type="button" className="btn" onClick={() => fileRef.current?.click()} disabled={importM.isPending}>
             Importar JSON…
           </button>
@@ -701,7 +711,7 @@ export function SettingsDialog({ settings, lists, onClose, onStartTour }: Props)
               {logout.isError ? 'No se pudo cerrar la sesión. Vuelve a intentarlo.' : error}
             </span>
           )}
-          {session?.authRequired && (
+          {session?.authenticated && (
             <button
               type="button"
               className="btn"

@@ -1074,15 +1074,7 @@ fieldset.form__section { min-inline-size: 0; }
   height: 40px; padding: 0 12px; border: 1px solid var(--text-2); border-radius: 8px; background: var(--bg);
 }
 .login__card label { font-weight: 600; font-size: var(--fs-sm); }
-.login__google {
-  display: flex; align-items: center; justify-content: center; gap: 12px;
-  min-height: 40px; padding: 0 12px; border: 1px solid #747775; border-radius: 4px;
-  background: #fff; color: #1f1f1f; font-family: Arial, sans-serif;
-  font-size: var(--fs-md); font-weight: 500; text-decoration: none;
-}
-.login__google:hover { background: #f2f2f2; }
-.login__google:active { background: #e8e8e8; }
-.login__google svg { flex-shrink: 0; }
+.login__google-gis { display: flex; justify-content: center; min-height: 44px; color-scheme: light; }
 .login-loading { margin-top: 30vh; }
 .login__demo { justify-content: center; text-decoration: none; }
 .demo-banner {

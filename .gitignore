@@ -10,3 +10,4 @@ watchlist.local.json
 # Lista personal de valores: se pasa aparte, no se publica
 apps/server/seed/watchlist.seed.json
 build/
+.dev-password

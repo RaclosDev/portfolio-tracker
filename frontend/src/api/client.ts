@@ -69,31 +69,113 @@ export class ApiError extends Error {
 /** En `/demo` la app funciona con datos ficticios en el navegador y no llama al servidor. */
 export const DEMO = window.location.pathname.startsWith('/demo');
 
+/**
+ * Sesión: el access token (JWT de 15 min) vive solo en memoria; el refresh token, en una cookie HttpOnly que el
+ * navegador manda únicamente a /api/auth/session. Al arrancar y ante un 401 se pide uno nuevo, de uno en uno.
+ * La marca de localStorage solo indica que hay sesión, para no pedir un refresco que va a fallar.
+ */
+const SESSION_HINT = 'cartera.session';
+let accessToken: string | null = null;
+let refreshing: Promise<boolean> | null = null;
+
+function setAccessToken(token: string | null) {
+  accessToken = token;
+  if (token) localStorage.setItem(SESSION_HINT, '1');
+  else localStorage.removeItem(SESSION_HINT);
+}
+
+/** Pide un access token con la cookie. Falso si no hay sesión; lanza si no hay conexión. */
+function refreshAccessToken(): Promise<boolean> {
+  refreshing ??= (async () => {
+    try {
+      const res = await fetch('/api/auth/session/refresh', { method: 'POST', credentials: 'same-origin' });
+      if (res.ok) {
+        setAccessToken(((await res.json()) as { accessToken: string }).accessToken);
+        return true;
+      }
+      if (res.status === 401) { setAccessToken(null); return false; }
+      throw new ApiError(res.status, `Error ${res.status}`);
+    } finally {
+      refreshing = null;
+    }
+  })();
+  return refreshing;
+}
+
+const isAuthRoute = (url: string) => url.startsWith('/api/auth/');
+
+async function send(method: string, url: string, body?: unknown, isForm = false): Promise<Response> {
+  if (DEMO) return (await import('../demo/backend.ts')).demoFetch(method, url, body);
+  const headers: Record<string, string> = {};
+  if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
+  if (accessToken && !isAuthRoute(url)) headers.Authorization = `Bearer ${accessToken}`;
+  return fetch(url, {
+    method,
+    headers,
+    credentials: 'same-origin',
+    body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
+  });
+}
+
+/** Petición autenticada que devuelve la respuesta tal cual (para descargas). */
+export async function authorizedFetch(method: string, url: string, body?: unknown): Promise<Response> {
+  if (!DEMO && !accessToken && !isAuthRoute(url) && localStorage.getItem(SESSION_HINT)) await refreshAccessToken();
+  let res = await send(method, url, body);
+  if (!DEMO && res.status === 401 && !isAuthRoute(url) && await refreshAccessToken()) res = await send(method, url, body);
+  // Sesión caducada o cerrada en otro sitio: la app vuelve a la pantalla de entrada.
+  if (res.status === 401 && !isAuthRoute(url)) window.dispatchEvent(new Event(SESSION_LOST));
+  return res;
+}
+
+/** Descarga un fichero de la API con la sesión; el nombre sale de Content-Disposition si lo hay. */
+export async function downloadFile(url: string, fallbackName: string): Promise<void> {
+  const res = await authorizedFetch('GET', url);
+  if (!res.ok) throw new ApiError(res.status, `Error ${res.status}`);
+  const name = /filename="?([^";]+)"?/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? fallbackName;
+  const href = URL.createObjectURL(await res.blob());
+  const link = Object.assign(document.createElement('a'), { href, download: name });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 0);
+}
+
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
-  const res = DEMO
-    ? await (await import('../demo/backend.ts')).demoFetch(method, url, body)
-    : await fetch(url, {
-      method,
-      headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+  const res = await authorizedFetch(method, url, body);
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
-  // Sesión caducada o cerrada en otro sitio: la app vuelve a la pantalla de entrada.
-  if (res.status === 401 && !url.startsWith('/api/login')) window.dispatchEvent(new Event(SESSION_LOST));
   if (!res.ok) throw new ApiError(res.status, data.error ?? `Error ${res.status}`, data.issues);
   return data as T;
 }
 
+export interface AuthConfig { googleClientId: string | null; registrationEnabled: boolean }
+export interface SessionUser { id: string; email: string; googleLinked: boolean }
+export interface Session extends AuthConfig { authenticated: boolean; user: SessionUser | null }
+
+async function loadSession(): Promise<Session> {
+  const config = await request<AuthConfig>('GET', '/api/auth/config');
+  const signedIn = DEMO || !!accessToken || (!!localStorage.getItem(SESSION_HINT) && await refreshAccessToken());
+  const user = signedIn ? await request<SessionUser>('GET', '/api/users/me').catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 401) return null;
+    throw error;
+  }) : null;
+  return { ...config, authenticated: !!user, user };
+}
+
+async function startSession(url: string, body: unknown) {
+  setAccessToken((await request<{ accessToken: string }>('POST', url, body)).accessToken);
+}
+
 export const api = {
   health: () => request<{ ok: boolean; version: string }>('GET', '/api/health'),
-  session: () => request<{
-    authRequired: boolean; authenticated: boolean; googleEnabled: boolean; registrationEnabled: boolean;
-    user: { id: string; email: string; googleLinked: boolean } | null;
-  }>('GET', '/api/session'),
-  login: (email: string, password: string) => request<{ ok: true }>('POST', '/api/login', { email, password }),
-  register: (email: string, password: string) => request<{ ok: true }>('POST', '/api/register', { email, password }),
-  logout: () => request<{ ok: true }>('POST', '/api/logout', {}),
+  session: loadSession,
+  login: (email: string, password: string) => startSession('/api/auth/password/login', { email, password }),
+  register: (email: string, password: string) => startSession('/api/auth/password/register', { email, password }),
+  loginWithGoogle: (credential: string) => startSession('/api/auth/google/login', { credential }),
+  linkGoogle: (credential: string) => request<SessionUser>('POST', '/api/auth/google/link', { credential }),
+  logout: async () => {
+    try { await request<void>('POST', '/api/auth/session/logout'); } finally { setAccessToken(null); }
+  },
 
   pushKey: () => request<{ publicKey: string | null; enabled: boolean }>('GET', '/api/push/key'),
   pushSubscribe: (subscription: { endpoint: string; keys: { p256dh: string; auth: string } }, label: string) =>

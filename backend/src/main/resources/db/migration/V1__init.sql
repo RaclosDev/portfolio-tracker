@@ -8,14 +8,19 @@ CREATE TABLE users (
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Sesiones: refresh token opaco y rotatorio. Cada inicio de sesión abre una familia (family_id); un
+-- token ya rotado que vuelve a llegar fuera del margen revoca la familia entera.
 CREATE TABLE refresh_tokens (
     id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    family_id  UUID NOT NULL,
     token_hash VARCHAR(64) NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ NOT NULL,
+    rotated_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX refresh_tokens_user ON refresh_tokens(user_id);
+CREATE INDEX refresh_tokens_family ON refresh_tokens(family_id);
 
 -- Preferencias de la interfaz y de los avisos: un documento por usuario.
 CREATE TABLE user_settings (

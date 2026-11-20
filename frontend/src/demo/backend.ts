@@ -321,11 +321,10 @@ function handle(method: string, url: URL, body: unknown): unknown {
 
   switch (route) {
     case 'GET /api/health': return { ok: true, version: 'demo' };
-    case 'GET /api/session': return {
-      authRequired: true, authenticated: true, googleEnabled: false, registrationEnabled: false,
-      user: { id: 'demo', email: 'demo@portfolio-tracker.example', googleLinked: false },
-    };
-    case 'POST /api/logout': return { ok: true };
+    case 'GET /api/auth/config': return { googleClientId: null, registrationEnabled: false };
+    case 'GET /api/users/me': return { id: 'demo', email: 'demo@portfolio-tracker.example', googleLinked: false };
+    case 'POST /api/auth/session/refresh': return { accessToken: 'demo' };
+    case 'POST /api/auth/session/logout': return undefined;
     case 'GET /api/settings': return settings;
     case 'PUT /api/settings': return (settings = settingsSchema.parse({ ...settings, ...settingsPatchSchema.parse(body) }));
     case 'GET /api/lists': return lists.map(listView);
@@ -385,8 +384,10 @@ function handle(method: string, url: URL, body: unknown): unknown {
     case 'POST /api/push/subscribe':
     case 'POST /api/push/test':
     case 'POST /api/backup':
-    case 'POST /api/login':
-    case 'POST /api/register':
+    case 'POST /api/auth/password/login':
+    case 'POST /api/auth/password/register':
+    case 'POST /api/auth/google/login':
+    case 'POST /api/auth/google/link':
       throw new DemoError(403, NOT_IN_DEMO);
   }
 
