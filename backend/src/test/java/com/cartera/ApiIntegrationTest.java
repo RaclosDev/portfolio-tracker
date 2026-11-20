@@ -118,6 +118,13 @@ class ApiIntegrationTest {
         String luis = register("boot-" + UUID.randomUUID() + "@test.invalid");
         long mine = body(mvc.perform(auth(post("/api/lists"), ana).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\":\"Bancos\"}")).andReturn().getResponse().getContentAsString()).get("id").asLong();
+        // Con datos: un valor en la lista y una posición en cartera (vacías no pasaban por los mismos caminos).
+        mvc.perform(auth(post("/api/items"), ana).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"listId\":" + mine + ",\"symbol\":\"san.mc\",\"buyPrices\":[4.5]}")).andExpect(status().isCreated());
+        mvc.perform(auth(post("/api/portfolio/import"), ana).contentType(MediaType.APPLICATION_JSON).content("""
+                {"instruments":[{"ticker":"SAN","symbol":"SAN.MC","currency":"EUR"}],
+                 "operations":[{"date":"2026-01-05","ticker":"SAN","type":"buy","shares":100,"price":5,"amountEur":500}]}"""))
+                .andExpect(status().isOk());
 
         mvc.perform(auth(get("/api/bootstrap").param("list", String.valueOf(mine)).param("page", "lista"), ana))
                 .andExpect(status().isOk())
@@ -125,7 +132,8 @@ class ApiIntegrationTest {
                 .andExpect(jsonPath("$.settings").exists())
                 .andExpect(jsonPath("$.lists[?(@.id == " + mine + ")]").exists())
                 .andExpect(jsonPath("$.watchlist").exists())
-                .andExpect(jsonPath("$.portfolio").exists())
+                .andExpect(jsonPath("$.watchlist.rows.length()").value(1))
+                .andExpect(jsonPath("$.portfolio.operations.length()").value(1))
                 .andExpect(jsonPath("$.visited").isArray())
                 .andExpect(jsonPath("$.touchedOrders").isArray());
         mvc.perform(auth(get("/api/bootstrap").param("list", "-1"), ana))

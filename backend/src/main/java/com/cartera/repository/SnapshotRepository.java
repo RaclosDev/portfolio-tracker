@@ -31,7 +31,7 @@ public interface SnapshotRepository extends JpaRepository<Snapshot, Long> {
                    (select coalesce(sum(jsonb_array_length(l->'items')), 0)::int
                       from jsonb_array_elements(data->'lists') l) as items,
                    coalesce(jsonb_array_length(data->'portfolio'->'operations'), 0)::int as operations
-            from snapshots where user_id = :userId order by created_at desc, id desc""", nativeQuery = true)
+            from {h-schema}snapshots where user_id = :userId order by created_at desc, id desc""", nativeQuery = true)
     List<Summary> summaries(@Param("userId") UUID userId);
 
     Optional<Snapshot> findByIdAndUserId(Long id, UUID userId);
@@ -39,8 +39,8 @@ public interface SnapshotRepository extends JpaRepository<Snapshot, Long> {
     /** Borra las copias más antiguas del usuario y deja las {@code keep} más recientes. */
     @Modifying
     @Query(value = """
-            delete from snapshots where user_id = :userId and id not in (
-                select id from snapshots where user_id = :userId order by created_at desc, id desc limit :keep)""",
+            delete from {h-schema}snapshots where user_id = :userId and id not in (
+                select id from {h-schema}snapshots where user_id = :userId order by created_at desc, id desc limit :keep)""",
             nativeQuery = true)
     int prune(@Param("userId") UUID userId, @Param("keep") int keep);
 }

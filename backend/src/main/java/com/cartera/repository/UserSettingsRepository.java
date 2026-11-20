@@ -14,7 +14,7 @@ public interface UserSettingsRepository extends JpaRepository<UserSettings, UUID
 
     /** Crea la fila vacía si no existe; así el bloqueo de después siempre tiene algo que bloquear. */
     @Modifying
-    @Query(value = "INSERT INTO user_settings (user_id, data) VALUES (:userId, '{}'::jsonb) ON CONFLICT (user_id) DO NOTHING",
+    @Query(value = "INSERT INTO {h-schema}user_settings (user_id, data) VALUES (:userId, '{}'::jsonb) ON CONFLICT (user_id) DO NOTHING",
             nativeQuery = true)
     void ensureExists(UUID userId);
 

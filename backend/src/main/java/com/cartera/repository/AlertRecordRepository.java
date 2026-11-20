@@ -16,8 +16,8 @@ public interface AlertRecordRepository extends JpaRepository<AlertRecord, Long> 
     /** Deja solo los {@code keep} avisos más recientes del usuario. */
     @Modifying
     @Query(value = """
-            DELETE FROM alert_history WHERE user_id = :userId AND id NOT IN
-                (SELECT id FROM alert_history WHERE user_id = :userId ORDER BY id DESC LIMIT :keep)
+            DELETE FROM {h-schema}alert_history WHERE user_id = :userId AND id NOT IN
+                (SELECT id FROM {h-schema}alert_history WHERE user_id = :userId ORDER BY id DESC LIMIT :keep)
             """, nativeQuery = true)
     int trim(UUID userId, int keep);
 }
