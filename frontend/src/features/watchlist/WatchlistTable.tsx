@@ -223,7 +223,7 @@ const columns: Column[] = [
       const { item, quote } = r;
       return (
         <div className="with-logo">
-        <CompanyLogo isin={item.isin ?? quote?.isin} symbol={item.symbol} name={item.name ?? displayTicker(item)} />
+        <CompanyLogo isin={item.isin ?? quote?.isin} name={item.name ?? displayTicker(item)} />
         <div className="stack">
           <button
             type="button"
@@ -607,7 +607,6 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
         ticker: displayTicker(r.item),
         name: r.item.name,
         isin: r.item.isin ?? r.quote?.isin ?? null,
-        symbol: r.item.symbol,
         price: r.quote?.price ?? null,
         currency: r.quote?.currency ?? null,
         changePct: r.quote?.changePct ?? null,
