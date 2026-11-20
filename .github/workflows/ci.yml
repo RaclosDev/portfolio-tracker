@@ -2,6 +2,7 @@
 #  - frontend: lint, tipos, tests y compilación de la web (frontend/).
 #  - backend: tests de la API con PostgreSQL real (Testcontainers) y mínimo de cobertura (backend/).
 #  - docker-build: la misma imagen que construye Render, para que un Dockerfile roto no llegue a main.
+#  - comprobar: puerta única que pide la regla de main (pasa si pasan los tres anteriores).
 #  - desplegar: llama al «Deploy Hook» de Render (secreto RENDER_DEPLOY_HOOK) cuando lo anterior pasa en main.
 name: Cartera CI/CD
 
@@ -90,6 +91,20 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Puerta única que exige la regla de main: pasa solo si pasan los tres trabajos anteriores.
+  comprobar:
+    needs: [frontend, backend, docker-build]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Resultado de frontend, backend y docker-build
+        env:
+          RESULTADOS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Resultados: $RESULTADOS"
+          for r in $RESULTADOS; do [ "$r" = success ] || exit 1; done
 
   desplegar:
     needs: [frontend, backend, docker-build]
