@@ -28,7 +28,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -186,9 +185,7 @@ public class OperationService {
         if (currency == null) return;
         Instrument current = instruments.findByUserIdAndTicker(userId, ticker.toUpperCase()).orElse(null);
         if (current == null || current.getCurrency().equals(currency)) return;
-        boolean used = operations.findAllOrdered(userId).stream().anyMatch(o -> !Objects.equals(o.getId(), exceptId)
-                && o.getTicker().equalsIgnoreCase(ticker) && o.getPrice() != null);
-        if (used) {
+        if (operations.existsPriced(userId, ticker, exceptId)) {
             throw ApiException.badRequest(ticker + " ya tiene operaciones en " + current.getCurrency()
                     + ": no se puede cambiar su divisa.");
         }

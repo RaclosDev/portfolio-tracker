@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -38,39 +39,54 @@ public class WatchItemService {
     private final WatchListService lists;
     private final JsonPatches patches;
     private final IsinLookup isins;
+    private final TransactionTemplate tx;
 
-    @Transactional
+    /**
+     * Alta de un valor. El ISIN que falte se busca después, ya fuera de la transacción: la búsqueda va a la red
+     * (Yahoo, Financial Hub) y no debe retener la conexión ni el bloqueo de la fila mientras tanto.
+     */
     public ItemResponse create(UUID userId, ItemRequest request) {
+        return fillIsin(tx.execute(s -> insert(userId, request)));
+    }
+
+    /** Alta sin buscar el ISIN, dentro de la transacción de quien llama (restaurar una copia). */
+    @Transactional
+    public ItemResponse insert(UUID userId, ItemRequest request) {
         WatchList list = lists.owned(userId, request.listId());
         WatchItem item = new WatchItem();
         item.setList(list);
         item.setPosition(items.maxPosition(list.getId()) + 1);
-        apply(item, withIsin(request));
+        apply(item, request);
         return save(item);
     }
 
-    @Transactional
     public ItemResponse update(UUID userId, Long id, JsonNode patch) {
         if (patch == null || !patch.isObject()) throw ApiException.badRequest("La petición no es válida.");
-        WatchItem item = items.findOwned(id, userId).orElseThrow(() -> ApiException.notFound("Valor no encontrado."));
-        ItemRequest current = ItemResponse.of(item).toRequest();
-        ObjectNode merged = patches.tree(current);
-        JsonPatches.mergeShallow(merged, patch);
-        ItemRequest next = patches.convert(merged, ItemRequest.class, null);
-        // Con otra cotización, el ISIN anterior ya no vale si no llega uno nuevo.
-        if (!next.symbol().equals(current.symbol()) && !patch.has("isin")) next = next.withIsin(null);
-        if (!Objects.equals(next.listId(), current.listId())) {
-            item.setList(lists.owned(userId, next.listId()));
-            item.setPosition(items.maxPosition(next.listId()) + 1);
-        }
-        apply(item, withIsin(next));
-        item.setUpdatedAt(Instant.now());
-        return save(item);
+        return fillIsin(tx.execute(s -> {
+            WatchItem item = items.findOwned(id, userId).orElseThrow(() -> ApiException.notFound("Valor no encontrado."));
+            ItemRequest current = ItemResponse.of(item).toRequest();
+            ObjectNode merged = patches.tree(current);
+            JsonPatches.mergeShallow(merged, patch);
+            ItemRequest next = patches.convert(merged, ItemRequest.class, null);
+            // Con otra cotización, el ISIN anterior ya no vale si no llega uno nuevo.
+            if (!next.symbol().equals(current.symbol()) && !patch.has("isin")) next = next.withIsin(null);
+            if (!Objects.equals(next.listId(), current.listId())) {
+                item.setList(lists.owned(userId, next.listId()));
+                item.setPosition(items.maxPosition(next.listId()) + 1);
+            }
+            apply(item, next);
+            item.setUpdatedAt(Instant.now());
+            return save(item);
+        }));
     }
 
-    /** Sin ISIN, el de la cotización (o el de Financial Hub en fondos y ETF), si se sabe. */
-    private ItemRequest withIsin(ItemRequest request) {
-        return request.isin() != null ? request : request.withIsin(isins.isinOf(request.symbol()));
+    /** Sin ISIN, el de la cotización (o el de Financial Hub en fondos y ETF), si se sabe. Fuera de transacción. */
+    public ItemResponse fillIsin(ItemResponse saved) {
+        if (saved == null || saved.isin() != null) return saved;
+        String isin = isins.isinOf(saved.symbol());
+        if (isin == null) return saved;
+        Integer done = tx.execute(s -> items.fillIsin(saved.id(), saved.symbol(), isin));
+        return done != null && done > 0 ? saved.withIsin(isin) : saved;
     }
 
     @Transactional

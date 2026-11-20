@@ -29,8 +29,11 @@ import com.cartera.service.watchlist.WatchItemService;
 import com.cartera.service.watchlist.WatchListService;
 import com.cartera.util.JsonPatches;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -39,12 +42,15 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Copias de seguridad: exportar e importar todos los datos de un usuario (listas, ajustes y cartera) y las copias que
  * se guardan en la base de datos antes de cada importación.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class BackupService {
@@ -68,9 +74,11 @@ public class BackupService {
     @Transactional(readOnly = true)
     public Backup export(UUID userId) {
         List<BackupList> out = new ArrayList<>();
+        Map<Long, List<WatchItem>> byList = items.findAllByUser(userId).stream()
+                .collect(Collectors.groupingBy(i -> i.getList().getId()));
         for (ListResponse l : lists.summaries(userId)) {
             List<ObjectNode> rows = new ArrayList<>();
-            for (WatchItem item : items.findByListIdOrderByPositionAscIdAsc(l.id())) {
+            for (WatchItem item : byList.getOrDefault(l.id(), List.of())) {
                 ObjectNode row = patches.tree(ItemResponse.of(item));
                 row.remove(List.of("id", "listId", "createdAt", "updatedAt"));
                 rows.add(row);
@@ -87,6 +95,8 @@ public class BackupService {
      * Reemplaza todas las listas y valores por el contenido de la copia (y la cartera, si la copia la trae: las copias
      * antiguas no la tienen y no deben borrarla; sus «positions» del formato viejo se ignoran). Antes guarda lo que
      * había como copia.
+     * <p>Los valores restaurados tienen ids nuevos: la memoria de avisos de los anteriores deja de valer, así que
+     * puede repetirse algún aviso ya enviado, y las órdenes tocadas se borran con sus valores.
      */
     @Transactional
     public RestoreResponse restore(UUID userId, JsonNode raw) {
@@ -100,14 +110,17 @@ public class BackupService {
         lists.flush();
         if (data.settings() != null) settings.update(userId, data.settings());
         int count = 0;
+        List<ItemResponse> created = new ArrayList<>();
         for (ParsedList l : data.lists()) {
             ListResponse list = listService.create(userId, l.name());
             for (ObjectNode row : l.items()) {
                 row.put("listId", list.id());
-                itemService.create(userId, patches.convert(row, ItemRequest.class, null));
+                // Sin buscar ISIN aquí: serían cientos de peticiones a la red con la transacción y los bloqueos abiertos.
+                created.add(itemService.insert(userId, patches.convert(row, ItemRequest.class, null)));
                 count++;
             }
         }
+        fillIsinsAfterCommit(created);
         if (data.lists().isEmpty()) listService.create(userId, DEFAULT_LIST);
 
         if (data.portfolio() != null) {
@@ -152,6 +165,26 @@ public class BackupService {
     }
 
     // ------------------------------------------------------------------------------------------------------------
+
+    /** Los ISIN que falten tras restaurar se buscan en segundo plano, una vez guardada la copia. */
+    private void fillIsinsAfterCommit(List<ItemResponse> created) {
+        List<ItemResponse> missing = created.stream().filter(i -> i.isin() == null).toList();
+        if (missing.isEmpty() || !TransactionSynchronizationManager.isSynchronizationActive()) return;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                Thread.ofVirtual().name("isin-restaurar").start(() -> {
+                    for (ItemResponse item : missing) {
+                        try {
+                            itemService.fillIsin(item);
+                        } catch (RuntimeException e) {
+                            log.debug("Sin ISIN de {} tras restaurar: {}", item.symbol(), e.getMessage());
+                        }
+                    }
+                });
+            }
+        });
+    }
 
     private Snapshot save(UUID userId, String reason, boolean skipIfEmpty) {
         Backup data = export(userId);

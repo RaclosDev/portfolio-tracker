@@ -37,6 +37,12 @@ import java.util.UUID;
 public class WebPushService {
 
     private static final int TTL_SECONDS = 6 * 3600;
+    /**
+     * Servicios push de los navegadores (Chrome/Edge/Android, Firefox, Windows, Safari/iOS). Solo a ellos se
+     * envía: con un endpoint cualquiera, el servidor haría peticiones a la dirección que eligiera el usuario (SSRF).
+     */
+    private static final List<String> PUSH_HOSTS = List.of("fcm.googleapis.com", "android.googleapis.com",
+            ".push.services.mozilla.com", ".notify.windows.com", ".push.apple.com");
 
     private final PushSubscriptionRepository subscriptions;
     private final JsonMapper json;
@@ -70,6 +76,9 @@ public class WebPushService {
     public void subscribe(UUID userId, Subscription sub, String label) {
         if (!enabled()) {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Las notificaciones no están configuradas en el servidor.");
+        }
+        if (!allowedEndpoint(sub.endpoint())) {
+            throw ApiException.badRequest("endpoint: no es de un servicio de notificaciones conocido");
         }
         PushSubscription s = subscriptions.findByEndpoint(sub.endpoint()).orElseGet(PushSubscription::new);
         s.setUserId(userId);
@@ -112,6 +121,10 @@ public class WebPushService {
         int sent = 0;
         int failed = 0;
         for (PushSubscription s : subscriptions.findByUserIdOrderByCreatedAtAsc(userId)) {
+            if (!allowedEndpoint(s.getEndpoint())) {
+                failed++;
+                continue;
+            }
             try {
                 Notification n = Notification.builder().endpoint(s.getEndpoint()).userPublicKey(s.getP256dh())
                         .userAuth(s.getAuth()).payload(text).ttl(TTL_SECONDS).urgency(Urgency.HIGH).build();
@@ -134,6 +147,20 @@ public class WebPushService {
             }
         }
         return new SendResult(sent, failed);
+    }
+
+    static boolean allowedEndpoint(String endpoint) {
+        try {
+            URI uri = URI.create(endpoint);
+            String h = uri.getHost();
+            if (!"https".equals(uri.getScheme()) || h == null || uri.getPort() != -1 || uri.getUserInfo() != null) {
+                return false;
+            }
+            String host = h.toLowerCase(java.util.Locale.ROOT);
+            return PUSH_HOSTS.stream().anyMatch(a -> a.startsWith(".") ? host.endsWith(a) : host.equals(a));
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     private static String host(String endpoint) {

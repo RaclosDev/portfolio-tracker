@@ -15,7 +15,6 @@ import com.cartera.service.market.MarketService;
 import com.cartera.service.market.YahooProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -43,8 +42,10 @@ public class WatchlistViewService {
     private final SettingsService settings;
     private final MarketService market;
 
-    /** {@code maxAgeMs}: antigüedad máxima de los precios (más corta con la lista en pantalla), o null para la normal. */
-    @Transactional(readOnly = true)
+    /**
+     * {@code maxAgeMs}: antigüedad máxima de los precios (más corta con la lista en pantalla), o null para la normal.
+     * Sin transacción: las llamadas a mercado tardan y no deben retener una conexión del pool mientras tanto.
+     */
     public WatchlistView view(UUID userId, Long listId, boolean force, Long maxAgeMs) {
         WatchList list = lists.owned(userId, listId);
         List<ItemResponse> rows = items.findByListIdOrderByPositionAscIdAsc(listId).stream().map(ItemResponse::of).toList();

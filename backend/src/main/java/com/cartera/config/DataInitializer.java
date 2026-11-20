@@ -40,14 +40,15 @@ public class DataInitializer implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         if (ownerEmail.isBlank()) return;
         String email = PasswordAuthService.normalizeEmail(ownerEmail);
-        String hash = ownerPassword.isBlank() ? null : passwordEncoder.encode(ownerPassword);
+        // Se codifica solo si hace falta: bcrypt tarda y en casi todos los arranques la cuenta ya tiene contraseña.
         users.findByEmail(email).ifPresentOrElse(owner -> {
-            if (owner.getPasswordHash() == null && hash != null) {
-                owner.setPasswordHash(hash);
+            if (owner.getPasswordHash() == null && !ownerPassword.isBlank()) {
+                owner.setPasswordHash(passwordEncoder.encode(ownerPassword));
                 log.info("Contraseña de la cuenta propietaria configurada desde APP_PASSWORD.");
             }
         }, () -> {
             if (users.count() > 0) return;
+            String hash = ownerPassword.isBlank() ? null : passwordEncoder.encode(ownerPassword);
             User owner = users.save(User.builder().id(UUID.randomUUID()).email(email).passwordHash(hash).build());
             events.publishEvent(new UserCreatedEvent(owner.getId()));
             log.info("Creada la cuenta propietaria {}.", email);

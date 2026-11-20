@@ -13,7 +13,6 @@ public interface TouchedOrderRepository extends JpaRepository<TouchedOrder, Long
 
     List<TouchedOrder> findByUserIdOrderByTouchedAtAscIdAsc(UUID userId);
 
-    boolean existsByItemIdAndOrderPrice(Long itemId, double orderPrice);
 
     /** Olvida las que ya no corresponden a una orden activa a ese precio (orden quitada o cambiada). */
     @Transactional

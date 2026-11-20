@@ -24,10 +24,13 @@ import com.cartera.service.market.YahooProvider;
 import com.cartera.service.market.composition.CompositionService;
 import com.cartera.service.market.composition.CompositionSource;
 import com.cartera.util.MarketSymbols;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -42,6 +45,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.stream.Stream;
 
 /**
@@ -58,6 +62,8 @@ public class PortfolioService {
     /** Un valor sin sector o nombre en Yahoo se vuelve a pedir como pronto al día siguiente. */
     private static final long PROFILE_RETRY_MS = 24 * 3_600_000L;
     private static final int MAX_PROFILE_MEMORY = 5000;
+    /** Peticiones de históricos a la vez: una cartera importada puede tener cientos de valores. */
+    private static final int HISTORY_CONCURRENCY = 2;
     private static final ZoneId MADRID = ZoneId.of("Europe/Madrid");
 
     private final OperationRepository operations;
@@ -67,7 +73,9 @@ public class PortfolioService {
 
     private final Set<UUID> profilesRunning = ConcurrentHashMap.newKeySet();
     /** Cuándo se pidió la ficha de cada valor: los que Yahoo no completa no bloquean a los siguientes. */
-    private final Map<String, Long> profileTried = new ConcurrentHashMap<>();
+    /** Fichas ya pedidas (usuario:ticker): no se vuelven a pedir hasta pasado un día. */
+    private final Cache<String, Boolean> profileTried = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofMillis(PROFILE_RETRY_MS)).maximumSize(MAX_PROFILE_MEMORY).build();
 
     /** Antigüedad máxima normal de los precios de la cartera. */
     public long defaultMaxAgeMs() {
@@ -127,13 +135,17 @@ public class PortfolioService {
         Map<String, DailyHistoryResult> prices = new ConcurrentHashMap<>();
         List<String> symbols = selected.stream().map(Instrument::getSymbol).filter(Objects::nonNull).distinct().toList();
         LocalDate start = from.minusDays(1);
-        // Dos peticiones como máximo a la vez: una cartera importada puede tener cientos de valores.
+        // Como mucho HISTORY_CONCURRENCY a la vez, y en cuanto acaba una empieza la siguiente (sin esperar al lote).
+        Semaphore slots = new Semaphore(HISTORY_CONCURRENCY);
         try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
-            for (int i = 0; i < symbols.size(); i += 2) {
-                List<String> batch = symbols.subList(i, Math.min(i + 2, symbols.size()));
-                batch.stream().map(s -> pool.submit(() -> prices.put(s, market.getDailyHistory(s, start))))
-                        .toList().forEach(PortfolioService::await);
-            }
+            symbols.stream().map(s -> pool.submit(() -> {
+                slots.acquireUninterruptibly();
+                try {
+                    prices.put(s, market.getDailyHistory(s, start));
+                } finally {
+                    slots.release();
+                }
+            })).toList().forEach(PortfolioService::await);
         }
         boolean stale = prices.values().stream().anyMatch(DailyHistoryResult::stale);
 
@@ -259,18 +271,16 @@ public class PortfolioService {
 
     /** Sector y nombre desde Yahoo para los valores que no los tienen (en segundo plano, poco a poco). */
     private void fillProfilesInBackground(UUID userId, List<Instrument> candidates) {
-        long now = System.currentTimeMillis();
         List<Instrument> pending = candidates.stream()
                 .filter(i -> i.getSymbol() != null && (isBlank(i.getSector()) || isBlank(i.getName())))
-                .filter(i -> now - profileTried.getOrDefault(userId + ":" + i.getTicker(), 0L) > PROFILE_RETRY_MS)
+                .filter(i -> profileTried.getIfPresent(userId + ":" + i.getTicker()) == null)
                 .limit(PROFILES_PER_VIEW)
                 .toList();
         if (pending.isEmpty() || !profilesRunning.add(userId)) return;
         Thread.ofVirtual().name("fichas-" + userId).start(() -> {
             try {
                 for (Instrument i : pending) {
-                    if (profileTried.size() >= MAX_PROFILE_MEMORY) profileTried.clear();
-                    profileTried.put(userId + ":" + i.getTicker(), now);
+                    profileTried.put(userId + ":" + i.getTicker(), Boolean.TRUE);
                     CompanyProfile p = market.getProfile(i.getSymbol());
                     if (p != null) instruments.fillProfile(userId, i.getTicker(), p.sector(), p.name(), Instant.now());
                 }

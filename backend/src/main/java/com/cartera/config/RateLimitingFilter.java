@@ -3,6 +3,8 @@ package com.cartera.config;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletRequestWrapper;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -13,13 +15,19 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.List;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Límite de intentos en las rutas de entrada ({@code /api/auth/password/**} y {@code /api/auth/google/**}), por
  * IP y en total: frena que se prueben contraseñas a ciegas. Ventana fija en memoria (una sola instancia).
- * La IP es la del cliente: {@code server.forward-headers-strategy=framework} aplica X-Forwarded-For del proxy.
+ * <p>
+ * La IP sale de X-Forwarded-For contando saltos desde la derecha ({@code app.rate-limiting.trusted-proxy-hops}):
+ * el primer valor lo escribe el cliente y se puede inventar, el último lo añade el proxy de Render. Se lee de la
+ * petición original porque {@code ForwardedHeaderFilter} ya ha sustituido la dirección por la primera de la lista.
  */
 @Component
 public class RateLimitingFilter extends OncePerRequestFilter {
@@ -32,8 +40,12 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     private final Cache<String, AtomicInteger> registrations = window(Duration.ofHours(1));
     private final Cache<String, AtomicInteger> burst = window(Duration.ofMinutes(1));
 
-    public RateLimitingFilter(@Value("${app.rate-limiting.enabled:true}") boolean enabled) {
+    private final int trustedProxyHops;
+
+    public RateLimitingFilter(@Value("${app.rate-limiting.enabled:true}") boolean enabled,
+                              @Value("${app.rate-limiting.trusted-proxy-hops:1}") int trustedProxyHops) {
         this.enabled = enabled;
+        this.trustedProxyHops = trustedProxyHops;
     }
 
     private static Cache<String, AtomicInteger> window(Duration length) {
@@ -50,9 +62,10 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        String ip = request.getRemoteAddr();
+        String ip = clientIp(request);
         String path = request.getRequestURI();
-        boolean allowed = take(burst, ip, 30) && take(burst, GLOBAL, 120);
+        // El total es solo un techo de seguridad: alto para que un único atacante no deje fuera a todos.
+        boolean allowed = take(burst, ip, 30) && take(burst, GLOBAL, 600);
         if (allowed && path.equals("/api/auth/password/login")) allowed = take(logins, ip, 10);
         if (allowed && path.equals("/api/auth/password/register")) allowed = take(registrations, ip, 5) && take(registrations, GLOBAL, 30);
         if (allowed) {
@@ -64,6 +77,24 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
         response.getWriter().write("{\"error\": \"Demasiados intentos. Espera unos minutos y vuelve a probar.\"}");
+    }
+
+    /** La IP del visitante: el salto que añadió el último proxy de confianza (no el que manda el navegador). */
+    String clientIp(HttpServletRequest request) {
+        ServletRequest original = request;
+        while (original instanceof ServletRequestWrapper wrapper) original = wrapper.getRequest();
+        HttpServletRequest raw = original instanceof HttpServletRequest http ? http : request;
+        if (trustedProxyHops > 0) {
+            List<String> hops = new ArrayList<>();
+            Enumeration<String> headers = raw.getHeaders("X-Forwarded-For");
+            while (headers != null && headers.hasMoreElements()) {
+                for (String hop : headers.nextElement().split(",")) {
+                    if (!hop.isBlank()) hops.add(hop.trim());
+                }
+            }
+            if (!hops.isEmpty()) return hops.get(Math.max(0, hops.size() - trustedProxyHops));
+        }
+        return raw.getRemoteAddr();
     }
 
     private static boolean take(Cache<String, AtomicInteger> counters, String key, int max) {

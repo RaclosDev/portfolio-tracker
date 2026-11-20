@@ -19,6 +19,13 @@ public interface OperationRepository extends JpaRepository<Operation, Long> {
 
     Optional<Operation> findByIdAndUserId(Long id, UUID userId);
 
+    /** ¿Hay operaciones con precio de ese ticker (sin contar {@code exceptId})? */
+    @Query("""
+            select count(o) > 0 from Operation o where o.userId = :userId and upper(o.ticker) = upper(:ticker)
+                and o.price is not null and o.id <> coalesce(:exceptId, -1L)
+            """)
+    boolean existsPriced(@Param("userId") UUID userId, @Param("ticker") String ticker, @Param("exceptId") Long exceptId);
+
     long countByUserId(UUID userId);
 
     @Modifying

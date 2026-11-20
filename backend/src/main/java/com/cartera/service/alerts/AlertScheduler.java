@@ -13,6 +13,8 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -34,11 +36,15 @@ public class AlertScheduler {
 
     @Scheduled(initialDelay = 5_000, fixedDelay = 60_000)
     public void run() {
+        Map<UUID, Instant> lastChecked = new HashMap<>();
+        for (AlertState s : states.findAll()) {
+            if (s.getLastCheckedAt() != null) lastChecked.put(s.getUserId(), s.getLastCheckedAt());
+        }
         for (User user : users.findAll()) {
             UUID id = user.getId();
             try {
                 Duration interval = Duration.ofSeconds(Math.max(MIN_INTERVAL_S, settings.get(id).refreshSeconds()));
-                Instant last = states.findById(id).map(AlertState::getLastCheckedAt).orElse(null);
+                Instant last = lastChecked.get(id);
                 Instant now = Instant.now();
                 if (last != null && Duration.between(last, now).compareTo(interval) < 0) continue;
                 alerts.tick(id, now, false, true);

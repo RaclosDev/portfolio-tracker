@@ -152,17 +152,17 @@ function Login({ googleClientId, registrationEnabled, onDone }: {
           type="password"
           autoComplete={registering ? 'new-password' : 'current-password'}
           minLength={registering ? 12 : undefined}
-          maxLength={200}
+          maxLength={registering ? 72 : 200}
           aria-describedby={registering ? 'password-help' : undefined}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
         />
         {registering && <>
-          <p id="password-help" className="muted small">Al menos 12 caracteres. Puedes usar una frase.</p>
+          <p id="password-help" className="muted small">Entre 12 y 72 caracteres. Puedes usar una frase.</p>
           <label htmlFor="login-confirm">Repetir contraseña</label>
           <input id="login-confirm" name="confirmation" type="password" autoComplete="new-password"
-            value={confirmation} onChange={(e) => setConfirmation(e.target.value)} maxLength={200} required />
+            value={confirmation} onChange={(e) => setConfirmation(e.target.value)} maxLength={72} required />
         </>}
         </fieldset>
         {error && (

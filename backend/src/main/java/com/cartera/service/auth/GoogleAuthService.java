@@ -45,7 +45,7 @@ public class GoogleAuthService {
             throw ApiException.conflict("Ya existe una cuenta con ese correo. Entra con tu contraseña y vincula Google desde Ajustes.");
         }
         if (!passwordAuth.registrationEnabled()) throw ApiException.forbidden("El registro no está habilitado en este entorno.");
-        User user = users.save(User.builder().id(UUID.randomUUID()).email(email).googleSubject(identity.subject()).build());
+        User user = users.saveAndFlush(User.builder().id(UUID.randomUUID()).email(email).googleSubject(identity.subject()).build());
         events.publishEvent(new UserCreatedEvent(user.getId()));
         return user;
     }

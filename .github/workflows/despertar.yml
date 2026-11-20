@@ -1,0 +1,20 @@
+# Render (plan gratuito) duerme el servicio tras 15 minutos sin tráfico, y dormido no corren los avisos
+# programados, la copia diaria ni la purga de sesiones. Un ping cada 10 minutos lo mantiene despierto
+# (un servicio encendido todo el mes son ~744 h, dentro de las 750 h gratuitas).
+# GitHub puede retrasar los cron unos minutos: si se duerme alguna vez, el siguiente ping lo despierta.
+name: Mantener despierto
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping a la API
+        run: curl --fail --silent --show-error --max-time 90 --retry 2 --retry-delay 20 https://cartera.raclos.es/actuator/health/liveness

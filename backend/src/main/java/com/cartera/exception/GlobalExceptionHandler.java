@@ -2,6 +2,8 @@ package com.cartera.exception;
 
 import com.cartera.dto.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -74,6 +76,17 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ErrorResponse> notFound(NoResourceFoundException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse("No encontrado."));
+    }
+
+    /**
+     * Dos peticiones a la vez que chocan en una restricción única (el mismo alta en dos pestañas, el primer acceso
+     * con Google repetido…) o en una fila que otra acaba de cambiar o borrar: es un conflicto, no un error interno.
+     */
+    @ExceptionHandler({DataIntegrityViolationException.class, OptimisticLockingFailureException.class})
+    public ResponseEntity<ErrorResponse> conflict(Exception e) {
+        log.info("Conflicto de concurrencia: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("Otra petición ha cambiado estos datos a la vez. Recarga y vuelve a intentarlo."));
     }
 
     @ExceptionHandler(Exception.class)

@@ -20,6 +20,11 @@ public record ItemResponse(
                 i.getCreatedAt(), i.getUpdatedAt());
     }
 
+    public ItemResponse withIsin(String isin) {
+        return new ItemResponse(id, listId, symbol, ticker, isin, name, buyPrices, brokerTarget, brokerName,
+                investAmount, sharesOverride, orderActive, orderPrice, orderUntil, notes, mutedUntil, createdAt, updatedAt);
+    }
+
     public ItemResponse withName(String name) {
         return new ItemResponse(id, listId, symbol, ticker, isin, name, buyPrices, brokerTarget, brokerName,
                 investAmount, sharesOverride, orderActive, orderPrice, orderUntil, notes, mutedUntil, createdAt, updatedAt);

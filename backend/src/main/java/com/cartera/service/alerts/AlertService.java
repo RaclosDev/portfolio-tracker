@@ -157,12 +157,19 @@ public class AlertService {
 
     /** Apunta las órdenes activas cuyo precio ya ha tocado la cotización (una vez por orden y precio). */
     public void recordTouched(UUID userId, List<Row> rows, Instant now) {
+        Set<String> known = null;
         for (Row row : rows) {
             ItemResponse item = row.item();
             Double price = row.quote() == null || row.quote().stale() ? null : row.quote().price();
             Double orderPrice = item.orderPrice();
             if (!item.orderActive() || orderPrice == null || orderPrice == 0 || price == null || price > orderPrice) continue;
-            if (touched.existsByItemIdAndOrderPrice(item.id(), orderPrice)) continue;
+            if (known == null) {
+                known = touched.findByUserIdOrderByTouchedAtAscIdAsc(userId).stream()
+                        .map(t -> touchedKey(t.getItemId(), t.getOrderPrice()))
+                        .collect(Collectors.toCollection(java.util.HashSet::new));
+            }
+            // Un valor puede estar en varias listas: el add evita apuntarlo dos veces en la misma vuelta.
+            if (!known.add(touchedKey(item.id(), orderPrice))) continue;
             TouchedOrder t = new TouchedOrder();
             t.setUserId(userId);
             t.setItemId(item.id());
@@ -178,6 +185,10 @@ public class AlertService {
                 // Otra comprobación la apuntó a la vez.
             }
         }
+    }
+
+    private static String touchedKey(Long itemId, double orderPrice) {
+        return itemId + "@" + Double.doubleToLongBits(orderPrice);
     }
 
     /** Órdenes tocadas pendientes de revisar. Se olvidan solas si la orden se quita o cambia de precio. */

@@ -6,6 +6,8 @@ import com.cartera.model.UserSettings;
 import com.cartera.repository.UserSettingsRepository;
 import com.cartera.util.JsonPatches;
 import jakarta.validation.ConstraintViolation;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,9 +28,17 @@ public class SettingsService {
     private final UserSettingsRepository repository;
     private final JsonPatches patches;
 
+    /**
+     * Ajustes ya leídos, por su JSON guardado: se piden muchas veces por petición y en cada vuelta de avisos, y
+     * mezclarlos con los de serie y validarlos cuesta más que la consulta. Al cambiar el JSON cambia la clave, así
+     * que no hay que invalidar nada.
+     */
+    private final Cache<String, Settings> parsed = Caffeine.newBuilder().maximumSize(1_000).build();
+
     @Transactional(readOnly = true)
     public Settings get(UUID userId) {
-        return repository.findById(userId).map(row -> read(userId, row.getData())).orElse(Settings.DEFAULTS);
+        return repository.findById(userId).map(row -> parsed.get(row.getData(), data -> read(userId, data)))
+                .orElse(Settings.DEFAULTS);
     }
 
     /** Aplica {@code patch} con la semántica de JSON Merge Patch: un {@code null} vuelve al valor de serie. */

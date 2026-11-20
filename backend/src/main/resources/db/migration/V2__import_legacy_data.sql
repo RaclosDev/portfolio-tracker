@@ -56,7 +56,8 @@ BEGIN
             SELECT $1, COALESCE(jsonb_object_agg(key, value), '{}'::jsonb) FROM %I.settings
         $q$, s) USING acc.id;
 
-        -- Listas y valores
+        -- Listas y valores. Los textos se recortan al tamaño de las columnas: los nombres que rellenaba el servidor
+        -- (cotización, buscador) no pasaban por la validación y un dato largo haría fallar toda la migración.
         EXECUTE format($q$
             WITH ins AS (
                 INSERT INTO watch_lists (user_id, name, position, created_at)
@@ -71,7 +72,7 @@ BEGIN
                 INSERT INTO watch_items (list_id, symbol, ticker, isin, name, buy_prices, broker_target, broker_name,
                     invest_amount, shares_override, order_active, order_price, order_until, notes, muted_until,
                     muted_forever, position, created_at, updated_at)
-                SELECT m.new_id, i.symbol, i.ticker, i.isin, i.name,
+                SELECT m.new_id, i.symbol, i.ticker, i.isin, left(i.name, 120),
                     ARRAY(SELECT jsonb_array_elements_text(i.buy_prices)::DOUBLE PRECISION),
                     i.broker_target, i.broker_name, i.invest_amount, i.shares_override, i.order_active, i.order_price,
                     pg_temp.iso_date(i.order_until), i.notes, pg_temp.iso_date(i.muted_until),
@@ -89,7 +90,7 @@ BEGIN
         -- Cartera
         EXECUTE format($q$
             INSERT INTO instruments (user_id, ticker, symbol, name, sector, currency, isin, notes, created_at, updated_at)
-            SELECT $1, ticker, symbol, name, sector, upper(currency), isin, notes, created_at, updated_at
+            SELECT $1, ticker, symbol, left(name, 120), left(sector, 80), upper(currency), isin, notes, created_at, updated_at
             FROM %I.instruments ORDER BY created_at, ticker
         $q$, s) USING acc.id;
 
@@ -103,10 +104,11 @@ BEGIN
             FROM %I.operations ORDER BY id
         $q$, s) USING acc.id;
 
-        -- Avisos, dispositivos y copias
+        -- Avisos, dispositivos y copias. Un aviso de un valor que ya no existe se queda con item_id 0: su id viejo
+        -- podría coincidir con el de un valor nuevo.
         EXECUTE format($q$
             INSERT INTO alert_history (user_id, at, kind, item_id, symbol, title, body)
-            SELECT $1, h.at, h.kind, COALESCE(m.new_id, h.item_id), h.symbol, h.title, h.body
+            SELECT $1, h.at, h.kind, COALESCE(m.new_id, 0), h.symbol, h.title, h.body
             FROM %I.alert_history h LEFT JOIN legacy_item_map m ON m.old_id = h.item_id
             ORDER BY h.id
         $q$, s) USING acc.id;
@@ -139,22 +141,23 @@ BEGIN
         EXECUTE format($q$
             INSERT INTO touched_orders (user_id, item_id, order_price, price, currency, shares, touched_at, dismissed)
             SELECT $1, m.new_id, (o ->> 'orderPrice')::DOUBLE PRECISION, (o ->> 'price')::DOUBLE PRECISION,
-                COALESCE(o ->> 'currency', 'EUR'), (o ->> 'shares')::DOUBLE PRECISION, (o ->> 'at')::TIMESTAMPTZ,
+                COALESCE(o ->> 'currency', 'EUR'), (o ->> 'shares')::DOUBLE PRECISION, COALESCE((o ->> 'at')::TIMESTAMPTZ, now()),
                 COALESCE((o ->> 'dismissed')::BOOLEAN, false)
             FROM %I.app_state st
             CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(st.value) = 'array' THEN st.value ELSE '[]' END) o
             JOIN legacy_item_map m ON m.old_id = (o ->> 'itemId')::INTEGER
-            WHERE st.key = 'ordenesTocadas'
+            WHERE st.key = 'ordenesTocadas' AND o ->> 'orderPrice' IS NOT NULL AND o ->> 'price' IS NOT NULL
             ON CONFLICT (item_id, order_price) DO NOTHING
         $q$, s) USING acc.id;
 
         EXECUTE format($q$
             INSERT INTO visited_symbols (user_id, symbol, name, exchange, type, isin, visited_at)
-            SELECT DISTINCT ON (upper(v ->> 'symbol')) $1, upper(v ->> 'symbol'), v ->> 'name', v ->> 'exchange',
-                v ->> 'type', v ->> 'isin', COALESCE((v ->> 'visitedAt')::TIMESTAMPTZ, now())
+            SELECT DISTINCT ON (upper(v ->> 'symbol')) $1, upper(v ->> 'symbol'), left(v ->> 'name', 200),
+                left(v ->> 'exchange', 80), left(v ->> 'type', 40), left(v ->> 'isin', 12), COALESCE((v ->> 'visitedAt')::TIMESTAMPTZ, now())
             FROM %I.app_state st
             CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(st.value) = 'array' THEN st.value ELSE '[]' END) v
             WHERE st.key = 'visited-symbols' AND v ->> 'symbol' IS NOT NULL AND v ->> 'name' IS NOT NULL
+                AND length(v ->> 'symbol') <= 32
             ORDER BY upper(v ->> 'symbol'), v ->> 'visitedAt' DESC
         $q$, s) USING acc.id;
 
@@ -162,6 +165,9 @@ BEGIN
             INSERT INTO chart_drawings (user_id, symbol, drawings)
             SELECT $1, upper(substring(key FROM 'chart-drawings:(.*)')), value
             FROM %I.app_state WHERE key LIKE 'chart-drawings:%%' AND jsonb_typeof(value) = 'array'
+                AND length(key) <= length('chart-drawings:') + 32
+            -- «aapl» y «AAPL» acaban en la misma fila: se queda la primera.
+            ON CONFLICT (user_id, symbol) DO NOTHING
         $q$, s) USING acc.id;
     END LOOP;
 
