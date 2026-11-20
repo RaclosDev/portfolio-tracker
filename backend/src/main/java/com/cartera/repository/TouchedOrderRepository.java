@@ -18,8 +18,8 @@ public interface TouchedOrderRepository extends JpaRepository<TouchedOrder, Long
     @Transactional
     @Modifying
     @Query(value = """
-            DELETE FROM touched_orders t WHERE t.user_id = :userId AND NOT EXISTS
-                (SELECT 1 FROM watch_items i WHERE i.id = t.item_id AND i.order_active AND i.order_price = t.order_price)
+            DELETE FROM {h-schema}touched_orders t WHERE t.user_id = :userId AND NOT EXISTS
+                (SELECT 1 FROM {h-schema}watch_items i WHERE i.id = t.item_id AND i.order_active AND i.order_price = t.order_price)
             """, nativeQuery = true)
     int forgetStale(UUID userId);
 
