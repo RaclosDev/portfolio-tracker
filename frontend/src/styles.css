@@ -11,20 +11,20 @@
   --danger: #b91c1c;
 
   /* Colores configurables (Ajustes → Colores). JS los sobrescribe con los guardados. */
-  --c-reached: #15803d;
-  --c-veryNear: #22c55e;
-  --c-near: #eab308;
-  --c-far: #f97316;
-  --c-veryFar: #a1a1aa;
-  --c-order: #eab308;
+  --c-reached: #00ff5e;
+  --c-veryNear: #00ff5e;
+  --c-near: #ffcb13;
+  --c-far: #ff0000;
+  --c-veryFar: #000000;
+  --c-order: #001eff;
   --c-equity: #64748b;
   --c-etf: #64748b;
   --c-base: #64748b;
   --c-muted: #a1a1aa;
-  --c-expired: #dc2626;
+  --c-expired: #ff0000;
   --c-fx: #0284c7;
-  --c-up: #16a34a;
-  --c-down: #ea580c;
+  --c-up: #00ff1e;
+  --c-down: #ff0000;
   --c-broker: #7c3aed;
   --c-consensus: #2563eb;
 

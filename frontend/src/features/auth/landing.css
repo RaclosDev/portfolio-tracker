@@ -9,7 +9,7 @@
 .lp ::selection { background: color-mix(in oklab, var(--accent), transparent 72%); }
 .lp :is(a, button, .btn):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .lp main { flex: 1; }
-.lp :is(.lp-top, .lp-hero, .lp-screens, .lp-details, .lp-enter, .lp-foot) {
+.lp :is(.lp-top, .lp-hero, .lp-screens, .lp-details, .lp-cta, .lp-auth, .lp-foot) {
   width: 100%; max-width: calc(var(--lp-w) + 2 * var(--lp-pad)); margin-inline: auto; padding-inline: var(--lp-pad);
 }
 .lp h1, .lp h2 { margin: 0; letter-spacing: -0.025em; line-height: 1.08; font-weight: 750; }
@@ -50,6 +50,7 @@
 .lp-map__row--veryNear { border-inline-start-color: var(--veryNear-fg); }
 .lp-map__row--near { border-inline-start-color: var(--near-fg); }
 .lp-map__row--far { border-inline-start-color: var(--far-fg); }
+.lp-map__row--veryFar { border-inline-start-color: var(--veryFar-fg); }
 .lp-map__name { display: flex; flex-direction: column; min-width: 0; }
 .lp-map__name strong { font-size: var(--fs-lg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lp-map__name .ticker { color: var(--text-2); }
@@ -60,6 +61,7 @@
 .lp-map__status--veryNear { color: var(--veryNear-fg); }
 .lp-map__status--near { color: var(--near-fg); }
 .lp-map__status--far { color: var(--far-fg); }
+.lp-map__status--veryFar { color: var(--veryFar-fg); }
 .lp-map__track {
   grid-column: 1 / -1; position: relative; height: 8px; margin-top: 14px; border-radius: 4px; background: var(--pm-track);
 }
@@ -72,6 +74,17 @@
   position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
   font-style: normal; font-size: var(--fs-3xs); font-weight: 700; line-height: 1.3; color: var(--reached-fg);
 }
+/* Cada marca con el color de su propio estado, como en la lista. */
+.lp-map__level { transition: background-color 500ms ease; }
+.lp-map__level i { transition: color 500ms ease; }
+.lp-map__level--veryNear { background: var(--veryNear-fg); }
+.lp-map__level--veryNear i { color: var(--veryNear-fg); }
+.lp-map__level--near { background: var(--near-fg); }
+.lp-map__level--near i { color: var(--near-fg); }
+.lp-map__level--far { background: var(--far-fg); }
+.lp-map__level--far i { color: var(--far-fg); }
+.lp-map__level--veryFar { background: var(--veryFar-fg); }
+.lp-map__level--veryFar i { color: var(--veryFar-fg); }
 .lp-map__marker {
   position: absolute; top: -7px; width: 4px; height: 22px; margin-left: -2px; border-radius: 2px; background: var(--pm-price);
   box-shadow: 0 0 0 2px var(--surface); transition: left 1200ms cubic-bezier(0.3, 0.7, 0.3, 1);
@@ -120,14 +133,28 @@
 .lp-details dd { margin: 4px 0 0; max-width: 46ch; color: var(--text-2); }
 .lp-details__limit { margin-top: 28px !important; max-width: 60ch; font-weight: 600; }
 
-/* Entrar */
-.lp-enter {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: clamp(28px, 6vw, 80px); align-items: center;
-  padding-block: clamp(40px, 7vw, 88px); border-top: 1px solid var(--border); scroll-margin-top: 8px;
+/* Llamada final */
+.lp-cta {
+  display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 24px clamp(28px, 6vw, 80px);
+  padding-block: clamp(40px, 7vw, 88px); border-top: 1px solid var(--border);
 }
-.lp-enter__copy p { margin-top: 14px; max-width: 44ch; color: var(--text-2); }
-.lp-enter .login__card { width: min(380px, 100%); font-size: var(--fs-md); line-height: 1.4; box-shadow: var(--lp-lift); }
-.lp-enter .login__title { font-size: var(--fs-2xl); letter-spacing: -0.01em; }
+.lp-cta p { margin-top: 14px; max-width: 48ch; color: var(--text-2); }
+.lp-cta .lp-hero__actions { margin-top: 0; }
+
+/* Vista de entrada (/entrar) */
+.lp-brand { color: inherit; text-decoration: none; }
+.lp--auth .lp-top__nav .btn { gap: 6px; }
+.lp-auth {
+  flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: clamp(28px, 6vw, 96px); align-items: center;
+  padding-block: clamp(24px, 6vw, 72px) clamp(40px, 8vw, 96px);
+}
+.lp-auth h1 { font-size: clamp(2rem, 4.2vw, 3.2rem); max-width: 14ch; }
+.lp-auth__copy p { margin-top: 16px; max-width: 44ch; color: var(--text-2); }
+.lp-auth .login__card {
+  width: min(400px, 100%); font-size: var(--fs-md); line-height: 1.4; box-shadow: var(--lp-lift);
+  animation: lp-in 240ms ease both;
+}
+.lp-auth .login__title { font-size: var(--fs-2xl); letter-spacing: -0.01em; }
 
 /* Pie */
 .lp-foot {
@@ -138,8 +165,10 @@
 
 @media (max-width: 860px) {
   .lp-hero { grid-template-columns: minmax(0, 1fr); }
-  .lp-enter { grid-template-columns: minmax(0, 1fr); }
-  .lp-enter .login__card { width: 100%; }
+  .lp-auth { grid-template-columns: minmax(0, 1fr); align-items: start; }
+  .lp-auth .login__card { width: 100%; max-width: 480px; order: -1; justify-self: center; }
+  .lp-auth__copy { justify-self: center; max-width: 480px; }
+  .lp-auth h1 { font-size: var(--fs-2xl); }
   .lp-details dl { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 480px) {
@@ -152,7 +181,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .lp-map__marker, .lp-map__row, .lp-map__alert, .lp-tab { transition: none; }
-  .lp-screen__frame img { animation: none; }
+  .lp-screen__frame img, .lp-auth .login__card { animation: none; }
 }
 
 /* Skin «Papel»: la portada hereda sus hojas y su rotulador. */

@@ -1,6 +1,7 @@
 /**
  * Servidor de demostración: vive en el navegador y responde a las mismas rutas que la API real.
- * Los datos son ficticios y los cambios se pierden al recargar. Los cálculos usan el mismo código
+ * Las cotizaciones y su histórico son reales (los de una lista fija que el servidor da sin sesión); las listas, la
+ * cartera y las operaciones son ficticias, y los cambios se pierden al recargar. Sin conexión, todo es ficticio. Los cálculos usan el mismo código
  * compartido que el servidor (`@watchlist/shared`), así que las pantallas se comportan igual.
  */
 import {
@@ -52,7 +53,7 @@ const security = (symbol: string, name: string, price: number, changePct: number
   exchange: symbol.endsWith('.MC') ? 'BME' : symbol.endsWith('.DE') ? 'XETRA' : ['JPM', 'KO', 'V', 'LLY', 'BRK-B'].includes(symbol) ? 'NYSE' : 'NASDAQ',
 });
 
-// Empresas reales con precios, niveles y operaciones inventados.
+// Empresas reales; sus precios de aquí solo se usan si no llegan los reales.
 const SPAIN = [
   security('IBE.MC', 'Iberdrola', 16.42, 0.012, 'Energía', 'ES0000000011'),
   security('SAN.MC', 'Banco Santander', 8.31, 0.008, 'Finanzas', 'ES0000000029'),
@@ -86,11 +87,54 @@ const FUNDS = [
 const CATALOG = new Map([...SPAIN, ...USA, ...FUNDS].map((s) => [s.symbol, s]));
 const FX: Record<string, number> = { EUR: 1, USD: 1.09 };
 
+/** Cotizaciones y velas diarias reales de los valores del catálogo (GET /api/public/market/demo). */
+interface RealCandle { t: string; o: number; h: number; l: number; c: number }
+const realQuotes = new Map<string, Quote>();
+const realCandles = new Map<string, RealCandle[]>();
+async function loadReal() {
+  try {
+    const res = await fetch('/api/public/market/demo', { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return;
+    const snap = await res.json() as { quotes: Record<string, Quote>; candles: Record<string, RealCandle[]> };
+    for (const [symbol, quote] of Object.entries(snap.quotes ?? {})) {
+      const s = CATALOG.get(symbol);
+      if (!s || typeof quote?.price !== 'number') continue;
+      s.price = quote.price;
+      if (typeof quote.changePct === 'number') s.changePct = quote.changePct;
+      realQuotes.set(symbol, quote);
+    }
+    for (const [symbol, list] of Object.entries(snap.candles ?? {})) {
+      const daily = (list ?? []).filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c.t) && c.c > 0);
+      if (CATALOG.has(symbol) && daily.length > 20) realCandles.set(symbol, daily);
+    }
+  } catch {
+    // Sin conexión con el servidor: la demo sigue con sus precios.
+  }
+}
+/** Cierre real del último día de mercado no posterior a `date`. */
+function realCloseOn(symbol: string, date: string): number | undefined {
+  const list = realCandles.get(symbol);
+  if (!list) return undefined;
+  let lo = 0, hi = list.length - 1, found = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (list[mid]!.t <= date) { found = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  return list[Math.max(found, 0)]!.c;
+}
+
 const hash = (text: string) => [...text].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 9973, 7);
 /** Precio ficticio de un valor hace `days` días: una tendencia con algo de oscilación, estable entre llamadas. */
 function priceAt(symbol: string, days: number): number {
   const s = CATALOG.get(symbol);
   if (!s) return 0;
+  if (realCandles.has(symbol)) {
+    if (days <= 0) return s.price;
+    const whole = Math.floor(days);
+    const a = whole === 0 ? s.price : realCloseOn(symbol, daysAgo(whole))!;
+    const b = realCloseOn(symbol, daysAgo(whole + 1))!;
+    return a + (b - a) * (days - whole);
+  }
   const h = hash(symbol);
   const growth = 0.04 + (h % 30) / 100;
   const wave = (d: number) => 1 + 0.035 * Math.sin(d / 11 + h) + 0.018 * Math.sin(d / 3.7 + 2 * h);
@@ -102,6 +146,8 @@ const dayDiff = (from: string, to: string) => Math.round((Date.parse(to) - Date.
 function quoteOf(symbol: string): Quote | undefined {
   const s = CATALOG.get(symbol);
   if (!s) return undefined;
+  const real = realQuotes.get(symbol);
+  if (real) return { ...real, symbol, name: s.name, isin: s.isin, stale: false };
   const year = Array.from({ length: 52 }, (_, week) => priceAt(symbol, week * 7));
   return {
     symbol, name: s.name, currency: s.currency, price: s.price, changePct: s.changePct,
@@ -150,43 +196,48 @@ function seedItem(listId: number, s: Security, index: number) {
     }),
   });
 }
-SPAIN.forEach((s, i) => seedItem(1, s, i));
-USA.forEach((s, i) => seedItem(2, s, i + 3));
-FUNDS.forEach((s, i) => seedItem(3, s, i + 7));
+/** Listas y cartera de ejemplo, con los precios reales si han llegado. */
+function seed() {
+  SPAIN.forEach((s, i) => seedItem(1, s, i));
+  USA.forEach((s, i) => seedItem(2, s, i + 3));
+  FUNDS.forEach((s, i) => seedItem(3, s, i + 7));
 
-const BROKERS = ['ING', 'MyInvestor', 'Interactive Brokers'];
-const HELD: [string, number][] = [
-  ['IBE.MC', 320], ['SAN.MC', 900], ['ITX.MC', 85], ['REP.MC', 260], ['AAPL', 22], ['MSFT', 14],
-  ['NVDA', 40], ['GOOGL', 30], ['JPM', 18], ['KO', 70], ['VWCE.DE', 62], ['SXR8.DE', 12],
-];
-const NO_DIVIDEND = new Set(['NVDA', 'GOOGL', 'VWCE.DE', 'SXR8.DE']);
-function seedOperation(input: OperationInput) {
-  operations.push({ id: id(), createdAt: stamp(), updatedAt: stamp(), ...operationInputSchema.parse(input) });
-}
-HELD.forEach(([ticker, shares], index) => {
-  const s = CATALOG.get(ticker)!;
-  const broker = BROKERS[index % BROKERS.length]!;
-  instruments.push(instrumentInputSchema.parse({ ticker, symbol: ticker, name: s.name, sector: s.sector, currency: s.currency, isin: s.isin }));
-  const trade = (type: 'buy' | 'sell', days: number, quantity: number) => {
-    const fxRate = s.currency === 'USD' ? round(fxAt(days), 4) : 1;
-    const price = round(priceAt(ticker, days));
-    const gross = (quantity * price) / fxRate;
-    seedOperation({ ticker, date: daysAgo(days), type, shares: quantity, price, fxRate, fees: 2, amountEur: round(type === 'buy' ? gross + 2 : gross - 2), broker });
-  };
-  const first = Math.round(shares * 0.6);
-  trade('buy', 520 - index * 17, first);
-  trade('buy', 210 - index * 9, shares - first);
-  if (index % 4 === 2) trade('sell', 48 + index, Math.round(shares * 0.25));
-  if (!NO_DIVIDEND.has(ticker)) {
-    for (const days of [300 - index * 6, 118 - index * 4, 27 + index]) {
-      const gross = round(shares * s.price * 0.008 / FX[s.currency]!);
-      seedOperation({
-        ticker, date: daysAgo(days), type: 'dividend', amountEur: gross, broker,
-        withholdingEs: round(gross * (s.currency === 'USD' ? 0.04 : 0.19)), withholdingForeign: s.currency === 'USD' ? round(gross * 0.15) : null,
-      });
-    }
+  const BROKERS = ['ING', 'MyInvestor', 'Interactive Brokers'];
+  const HELD: [string, number][] = [
+    ['IBE.MC', 320], ['SAN.MC', 900], ['ITX.MC', 85], ['REP.MC', 260], ['AAPL', 22], ['MSFT', 14],
+    ['NVDA', 40], ['GOOGL', 30], ['JPM', 18], ['KO', 70], ['VWCE.DE', 62], ['SXR8.DE', 12],
+  ];
+  const NO_DIVIDEND = new Set(['NVDA', 'GOOGL', 'VWCE.DE', 'SXR8.DE']);
+  function seedOperation(input: OperationInput) {
+    operations.push({ id: id(), createdAt: stamp(), updatedAt: stamp(), ...operationInputSchema.parse(input) });
   }
-});
+  HELD.forEach(([ticker, shares], index) => {
+    const s = CATALOG.get(ticker)!;
+    const broker = BROKERS[index % BROKERS.length]!;
+    instruments.push(instrumentInputSchema.parse({ ticker, symbol: ticker, name: s.name, sector: s.sector, currency: s.currency, isin: s.isin }));
+    const trade = (type: 'buy' | 'sell', days: number, quantity: number) => {
+      const fxRate = s.currency === 'USD' ? round(fxAt(days), 4) : 1;
+      const price = round(priceAt(ticker, days));
+      const gross = (quantity * price) / fxRate;
+      seedOperation({ ticker, date: daysAgo(days), type, shares: quantity, price, fxRate, fees: 2, amountEur: round(type === 'buy' ? gross + 2 : gross - 2), broker });
+    };
+    const first = Math.round(shares * 0.6);
+    trade('buy', 520 - index * 17, first);
+    trade('buy', 210 - index * 9, shares - first);
+    if (index % 4 === 2) trade('sell', 48 + index, Math.round(shares * 0.25));
+    if (!NO_DIVIDEND.has(ticker)) {
+      for (const days of [300 - index * 6, 118 - index * 4, 27 + index]) {
+        const gross = round(shares * s.price * 0.008 / FX[s.currency]!);
+        seedOperation({
+          ticker, date: daysAgo(days), type: 'dividend', amountEur: gross, broker,
+          withholdingEs: round(gross * (s.currency === 'USD' ? 0.04 : 0.19)), withholdingForeign: s.currency === 'USD' ? round(gross * 0.15) : null,
+        });
+      }
+    }
+  });
+}
+/** Hasta tener los precios (o rendirse) no responde: así las listas y la cartera se siembran con ellos. */
+const ready = loadReal().then(seed);
 
 // Vistas ------------------------------------------------------------------------------------------
 const listView = (list: { id: number; name: string }) => ({ ...list, itemCount: items.filter((i) => i.listId === list.id).length });
@@ -234,6 +285,8 @@ function history(symbol: string, range: string) {
 /** Velas de los últimos cinco años (sesiones de lunes a viernes) con aperturas y mechas inventadas pero coherentes. */
 function candles(symbol: string) {
   if (!CATALOG.has(symbol)) throw new DemoError(404, `Símbolo ${symbol} no encontrado`);
+  const real = realCandles.get(symbol);
+  if (real) return { candles: real, stale: false };
   const out = [];
   for (let d = 1826; d >= 0; d--) {
     const t = daysAgo(d);
@@ -482,6 +535,7 @@ function handle(method: string, url: URL, body: unknown): unknown {
 /** Sustituto de `fetch` para el modo demo: misma forma de respuesta que la API real. */
 export async function demoFetch(method: string, url: string, body?: unknown): Promise<Response> {
   const json = (status: number, data: unknown) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
+  await ready;
   try {
     const data = handle(method, new URL(url, window.location.origin), body);
     return data === undefined ? new Response(null, { status: 204 }) : json(200, data);

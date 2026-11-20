@@ -62,7 +62,7 @@ public class SecurityConfig {
                         "/api/auth/google/login").permitAll()
                 // Refresco y logout: se autentican con la cookie del refresh token.
                 .requestMatchers(HttpMethod.POST, "/api/auth/session/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/auth/config", "/api/health").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/auth/config", "/api/health", "/api/public/**").permitAll()
                 .requestMatchers(HttpMethod.HEAD, "/api/health").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                 .requestMatchers("/api/**").authenticated()

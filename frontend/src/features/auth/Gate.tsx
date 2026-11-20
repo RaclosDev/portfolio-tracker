@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { ApiError, AUTH_CHANGED, SESSION_LOST, api, reloadSession } from '../../api/client.ts';
 import { GoogleSignInButton } from './GoogleSignInButton.tsx';
-import { Landing } from './Landing.tsx';
+import { AUTH_PATH, Landing } from './Landing.tsx';
 
 /** Muestra la app solo con la sesión iniciada; si no, la pantalla de entrada. */
 export function Gate({ children }: { children: ReactNode }) {
@@ -55,6 +55,7 @@ export function Gate({ children }: { children: ReactNode }) {
       />
     );
   }
+  if (window.location.pathname === AUTH_PATH) window.history.replaceState(null, '', '/');
   return <>{children}</>;
 }
 

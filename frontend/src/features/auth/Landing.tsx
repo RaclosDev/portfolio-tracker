@@ -3,29 +3,73 @@ import './landing.css';
 
 /*
  * Portada pública: lo que ve quien llega sin sesión. Explica el producto con la propia interfaz
- * (el mapa de precios, en vivo y con datos ficticios, y capturas reales) y deja el formulario al final.
+ * (el mapa de precios, con la última sesión real, y capturas de la demo) y abre la entrada en su propia vista, /entrar.
  */
 
 const eur = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pct = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-type Row = {
-  name: string; ticker: string; unit: string; min: number; max: number;
-  levels: [number, number]; price: (step: number) => number;
-};
+type Row = { name: string; ticker: string; unit: string; min: number; max: number; levels: number[]; path: number[] };
 
-/** Recorrido fijo del ejemplo: Iberdrola baja hasta su primer precio de compra; los otros dos oscilan. */
+const STEPS = 24;
+/** Recorrido de reserva (sin conexión): Iberdrola baja hasta su primer precio de compra; los otros dos oscilan. */
 const IBE = [14.21, 14.12, 14.18, 14.02, 13.91, 13.96, 13.8, 13.71, 13.62, 13.66, 13.55, 13.48, 13.46, 13.49, 13.47, 13.48];
-const STEPS = IBE.length;
-const ROWS: Row[] = [
-  { name: 'Iberdrola', ticker: 'IBE.MC', unit: '€', min: 12.2, max: 15.1, levels: [13.5, 12.69], price: (s) => IBE[s]! },
-  { name: 'Microsoft', ticker: 'MSFT', unit: '$', min: 370, max: 477, levels: [410, 385.4], price: (s) => 425.6 + 3.2 * Math.sin(s * 1.1) },
-  { name: 'Vanguard FTSE All-World', ticker: 'VWCE.DE', unit: '€', min: 108, max: 141, levels: [120, 112.8], price: (s) => 126.3 + 0.9 * Math.cos(s * 0.8) },
+const wave = (base: number, amp: number, speed: number) => Array.from({ length: STEPS }, (_, s) => base + amp * Math.sin(s * speed));
+const FALLBACK: Row[] = [
+  { name: 'Iberdrola', ticker: 'IBE.MC', unit: '€', min: 11.5, max: 14.6, levels: [13.5, 12.83, 12.15], path: Array.from({ length: STEPS }, (_, s) => IBE[Math.min(s, IBE.length - 1)]!) },
+  { name: 'Microsoft', ticker: 'MSFT', unit: '$', min: 340, max: 445, levels: [410, 385.4, 362], path: wave(425.6, 3.2, 1.1) },
+  { name: 'Vanguard FTSE All-World', ticker: 'VWCE.DE', unit: '€', min: 92, max: 132, levels: [116, 108, 100], path: wave(126.3, 0.9, 0.8) },
 ];
 
-type Status = 'reached' | 'veryNear' | 'near' | 'far';
-const LABEL: Record<Status, string> = { reached: 'En zona de compra', veryNear: 'Muy cerca', near: 'Cerca', far: 'Lejos' };
-const statusOf = (gap: number): Status => (gap <= 0 ? 'reached' : gap <= 2 ? 'veryNear' : gap <= 6 ? 'near' : 'far');
+type Candle = { t: string; c: number };
+type Snapshot = { quotes: Record<string, { name?: string; currency?: string; price?: number }>; candles: Record<string, Candle[]> };
+const NAMES: Record<string, string> = { 'IBE.MC': 'Iberdrola', MSFT: 'Microsoft', 'VWCE.DE': 'Vanguard FTSE All-World' };
+const UNITS: Record<string, string> = { EUR: '€', USD: '$', GBP: '£' };
+/** Distancia del primer precio de compra a la cotización de hoy, para que se vean estados distintos. */
+const FIRST_LEVEL: Record<string, number> = { MSFT: 0.965, 'VWCE.DE': 0.915 };
+
+/** La última sesión de cada valor, en STEPS puntos; los precios de compra se colocan respecto a ella. */
+function realRows(snap: Snapshot): Row[] | null {
+  const rows = Object.keys(NAMES).map((ticker): Row | null => {
+    const bars = snap.candles[ticker] ?? [];
+    const day = bars.at(-1)?.t.slice(0, 10);
+    const session = bars.filter((b) => b.t.startsWith(day ?? '-')).map((b) => b.c);
+    const quote = snap.quotes[ticker];
+    if (session.length < 6 || !quote?.price) return null;
+    const path = Array.from({ length: STEPS }, (_, i) => session[Math.round((i * (session.length - 1)) / (STEPS - 1))]!);
+    path[STEPS - 1] = quote.price;
+    const sorted = [...path].sort((x, y) => x - y);
+    // Iberdrola: su primer nivel cae en el cuarto más bajo de la sesión, así que lo alcanza y salta el aviso.
+    const first = FIRST_LEVEL[ticker]
+      ? quote.price * FIRST_LEVEL[ticker]!
+      : sorted[Math.floor(STEPS / 4)]! + (sorted.at(-1)! - sorted[0]!) * 0.02;
+    const levels = [first, first * 0.95, first * 0.9];
+    return {
+      name: NAMES[ticker]!, ticker, unit: UNITS[quote.currency ?? 'EUR'] ?? quote.currency ?? '',
+      min: levels[2]! * 0.95, max: sorted.at(-1)! * 1.04, levels, path,
+    };
+  });
+  return rows.every(Boolean) ? (rows as Row[]) : null;
+}
+
+function useLandingRows() {
+  const [rows, setRows] = useState<Row[] | null>(null);
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetch('/api/public/market/landing', { signal: ctrl.signal })
+      .then((r) => (r.ok ? (r.json() as Promise<Snapshot>) : null))
+      .then((snap) => { if (snap) setRows(realRows(snap)); })
+      .catch(() => { /* sin conexión: el ejemplo de reserva */ });
+    return () => ctrl.abort();
+  }, []);
+  return rows;
+}
+
+/** Las mismas bandas que trae la aplicación por defecto: 5, 10 y 20 %. */
+type Status = 'reached' | 'veryNear' | 'near' | 'far' | 'veryFar';
+const LABEL: Record<Status, string> = { reached: 'En zona de compra', veryNear: 'Muy cerca', near: 'Cerca', far: 'Lejos', veryFar: 'Muy lejos' };
+const statusOf = (gap: number): Status => (gap <= 0 ? 'reached' : gap <= 5 ? 'veryNear' : gap <= 10 ? 'near' : gap <= 20 ? 'far' : 'veryFar');
+const gapTo = (price: number, level: number) => ((price - level) / level) * 100;
 
 function useReducedMotion() {
   const [reduced, setReduced] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -55,20 +99,24 @@ function useDark() {
 
 function PriceMap() {
   const reduced = useReducedMotion();
+  const real = useLandingRows();
+  const rows = real ?? FALLBACK;
   const [step, setStep] = useState(reduced ? STEPS - 1 : 0);
   useEffect(() => {
     if (reduced) { setStep(STEPS - 1); return; }
-    const id = window.setInterval(() => setStep((s) => (s + 1) % STEPS), 1500);
+    setStep(0);
+    const id = window.setInterval(() => setStep((s) => (s + 1) % STEPS), 1100);
     return () => window.clearInterval(id);
-  }, [reduced]);
+  }, [reduced, real]);
 
-  const alert = statusOf(((ROWS[0]!.price(step) - ROWS[0]!.levels[0]) / ROWS[0]!.levels[0]) * 100) === 'reached';
+  const lead = rows[0]!;
+  const alert = statusOf(gapTo(lead.path[step]!, lead.levels[0]!)) === 'reached';
   return (
     <figure className="lp-map">
       <ul className="lp-map__rows">
-        {ROWS.map((row) => {
-          const price = row.price(step);
-          const gap = ((price - row.levels[0]) / row.levels[0]) * 100;
+        {rows.map((row) => {
+          const price = row.path[step]!;
+          const gap = gapTo(price, row.levels[0]!);
           const status = statusOf(gap);
           const at = (v: number) => `${((v - row.min) / (row.max - row.min)) * 100}%`;
           return (
@@ -82,16 +130,16 @@ function PriceMap() {
                 <span className={`lp-map__status lp-map__status--${status}`}>{LABEL[status]}</span>
               </div>
               <div className="lp-map__track" aria-hidden="true">
-                <span className="lp-map__zone" style={{ width: at(row.levels[0]) }} />
+                <span className="lp-map__zone" style={{ width: at(row.levels[0]!) }} />
                 {row.levels.map((level, i) => (
-                  <span key={level} className="lp-map__level" style={{ left: at(level) }}><i>{i + 1}</i></span>
+                  <span key={i} className={`lp-map__level lp-map__level--${statusOf(gapTo(price, level))}`} style={{ left: at(level) }}><i>{i + 1}</i></span>
                 ))}
                 <span className="lp-map__marker" style={{ left: at(price) }} />
               </div>
               <p className="lp-map__gap">
                 {gap <= 0
-                  ? `Compra 1 alcanzada · ${eur.format(row.levels[0])} ${row.unit}`
-                  : `A ${pct.format(gap)} % de la compra 1 · ${eur.format(row.levels[0])} ${row.unit}`}
+                  ? `Compra 1 alcanzada · ${eur.format(row.levels[0]!)} ${row.unit}`
+                  : `A ${pct.format(gap)} % de la compra 1 · ${eur.format(row.levels[0]!)} ${row.unit}`}
               </p>
             </li>
           );
@@ -101,9 +149,12 @@ function PriceMap() {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
         </svg>
-        Aviso enviado: Iberdrola ha llegado a tu compra 1
+        Aviso enviado: {lead.name} ha llegado a tu compra 1
       </p>
-      <figcaption>Así se ve un valor acercándose a tu precio. Ejemplo con datos ficticios.</figcaption>
+      <figcaption>
+        Así se ve un valor acercándose a tu precio.{' '}
+        {real ? 'Cotizaciones reales de la última sesión; los precios de compra son de ejemplo.' : 'Ejemplo con datos ficticios.'}
+      </figcaption>
     </figure>
   );
 }
@@ -152,24 +203,78 @@ function Screens() {
   );
 }
 
+export const AUTH_PATH = '/entrar';
+const onAuthPath = () => window.location.pathname === AUTH_PATH;
+
+/** La entrada vive en su propia vista (/entrar): se abre sin bajar por la página y «atrás» vuelve a la portada. */
+function useAuthView(onEnter: (register: boolean) => void) {
+  const [open, setOpen] = useState(onAuthPath);
+  useEffect(() => {
+    const sync = () => setOpen(onAuthPath());
+    window.addEventListener('popstate', sync);
+    return () => window.removeEventListener('popstate', sync);
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    window.scrollTo(0, 0);
+    document.getElementById('login-email')?.focus({ preventScroll: true });
+  }, [open]);
+  const enter = (register: boolean) => {
+    onEnter(register);
+    if (!onAuthPath()) window.history.pushState({ lp: 'auth' }, '', AUTH_PATH);
+    setOpen(true);
+  };
+  const leave = () => {
+    if ((window.history.state as { lp?: string } | null)?.lp === 'auth') { window.history.back(); return; }
+    window.history.replaceState(null, '', '/');
+    setOpen(false);
+  };
+  return { open, enter, leave };
+}
+
+const Brand = ({ onClick }: { onClick?: () => void }) => (
+  <a className="brand lp-brand" href="/" onClick={onClick && ((e) => { e.preventDefault(); onClick(); })}>
+    <img src="/favicon.svg" alt="" width={28} height={28} />
+    <span className="lp-top__name">Portfolio Tracker</span>
+  </a>
+);
+
 export function Landing({ canRegister, onEnter, children }: {
   canRegister: boolean; onEnter: (register: boolean) => void; children: ReactNode;
 }) {
-  const enter = (register: boolean) => {
-    onEnter(register);
-    document.getElementById('entrar')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    window.setTimeout(() => document.getElementById('login-email')?.focus({ preventScroll: true }), 450);
-  };
+  const { open, enter, leave } = useAuthView(onEnter);
+
+  if (open) {
+    return (
+      <div className="lp lp--auth">
+        <header className="lp-top">
+          <Brand onClick={leave} />
+          <nav className="lp-top__nav" aria-label="Acceso">
+            <button type="button" className="btn btn--ghost" onClick={leave}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+              Volver
+            </button>
+          </nav>
+        </header>
+        <main className="lp-auth">
+          <div className="lp-auth__copy">
+            <h1>Tu cartera, en una cuenta privada</h1>
+            <p>Empiezas con una cuenta vacía: añade los valores que sigues, ponles precio y deja que la lista te diga cuándo mirar.</p>
+            <p>¿Prefieres verla antes con datos? <a href="/demo">Abre la demo</a>.</p>
+          </div>
+          {children}
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="lp">
       <header className="lp-top">
-        <div className="brand">
-          <img src="/favicon.svg" alt="" width={28} height={28} />
-          <span className="lp-top__name">Portfolio Tracker</span>
-        </div>
+        <Brand />
         <nav className="lp-top__nav" aria-label="Acceso">
           <a className="btn btn--ghost" href="/demo">Demo</a>
-          <button type="button" className="btn" onClick={() => enter(false)}>Entrar</button>
+          <a className="btn" href={AUTH_PATH} onClick={(e) => { e.preventDefault(); enter(false); }}>Entrar</a>
         </nav>
       </header>
 
@@ -207,13 +312,17 @@ export function Landing({ canRegister, onEnter, children }: {
           </p>
         </section>
 
-        <section className="lp-enter" id="entrar" aria-labelledby="lp-enter-title">
-          <div className="lp-enter__copy">
-            <h2 id="lp-enter-title">Tu cartera, en una cuenta privada</h2>
+        <section className="lp-cta" aria-labelledby="lp-cta-title">
+          <div>
+            <h2 id="lp-cta-title">Tu cartera, en una cuenta privada</h2>
             <p>Empiezas con una cuenta vacía: añade los valores que sigues, ponles precio y deja que la lista te diga cuándo mirar.</p>
-            <p>¿Prefieres verla antes con datos? <a href="/demo">Abre la demo</a>.</p>
           </div>
-          {children}
+          <div className="lp-hero__actions">
+            <button type="button" className="btn btn--primary lp-btn" onClick={() => enter(canRegister)}>
+              {canRegister ? 'Crear cuenta' : 'Entrar'}
+            </button>
+            {canRegister && <button type="button" className="btn lp-btn" onClick={() => enter(false)}>Ya tengo cuenta</button>}
+          </div>
         </section>
       </main>
 
