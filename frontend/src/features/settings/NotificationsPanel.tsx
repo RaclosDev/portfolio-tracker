@@ -7,8 +7,6 @@ import { currentSubscription, disablePush, enablePush, needsHomeScreen, pushSupp
 interface Props {
   value: NotificationSettings;
   onChange: (v: NotificationSettings) => void;
-  refreshSeconds: number;
-  onGoGeneral: () => void;
   Row: (p: { label: string; hint?: string; children: ReactNode }) => ReactNode;
   Switch: (p: { label: string; checked: boolean; onChange: (v: boolean) => void }) => ReactNode;
 }
@@ -17,7 +15,7 @@ interface Props {
  * Avisos: qué se avisa y cuándo (vale para todos los dispositivos, se guarda con «Guardar») y
  * en qué dispositivos se reciben (se activa al momento en este).
  */
-export function NotificationsPanel({ value: n, onChange, refreshSeconds, onGoGeneral, Row, Switch }: Props) {
+export function NotificationsPanel({ value: n, onChange, Row, Switch }: Props) {
   const set = <K extends keyof NotificationSettings>(k: K, v: NotificationSettings[K]) => onChange({ ...n, [k]: v });
   const qc = useQueryClient();
   const devices = useQuery({ queryKey: ['push-devices'], queryFn: api.pushDevices });
@@ -139,10 +137,8 @@ export function NotificationsPanel({ value: n, onChange, refreshSeconds, onGoGen
       </Row>
 
       <h4 className="settings-sub">Cuándo</h4>
-      <Row label="Frecuencia" hint={`Los precios se comprueban cada ${Math.max(60, refreshSeconds)} segundos. Se cambia en General.`}>
-        <button type="button" className="btn btn--small" onClick={onGoGeneral}>
-          Ir a General
-        </button>
+      <Row label="Frecuencia" hint="El servidor comprueba los precios cada 10 segundos, también con la app cerrada.">
+        <span>10 s</span>
       </Row>
       <Row label="No avisar en fin de semana" hint="Los mercados están cerrados.">
         <Switch label="Saltar fin de semana" checked={n.skipWeekends} onChange={(v) => set('skipWeekends', v)} />

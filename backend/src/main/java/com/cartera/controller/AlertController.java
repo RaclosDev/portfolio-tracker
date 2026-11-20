@@ -34,7 +34,7 @@ public class AlertController {
     /** «Comprobar ahora»: sin esperar a la siguiente vuelta y sin horarios de silencio. */
     @PostMapping("/api/alerts/check")
     public CheckResponse check(@AuthenticationPrincipal CurrentUser user) {
-        return new CheckResponse(alerts.tick(user.id(), Instant.now(), true, false).size());
+        return new CheckResponse(alerts.tick(user.id(), Instant.now(), true, null).size());
     }
 
     @GetMapping("/api/orders/touched")

@@ -1,7 +1,6 @@
 package com.cartera.service.alerts;
 
 import com.cartera.dto.ItemResponse;
-import com.cartera.dto.ListResponse;
 import com.cartera.dto.Settings;
 import com.cartera.dto.WatchlistView;
 import com.cartera.dto.WatchlistView.Row;
@@ -11,6 +10,7 @@ import com.cartera.dto.alerts.AlertDtos.AlertKind;
 import com.cartera.dto.alerts.AlertDtos.PushPayload;
 import com.cartera.dto.alerts.AlertDtos.SendResult;
 import com.cartera.dto.alerts.AlertDtos.TouchedOrderResponse;
+import com.cartera.event.UserDataChangedEvent;
 import com.cartera.model.AlertRecord;
 import com.cartera.model.AlertState;
 import com.cartera.model.TouchedOrder;
@@ -19,12 +19,11 @@ import com.cartera.repository.AlertRecordRepository;
 import com.cartera.repository.AlertStateRepository;
 import com.cartera.repository.TouchedOrderRepository;
 import com.cartera.repository.WatchItemRepository;
-import com.cartera.service.SettingsService;
 import com.cartera.service.backup.BackupService;
-import com.cartera.service.watchlist.WatchListService;
 import com.cartera.service.watchlist.WatchlistViewService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
@@ -40,6 +39,7 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -50,6 +50,10 @@ import java.util.stream.Collectors;
  * Vigilancia de precios: en cada comprobación calcula el estado de todos los valores de las listas del usuario,
  * decide qué avisar, lo guarda en el historial y lo envía a sus dispositivos. También apunta las órdenes que ha
  * tocado el precio, manda el resumen diario y hace la copia diaria.
+ *
+ * <p>Una comprobación sin novedades no toca la base de datos: las listas y los ajustes salen de {@link AlertWorkset}, y
+ * el estado de avisos y las órdenes ya apuntadas se guardan en memoria. Solo se escribe cuando algo cambia (un aviso,
+ * una orden tocada, un valor que cambia de tramo, el resumen o la copia del día).
  */
 @Slf4j
 @Service
@@ -64,42 +68,71 @@ public class AlertService {
     private final AlertStateRepository states;
     private final TouchedOrderRepository touched;
     private final WatchItemRepository items;
-    private final WatchListService lists;
     private final WatchlistViewService watchlist;
-    private final SettingsService settings;
     private final BackupService backup;
     private final WebPushService push;
     private final JsonMapper json;
     private final TransactionTemplate tx;
+    private final AlertWorkset workset;
 
     /** Usuarios con una comprobación en marcha: no se solapan dos del mismo. */
     private final Set<UUID> running = ConcurrentHashMap.newKeySet();
+    /** Estado de avisos de cada usuario: se lee una vez y se escribe solo cuando cambia. */
+    private final Map<UUID, AlertState> stateCache = new ConcurrentHashMap<>();
+    /** Órdenes ya apuntadas de cada usuario ({@link #touchedKey}): se leen una vez. */
+    private final Map<UUID, Set<String>> touchedCache = new ConcurrentHashMap<>();
+
+    /** El usuario ha cambiado algo (ha podido descartar órdenes o borrar la cuenta): se vuelve a leer. */
+    @EventListener
+    public void onUserDataChanged(UserDataChangedEvent event) {
+        forget(event.userId());
+    }
+
+    private void forget(UUID userId) {
+        stateCache.remove(userId);
+        touchedCache.remove(userId);
+    }
 
     /**
      * Una comprobación completa. {@code force}: ignora fines de semana, horas de silencio y el interruptor de
-     * avisos (botón «Comprobar ahora»). {@code scheduled}: la lanza la tarea programada y cuenta para el intervalo.
+     * avisos (botón «Comprobar ahora»). {@code maxAgeMs}: antigüedad máxima de los precios (null: la normal).
      */
-    public List<Alert> tick(UUID userId, Instant now, boolean force, boolean scheduled) {
+    public List<Alert> tick(UUID userId, Instant now, boolean force, Long maxAgeMs) {
         if (!running.add(userId)) return List.of();
         try {
+            AlertWorkset.UserData data = workset.get(userId);
+            if (data == null) {
+                forget(userId);
+                return List.of();
+            }
             ZonedDateTime local = now.atZone(MADRID);
             LocalDate today = local.toLocalDate();
-            AlertState state = states.findById(userId).orElseGet(() -> new AlertState(userId));
+            AlertState state = stateCache.computeIfAbsent(userId,
+                    id -> states.findById(id).orElseGet(() -> new AlertState(id)));
+            String memoryBefore = state.getMemory();
+            LocalDate summaryBefore = state.getLastSummaryOn();
+            LocalDate backupBefore = state.getLastBackupOn();
             try {
-                return check(userId, now, local, today, state, force);
+                return check(userId, data, now, local, today, state, force, maxAgeMs);
             } finally {
-                if (scheduled) state.setLastCheckedAt(now);
-                states.save(state);
+                boolean changed = state.getLastCheckedAt() == null
+                        || !Objects.equals(state.getMemory(), memoryBefore)
+                        || !Objects.equals(state.getLastSummaryOn(), summaryBefore)
+                        || !Objects.equals(state.getLastBackupOn(), backupBefore);
+                if (changed) {
+                    state.setLastCheckedAt(now);
+                    stateCache.put(userId, states.save(state));
+                }
             }
         } finally {
             running.remove(userId);
         }
     }
 
-    private List<Alert> check(UUID userId, Instant now, ZonedDateTime local, LocalDate today, AlertState state,
-                              boolean force) {
+    private List<Alert> check(UUID userId, AlertWorkset.UserData data, Instant now, ZonedDateTime local,
+                              LocalDate today, AlertState state, boolean force, Long maxAgeMs) {
         dailySnapshot(userId, today, state);
-        Settings s = settings.get(userId);
+        Settings s = data.settings();
         Settings.Notifications n = s.notifications();
         String hhmm = AlertRules.hhmm(local.toLocalTime());
         if (!force) {
@@ -108,7 +141,7 @@ public class AlertService {
             if (n.quietHours() && AlertRules.inTimeRange(hhmm, n.quietFrom(), n.quietTo())) return List.of();
         }
 
-        List<Row> rows = rows(userId);
+        List<Row> rows = rows(data, maxAgeMs);
         // Las órdenes tocadas se apuntan siempre, también con los avisos apagados: quedan para revisarlas en la app.
         recordTouched(userId, rows, now);
         if (!force && !n.enabled()) return List.of();
@@ -145,11 +178,15 @@ public class AlertService {
         return alerts;
     }
 
-    /** Todas las filas de todas las listas. Un valor puede estar en varias listas con niveles distintos. */
-    public List<Row> rows(UUID userId) {
+    /**
+     * Todas las filas de todas las listas, con los datos en memoria y los precios de la caché de mercado. Un valor
+     * puede estar en varias listas con niveles distintos.
+     */
+    private List<Row> rows(AlertWorkset.UserData data, Long maxAgeMs) {
         List<Row> rows = new ArrayList<>();
-        for (ListResponse l : lists.all(userId)) {
-            WatchlistView view = watchlist.view(userId, l.id(), false, null);
+        for (AlertWorkset.ListData l : data.lists()) {
+            if (l.items().isEmpty()) continue;
+            WatchlistView view = watchlist.build(l.list(), l.items(), data.settings(), false, maxAgeMs);
             rows.addAll(view.rows());
         }
         return rows;
@@ -157,7 +194,7 @@ public class AlertService {
 
     /** Apunta las órdenes activas cuyo precio ya ha tocado la cotización (una vez por orden y precio). */
     public void recordTouched(UUID userId, List<Row> rows, Instant now) {
-        Set<String> known = null;
+        Set<String> known = touchedCache.get(userId);
         for (Row row : rows) {
             ItemResponse item = row.item();
             Double price = row.quote() == null || row.quote().stale() ? null : row.quote().price();
@@ -166,7 +203,8 @@ public class AlertService {
             if (known == null) {
                 known = touched.findByUserIdOrderByTouchedAtAscIdAsc(userId).stream()
                         .map(t -> touchedKey(t.getItemId(), t.getOrderPrice()))
-                        .collect(Collectors.toCollection(java.util.HashSet::new));
+                        .collect(Collectors.toCollection(ConcurrentHashMap::newKeySet));
+                touchedCache.put(userId, known);
             }
             // Un valor puede estar en varias listas: el add evita apuntarlo dos veces en la misma vuelta.
             if (!known.add(touchedKey(item.id(), orderPrice))) continue;
@@ -194,7 +232,8 @@ public class AlertService {
     /** Órdenes tocadas pendientes de revisar. Se olvidan solas si la orden se quita o cambia de precio. */
     @Transactional
     public List<TouchedOrderResponse> touchedOrders(UUID userId) {
-        touched.forgetStale(userId);
+        // Si se olvida alguna, la lista en memoria ya no vale.
+        if (touched.forgetStale(userId) > 0) touchedCache.remove(userId);
         List<TouchedOrder> pending = touched.findByUserIdOrderByTouchedAtAscIdAsc(userId).stream()
                 .filter(t -> !t.isDismissed()).toList();
         Map<Long, WatchItem> byId = items.findAllById(pending.stream().map(TouchedOrder::getItemId).toList()).stream()
@@ -209,7 +248,8 @@ public class AlertService {
 
     /** Comprueba ahora las órdenes de todas las listas y devuelve las pendientes. */
     public List<TouchedOrderResponse> checkTouched(UUID userId) {
-        recordTouched(userId, rows(userId), Instant.now());
+        AlertWorkset.UserData data = workset.get(userId);
+        if (data != null) recordTouched(userId, rows(data, null), Instant.now());
         return touchedOrders(userId);
     }
 

@@ -67,7 +67,14 @@ public class WatchlistViewService {
     }
 
     private WatchlistView build(UUID userId, ListResponse list, List<ItemResponse> rows, boolean force, Long maxAgeMs) {
-        Settings s = settings.get(userId);
+        return build(list, rows, settings.get(userId), force, maxAgeMs);
+    }
+
+    /**
+     * Monta la vista con datos que ya se tienen (el vigilante de avisos los guarda en memoria): no lee nada de la
+     * base de datos, solo pide precios, consenso y cambios a la caché de mercado.
+     */
+    public WatchlistView build(ListResponse list, List<ItemResponse> rows, Settings s, boolean force, Long maxAgeMs) {
         List<String> symbols = rows.stream().map(ItemResponse::symbol).toList();
 
         Map<String, Quote> quotes = market.getQuotes(symbols, force, maxAgeMs != null ? maxAgeMs : market.quoteTtlMs());
