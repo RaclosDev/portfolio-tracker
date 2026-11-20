@@ -13,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 /**
@@ -42,19 +43,36 @@ public class PublicMarketService {
     private volatile Snapshot landing;
     private volatile Snapshot demo;
     private final Map<String, Intraday> intraday = new ConcurrentHashMap<>();
+    /*
+     * ReentrantLock y no synchronized: las peticiones van en hilos virtuales y, en Java 21, uno que espera dentro de
+     * synchronized deja bloqueado su hilo real. Con un solo procesador (Render) las tareas que espera no llegaban a
+     * ejecutarse y la app entera se quedaba colgada.
+     */
+    private final ReentrantLock landingLock = new ReentrantLock();
+    private final ReentrantLock demoLock = new ReentrantLock();
 
     /** Cotización y velas de 5 minutos de las últimas sesiones. */
-    public synchronized Snapshot landing() {
-        if (fresh(landing)) return landing;
-        landing = build(LANDING, s -> market.getCandles(s, IntradayInterval.M5).candles());
-        return landing;
+    public Snapshot landing() {
+        landingLock.lock();
+        try {
+            if (fresh(landing)) return landing;
+            landing = build(LANDING, s -> market.getCandles(s, IntradayInterval.M5).candles());
+            return landing;
+        } finally {
+            landingLock.unlock();
+        }
     }
 
     /** Cotización y velas diarias de cinco años. */
-    public synchronized Snapshot demo() {
-        if (fresh(demo)) return demo;
-        demo = build(DEMO, s -> market.getCandles(s, null).candles());
-        return demo;
+    public Snapshot demo() {
+        demoLock.lock();
+        try {
+            if (fresh(demo)) return demo;
+            demo = build(DEMO, s -> market.getCandles(s, null).candles());
+            return demo;
+        } finally {
+            demoLock.unlock();
+        }
     }
 
     /** Velas intradía reales de un valor del catálogo de la demo; vacío si no es de la lista o no hay datos. */

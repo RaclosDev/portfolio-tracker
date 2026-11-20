@@ -11,7 +11,8 @@ services:
     autoDeployTrigger: "off"
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    healthCheckPath: /actuator/health/liveness
+    # Sin healthCheckPath: con 0,1 CPU una petición pesada retrasa la respuesta más de 5 s y Render
+    # mataba la instancia. Sin ruta, Render solo comprueba que el puerto acepta conexiones.
     domains:
       - cartera.raclos.es
     envVars:

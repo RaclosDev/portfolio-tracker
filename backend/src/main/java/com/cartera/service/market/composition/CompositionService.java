@@ -16,6 +16,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Composición de fondos y ETF: qué empresas llevan dentro y con qué peso. Se prueban las fuentes en orden
@@ -43,7 +44,8 @@ public class CompositionService {
     /** Ticker de cada ISIN ya resuelto (el valor vacío es «OpenFIGI no lo conoce»). */
     private final Map<String, String> isinTicker = new ConcurrentHashMap<>();
     /** Las consultas a OpenFIGI van de una en una: sin clave admite pocas por minuto. */
-    private final Object figiLock = new Object();
+    /** ReentrantLock y no synchronized: en Java 21 un hilo virtual que espera la red dentro de synchronized bloquea su hilo real. */
+    private final ReentrantLock figiLock = new ReentrantLock();
 
     public CompositionService(List<CompositionSource> sources, MarketCacheRepository cache, JsonMapper json, OpenFigiClient figi) {
         this.sources = sources;
@@ -116,7 +118,8 @@ public class CompositionService {
                 String ticker = text(r.data());
                 if (ticker != null || now - r.fetchedAtMillis() < UNKNOWN_TICKER_TTL_MS) isinTicker.put(isin, ticker != null ? ticker : "");
             });
-            synchronized (figiLock) {
+            figiLock.lock();
+            try {
                 List<String> ask = missing.stream().filter(i -> !isinTicker.containsKey(i)).toList();
                 if (!ask.isEmpty()) {
                     Map<String, String> found;
@@ -130,6 +133,8 @@ public class CompositionService {
                         cache.save(ISIN_TICKER_KIND, isin, ticker);
                     });
                 }
+            } finally {
+                figiLock.unlock();
             }
         }
         return comp.withHoldings(comp.holdings().stream().map(h -> {

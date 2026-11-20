@@ -30,6 +30,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static java.util.Map.entry;
 
@@ -96,6 +97,8 @@ public class YahooProvider implements MarketDataProvider {
     private final HttpClient client = MarketHttp.newClient(true);
     private final Map<String, Cached> chartCache = Collections.synchronizedMap(new LinkedHashMap<>());
     private volatile String crumb;
+    /** ReentrantLock y no synchronized: en Java 21 un hilo virtual que espera la red dentro de synchronized bloquea su hilo real. */
+    private final ReentrantLock crumbLock = new ReentrantLock();
     private volatile long quoteBlockedUntil;
     private volatile long crumbRetryMs = CRUMB_RETRY_MS;
     private volatile SourceError quoteError;
@@ -119,7 +122,16 @@ public class YahooProvider implements MarketDataProvider {
         }
     }
 
-    private synchronized String crumb(boolean refresh) {
+    private String crumb(boolean refresh) {
+        crumbLock.lock();
+        try {
+            return crumbLocked(refresh);
+        } finally {
+            crumbLock.unlock();
+        }
+    }
+
+    private String crumbLocked(boolean refresh) {
         if (crumb != null && !refresh) return crumb;
         try {
             try {
