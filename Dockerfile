@@ -57,6 +57,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
 USER appuser:appgroup
 
 # Plan gratuito de Render: 512 MB y 0,1 CPU. Pila de hilo pequeña y el heap acotado a la memoria del contenedor.
-# Igual que porrApp y loopdeck: JIT completo (C2). El cuelgue de Render eran hilos virtuales bloqueados (#109), no el JIT;
-# solo C1 hacía que cada petición gastara más CPU y la carga se encolaba.
-ENTRYPOINT ["java", "-Dfile.encoding=UTF-8", "-Dsun.jnu.encoding=UTF-8", "-Xss256k", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
+# Con 0,1 CPU, el JIT completo (C2) y un GC con muchos hilos se comen el procesador al arrancar: Spring tardaba
+# 180-200 s en levantar (despliegues de 4-5 min) frente a 105-115 s con estos flags (#108). Solo C1, un hilo de
+# compilación, GC en serie y 1 procesador.
+ENTRYPOINT ["java", "-Dfile.encoding=UTF-8", "-Dsun.jnu.encoding=UTF-8", "-Xss256k", "-XX:MaxRAMPercentage=75.0", "-XX:TieredStopAtLevel=1", "-XX:CICompilerCount=1", "-XX:+UseSerialGC", "-XX:ActiveProcessorCount=1", "-jar", "app.jar"]
