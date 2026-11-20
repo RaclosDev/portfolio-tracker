@@ -82,11 +82,29 @@ public class MarketHttp {
         return r;
     }
 
-    private static HttpResponse<String> send(HttpClient client, HttpRequest request) {
+    /** Sin redirecciones: una ficha que redirige es que ya no existe (o que la fuente ha cambiado). */
+    public static HttpClient noRedirectClient() {
+        return HttpClient.newBuilder().connectTimeout(TIMEOUT).followRedirects(HttpClient.Redirect.NEVER).build();
+    }
+
+    /** Respuesta tal cual, sin convertir los códigos de error en excepción (sí los fallos de red). */
+    public HttpResponse<String> raw(HttpClient client, String url, Map<String, String> headers) {
+        return exchange(client, request(url, headers).GET().build());
+    }
+
+    /** Lanza el error con el código si la respuesta no es 2xx. */
+    public static void requireOk(HttpResponse<String> res) {
+        if (res.statusCode() / 100 == 2) return;
+        String where = res.uri().getHost() + res.uri().getPath();
+        String body = res.body() == null ? "" : res.body().replaceAll("\\s+", " ").trim();
+        throw new MarketSourceException("HTTP " + res.statusCode() + " en " + where
+                + (body.isEmpty() || res.statusCode() < 400 ? "" : ": " + body.substring(0, Math.min(160, body.length()))));
+    }
+
+    private static HttpResponse<String> exchange(HttpClient client, HttpRequest request) {
         String where = request.uri().getHost() + request.uri().getPath();
-        HttpResponse<String> res;
         try {
-            res = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            return client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (HttpTimeoutException e) {
             throw new MarketSourceException("timeout en " + where, e);
         } catch (IOException e) {
@@ -95,11 +113,11 @@ public class MarketHttp {
             Thread.currentThread().interrupt();
             throw new MarketSourceException("Consulta interrumpida a " + where, e);
         }
-        if (res.statusCode() >= 400) {
-            String body = res.body() == null ? "" : res.body().replaceAll("\\s+", " ").trim();
-            throw new MarketSourceException("HTTP " + res.statusCode() + " en " + where
-                    + (body.isEmpty() ? "" : ": " + body.substring(0, Math.min(160, body.length()))));
-        }
+    }
+
+    private static HttpResponse<String> send(HttpClient client, HttpRequest request) {
+        HttpResponse<String> res = exchange(client, request);
+        if (res.statusCode() >= 400) requireOk(res);
         return res;
     }
 
