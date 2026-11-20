@@ -1,0 +1,486 @@
+import { DEFAULT_TAG_NAMES, instrumentKind, type CarteraRowBase, type Operation } from '@/shared';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
+import { money, pct } from '../../lib/format.ts';
+import { anyQuoteToday } from '../../components/QuoteAge.tsx';
+import { tabListKeys } from '../../lib/tabs.ts';
+import { PortfolioCharts, PortfolioMix } from './PortfolioCharts.tsx';
+import { ExposureView } from './ExposureView.tsx';
+import { ClosedView, HoldingsView, type CarteraTag } from './HoldingsView.tsx';
+import { buildModel, signed, type CarteraModel } from './model.ts';
+import { TagFilters, type TypeFilter } from '../watchlist/TagFilters.tsx';
+import { OperationDialog, type OperationDraft } from './OperationDialog.tsx';
+import { RegistroView } from './RegistroView.tsx';
+import { RentaView } from './RentaView.tsx';
+import { TickerDialog } from './TickerDialog.tsx';
+import { HoldingExpanded } from './HoldingExpanded.tsx';
+import { TickerRail } from '../watchlist/TickerRail.tsx';
+import { PortfolioSkeleton } from '../../components/Skeleton.tsx';
+import { SelectMenu } from '../../components/SelectMenu.tsx';
+
+const CarteraImportDialog = lazy(() => import('./CarteraImportDialog.tsx').then((m) => ({ default: m.CarteraImportDialog })));
+
+type Tab = 'resumen' | 'abiertas' | 'exposicion' | 'cerradas' | 'registro' | 'renta';
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'resumen', label: 'Resumen' },
+  { id: 'abiertas', label: 'En cartera' },
+  { id: 'exposicion', label: 'Exposición' },
+  { id: 'cerradas', label: 'Cerradas' },
+  { id: 'registro', label: 'Registro' },
+  { id: 'renta', label: 'Renta' },
+];
+const TAB_KEY = 'watchlist.cartera.pestana';
+
+function Figure({ label, value, sub, delta, title }: { label: string; value: string; sub?: string; delta?: number | null; title?: string }) {
+  return (
+    <div className="hl-cell" title={title}>
+      <p className="hl-label">{label}</p>
+      <p className={`hl-figure num${delta !== undefined ? ` delta ${signed(delta)}` : ''}`}>
+        {value} {sub && <small>{sub}</small>}
+      </p>
+    </div>
+  );
+}
+
+function Totals({ model }: { model: CarteraModel }) {
+  const s = model.valuation.summary;
+  const complete = s.missing.length === 0;
+  return (
+    <div className="pcard portfolio-summary">
+    <section className="highlights cartera-totals" aria-label="Resumen de la cartera">
+      <Figure
+        label="Ganancia total · desde el inicio"
+        value={money(complete ? s.totalEur : null, 'EUR', 2)}
+        delta={s.totalEur}
+        title="Resultado económico acumulado: latente + ganancias en ventas + cobros"
+      />
+      <Figure label="Valor actual en acciones" value={money(complete ? s.valueEur : null, 'EUR', 2)} title="Posiciones abiertas a precio de mercado. No incluye saldo en efectivo" />
+      {s.flowDays != null && s.flowDays < 365 && s.xirr != null ? (
+        // Con menos de un año no se anualiza (norma de presentación de rentabilidades): se enseña la del periodo.
+        <Figure label="Rentabilidad (TIR) · desde el inicio" value={pct((1 + s.xirr) ** (s.flowDays / 365) - 1, 2)} sub="sin anualizar" delta={s.xirr}
+          title="Rentabilidad del dinero invertido según las fechas de compras, ventas y cobros, y el valor actual. Con menos de un año de historia no se anualiza" />
+      ) : (
+        <Figure label="TIR anual · desde el inicio" value={pct(s.xirr, 2)} delta={s.xirr} title="Rentabilidad anualizada del dinero invertido según las fechas de compras, ventas y cobros, y el valor actual de las acciones" />
+      )}
+      <Figure label={anyQuoteToday(model.valuation.open.map((r) => r.quote)) ? 'Cotización de hoy' : 'Última sesión'} value={money(complete ? s.dayChangeEur : null, 'EUR', 2)} sub={pct(complete ? s.dayChangePct : null, 2)} delta={s.dayChangeEur}
+        title="Variación de precio de las acciones que tienes ahora, al cambio actual. No es el resultado diario de la cuenta ni incluye ventas o cobros de hoy" />
+      {s.missing.length > 0 && (
+        <div className="hl-cell hl-cell--full">
+          <p className="hl-value muted small">
+            Falta valorar: {s.missing.join(', ')}. El total y el latente se mostrarán cuando la valoración esté completa.
+          </p>
+        </div>
+      )}
+      {s.sameIsin.length > 0 && (
+        <div className="hl-cell hl-cell--full">
+          <p className="hl-value muted small">
+            Mismo valor en varias bolsas (un solo FIFO por ISIN): {s.sameIsin.map((g) => `${g.tickers.join(' + ')} (${g.isin})`).join('; ')}.
+          </p>
+        </div>
+      )}
+    </section>
+    <section className="cartera-breakdown" aria-label="Desglose del resultado">
+      <h2>De dónde sale la ganancia total</h2>
+      <div className="highlights">
+        <Figure label="Latente" value={money(complete ? s.unrealizedEur : null, 'EUR', 2)} sub={pct(complete && s.costEur ? s.unrealizedEur / s.costEur : null)} delta={s.unrealizedEur} title="Ganancia o pérdida de las acciones que sigues teniendo" />
+        <Figure label="Ganancia en ventas" value={money(s.realizedEur, 'EUR', 2)} delta={s.realizedEur} title="Importe de las ventas menos el coste FIFO de las acciones vendidas" />
+        <Figure label="Cobros" value={money(s.incomeEur, 'EUR', 2)} title="Dividendos y primas (bruto − comisiones − retención en origen)" />
+      </div>
+    </section>
+    </div>
+  );
+}
+
+function ResumenView({ model }: { model: CarteraModel }) {
+  const { open } = model.valuation;
+  const byBroker = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of open) {
+      if (r.valueEur == null || r.ledger.shares <= 0) continue;
+      const per = r.valueEur / r.ledger.shares;
+      for (const [b, n] of Object.entries(r.ledger.sharesByBroker)) if (n > 0) m.set(b, (m.get(b) ?? 0) + n * per);
+    }
+    return [...m].map(([label, value]) => ({ label, value }));
+  }, [open]);
+  const years = useMemo(() => {
+    const m = new Map<number, { realized: number; dividends: number; other: number }>();
+    const get = (y: number) => m.get(y) ?? (m.set(y, { realized: 0, dividends: 0, other: 0 }), m.get(y)!);
+    for (const s of model.ledger.sales) get(s.year).realized += s.gainEur;
+    for (const i of model.ledger.income) {
+      if (i.type === 'dividend' || i.type === 'attendance_premium') get(i.year).dividends += i.econEur;
+      else get(i.year).other += i.econEur;
+    }
+    return [...m].sort((a, b) => b[0] - a[0]);
+  }, [model.ledger]);
+  const max = Math.max(1, ...years.map(([, v]) => Math.abs(v.realized + v.dividends + v.other)));
+  const s = model.valuation.summary;
+
+  return (
+    <div className="portfolio-overview">
+      <div className="portfolio-ledger">
+        <Totals model={model} />
+        <section className="pcard portfolio-annual" aria-labelledby="annual-results-title">
+          <div className="pcard__head">
+            <h2 id="annual-results-title">Ventas y cobros por año</h2>
+          </div>
+          <p className="pcard__note">Lo ya realizado: ganancias en ventas y cobros. No incluye la variación del latente.</p>
+          <div className="table-wrap" role="region" aria-label="Detalle anual de ventas y cobros" tabIndex={0}>
+            <table className="wl-table cartera-table">
+              <thead>
+                <tr>
+                  <th scope="col">Año</th>
+                  <th scope="col" className="al-right">Ganancia en ventas</th>
+                  <th scope="col" className="al-right">Dividendos</th>
+                  <th scope="col" className="al-right">Otros cobros</th>
+                  <th scope="col" className="al-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {years.length === 0 && <tr><td colSpan={5} className="muted">Todavía no hay ventas ni cobros registrados.</td></tr>}
+                {years.map(([y, v]) => {
+                  const total = v.realized + v.dividends + v.other;
+                  return (
+                    <tr key={y}>
+                      <td className="num">{y}</td>
+                      <td className={`al-right num delta ${signed(v.realized)}`}>{money(v.realized, 'EUR', 2)}</td>
+                      <td className="al-right num">{money(v.dividends, 'EUR', 2)}</td>
+                      <td className="al-right num">{money(v.other, 'EUR', 2)}</td>
+                      <td className="al-right">
+                        <span className="databar">
+                          <span
+                            className={`databar__fill${total < 0 ? ' databar__fill--neg' : ''}`}
+                            style={{ width: `${(Math.abs(total) / max) * 100}%` }}
+                            aria-hidden
+                          />
+                          <span className={`databar__text num delta ${signed(total)}`}>{money(total, 'EUR', 2)}</span>
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {years.length > 0 && <tfoot><tr>
+                <th scope="row">Total</th>
+                <td className={`al-right num delta ${signed(s.realizedEur)}`}>{money(s.realizedEur, 'EUR', 2)}</td>
+                <td className="al-right num">{money(s.dividendsEur, 'EUR', 2)}</td>
+                <td className="al-right num">{money(s.otherIncomeEur, 'EUR', 2)}</td>
+                <td className={`al-right num delta ${signed(s.realizedEur + s.incomeEur)}`}>{money(s.realizedEur + s.incomeEur, 'EUR', 2)}</td>
+              </tr></tfoot>}
+            </table>
+          </div>
+        </section>
+      </div>
+      <div className="portfolio-analytics">
+        <PortfolioCharts model={model} />
+        <PortfolioMix model={model} byBroker={byBroker} />
+        <section className="pcard portfolio-lifetime" aria-labelledby="lifetime-title">
+          <div className="pcard__head">
+            <h2 id="lifetime-title">Desde el principio</h2>
+          </div>
+          <table className="renta-summary">
+            <tbody>
+              <tr>
+                <th scope="row">Compras acumuladas</th>
+                <td className="al-right num">{money(s.boughtEur, 'EUR', 2)}</td>
+              </tr>
+              <tr>
+                <th scope="row">Coste de lo que tienes</th>
+                <td className="al-right num">{money(model.ledger.tickers.reduce((sum, t) => sum + t.costEur, 0), 'EUR', 2)}</td>
+              </tr>
+              <tr>
+                <th scope="row">Dividendos</th>
+                <td className="al-right num">{money(s.dividendsEur, 'EUR', 2)}</td>
+              </tr>
+              <tr>
+                <th scope="row">Primas y derechos</th>
+                <td className="al-right num">{money(s.otherIncomeEur, 'EUR', 2)}</td>
+              </tr>
+              <tr>
+                <th scope="row">Valores en cartera / cerrados</th>
+                <td className="al-right num">
+                  {model.valuation.open.length} / {model.valuation.closed.length}
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Operaciones</th>
+                <td className="al-right num">{model.view.operations.length}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+interface Props {
+  model: CarteraModel | null;
+  isPending: boolean;
+  error: Error | null;
+  onRetry?: () => void;
+  /** Alta que llega desde fuera («Lo he comprado» en la lista de vigilancia). */
+  draft?: OperationDraft | null;
+  onDraftUsed?: () => void;
+}
+
+const FILTERS_KEY = 'cartera.filtros';
+/** Sin tildes ni mayúsculas, para buscar «telefonica» y encontrar «Telefónica». */
+const norm = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+/** Cartera real a partir del registro de operaciones (FIFO), con resumen, cerradas, registro y Renta. */
+
+const SEARCH_HINT: Partial<Record<string, string>> = {
+  exposicion: 'Buscar empresa, ticker o ISIN',
+  registro: 'Buscar ticker, nombre o nota',
+};
+
+export function CarteraPage({ model: full, isPending, error, onRetry, draft, onDraftUsed }: Props) {
+  // Filtros de tipo y divisa: valen para todas las pestañas menos Renta (se declara todo) y se recuerdan.
+  const [filters, setFilters] = useState<{ type: TypeFilter; currency: string }>(() => {
+    try {
+      const f = JSON.parse(localStorage.getItem(FILTERS_KEY) ?? '{}') as { type?: TypeFilter; currency?: string };
+      return { type: f.type ?? 'all', currency: f.currency ?? 'all' };
+    } catch {
+      return { type: 'all', currency: 'all' };
+    }
+  });
+  useEffect(() => localStorage.setItem(FILTERS_KEY, JSON.stringify(filters)), [filters]);
+  // Pulsar la etiqueta de divisa o tipo de una fila filtra por ella; pulsarla otra vez quita el filtro.
+  const onTag = (tag: CarteraTag) => setFilters((f) => ({ ...f, [tag.kind]: f[tag.kind] === tag.value ? 'all' : tag.value }));
+  const tagged = useMemo(() => {
+    const used = new Set(full?.view.operations.map((o) => o.ticker));
+    return (full?.view.instruments ?? []).filter((i) => used.has(i.ticker)).map((i) => {
+      const quote = i.symbol ? full!.view.quotes[i.symbol] : undefined;
+      const text = norm([i.name, i.ticker, i.symbol, i.isin].filter(Boolean).join(' '));
+      return { ticker: i.ticker, kind: instrumentKind(i, quote?.quoteType), currency: quote?.currency ?? i.currency, text };
+    });
+  }, [full]);
+  const currencies = useMemo(() => [...new Set(tagged.map((t) => t.currency))].sort(), [tagged]);
+  const filtered = filters.type !== 'all' || filters.currency !== 'all';
+  const [tab, setTab] = useState<Tab>(() => TABS.find((item) => item.id === localStorage.getItem(TAB_KEY))?.id ?? 'resumen');
+  useEffect(() => localStorage.setItem(TAB_KEY, tab), [tab]);
+  /** Buscador común a todas las pestañas, siempre en el mismo sitio. En «En cartera» y «Cerradas» filtra los valores; Exposición y Registro lo aplican a sus filas. */
+  const [search, setSearch] = useState('');
+  /** Hueco al final de la barra de filtros donde cada pestaña pone los suyos. */
+  const [filterSlot, setFilterSlot] = useState<HTMLElement | null>(null);
+  const searchable = tab === 'abiertas' || tab === 'cerradas';
+  const q = searchable ? norm(search.trim()) : '';
+  const model = useMemo(() => {
+    if (!full || (!filtered && !q)) return full;
+    const keep = new Set(
+      tagged
+        .filter((t) => (filters.type === 'all' || t.kind === filters.type) && (filters.currency === 'all' || t.currency === filters.currency))
+        .filter((t) => !q || t.text.includes(q))
+        .map((t) => t.ticker),
+    );
+    return buildModel({ ...full.view, operations: full.view.operations.filter((o) => keep.has(o.ticker)) });
+  }, [full, filtered, filters, tagged, q]);
+  const [ticker, setTicker] = useState<string | null>(null);
+  /** Valor desplegado bajo su fila en «En cartera» y «Cerradas», como en Vigilar. */
+  const [openTicker, setOpenTicker] = useState<string | null>(null);
+  const toggleOpen = (t: string) => setOpenTicker((cur) => (cur === t ? null : t));
+  const [editing, setEditing] = useState<{ op: Operation | null; draft?: OperationDraft } | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  useEffect(() => {
+    if (draft) {
+      setEditing({ op: null, draft });
+      onDraftUsed?.();
+    }
+  }, [draft, onDraftUsed]);
+
+  if (error)
+    return (
+      <div className="error-box" role="alert">
+        No se pudo cargar la cartera: {error.message}{' '}
+        {onRetry && <button type="button" className="btn" onClick={onRetry}>Reintentar</button>}
+      </div>
+    );
+  if (isPending || !model || !full) return <PortfolioSkeleton />;
+  const empty = full.view.operations.length === 0;
+  const reviewCount = model.view.operations.filter((o) => o.needsReview).length;
+  /**
+   * Salto desde el carril, igual que en Vigilar: el detalle pasa a la fila elegida, la página se recoloca
+   * al momento para que el detalle no se mueva y la transición solo cuenta el cambio.
+   */
+  const switchTo = (rows: CarteraRowBase[], from: string, to: string) => {
+    const apply = () => {
+      flushSync(() => setOpenTicker(to));
+      const tr = document.querySelector('.xp--cartera')?.closest('tr')?.previousElementSibling;
+      if (!tr) return;
+      const header = document.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 0;
+      window.scrollBy({ top: tr.getBoundingClientRect().top - Math.max(0, header), behavior: 'instant' });
+    };
+    if (!document.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      apply();
+      return;
+    }
+    const root = document.documentElement;
+    const at = (t: string) => rows.findIndex((r) => r.ticker === t);
+    root.dataset.xpSwitch = at(to) > at(from) ? 'down' : 'up';
+    document.startViewTransition(apply).finished.finally(() => delete root.dataset.xpSwitch);
+  };
+  const expand = (t: string, rows: CarteraRowBase[]) =>
+    t === openTicker ? (
+      <HoldingExpanded
+        model={full}
+        ticker={t}
+        rail={rows.length > 1 ? (
+          <TickerRail
+            label="Otros valores de la tabla"
+            items={rows.map((r) => ({
+              id: r.ticker,
+              ticker: r.ticker,
+              name: r.name,
+              price: r.price ?? r.quote?.price ?? null,
+              currency: r.currency,
+              changePct: r.changePct ?? r.quote?.changePct ?? null,
+            }))}
+            currentId={t}
+            onPick={(id) => switchTo(rows, t, String(id))}
+          />
+        ) : undefined}
+        onClose={() => setOpenTicker(null)}
+        onEditOperation={(op) => setEditing({ op })}
+        onAddOperation={(draft) => setEditing({ op: null, draft })}
+      />
+    ) : null;
+
+  return (
+    <div className="cartera">
+      <div className="toolbar cartera-toolbar no-print">
+        <div className="segmented cartera-tabs" role="tablist" aria-label="Secciones de la cartera" onKeyDown={tabListKeys}>
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              id={`cartera-tab-${t.id}`}
+              aria-controls="cartera-panel"
+              tabIndex={tab === t.id ? 0 : -1}
+              className={tab === t.id ? 'on' : ''}
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+              {t.id === 'abiertas' && <span className="count">{model.valuation.open.length}</span>}
+              {t.id === 'cerradas' && <span className="count">{model.valuation.closed.length}</span>}
+              {t.id === 'registro' && reviewCount > 0 && (
+                <span className="count count--warn" title={`${reviewCount} operaciones marcadas para revisar`}>
+                  {reviewCount} por revisar
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+        <SelectMenu
+          className="cartera-tab-select"
+          label="Sección de Cartera"
+          value={tab}
+          onChange={setTab}
+          options={TABS.map((item) => ({ value: item.id, label: item.label }))}
+        />
+        <span className="spacer" />
+        {!empty && tab !== 'renta' && (
+          <button type="button" className="btn btn--primary" data-tour="operation" onClick={() => setEditing({ op: null })}>
+            Añadir operación
+          </button>
+        )}
+      </div>
+
+      {!empty && tab !== 'renta' && (
+        <div className="cartera-filters no-print">
+          {tab !== 'resumen' && (
+            <input
+              type="search"
+              className="search"
+              placeholder={SEARCH_HINT[tab] ?? 'Buscar valor, ticker o ISIN'}
+              aria-label="Buscar"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          )}
+          <TagFilters
+            type={filters.type}
+            onType={(type) => setFilters((f) => ({ ...f, type }))}
+            currency={filters.currency}
+            currencies={currencies}
+            onCurrency={(currency) => setFilters((f) => ({ ...f, currency }))}
+            names={{ ...DEFAULT_TAG_NAMES, equity: 'Acciones', etf: 'ETF' }}
+          />
+          {filtered && (
+            <button type="button" className="btn btn--ghost" onClick={() => setFilters({ type: 'all', currency: 'all' })}>
+              Quitar filtros
+            </button>
+          )}
+          <div className="cartera-filters__extra" ref={setFilterSlot} />
+        </div>
+      )}
+      {full.ledger.issues.length > 0 && (
+        <div className="error-box">
+          El registro no cuadra:{' '}
+          {full.ledger.issues
+            .slice(0, 3)
+            .map((i) => `${i.ticker} ${i.date}: ${i.message}`)
+            .join(' · ')}
+        </div>
+      )}
+      {full.ledger.inTransitEur > 0 && <p className="muted">
+        Hay {money(full.ledger.inTransitEur, 'EUR', 2)} en traspasos pendientes de entrada. Este importe está incluido en el valor de la cartera.
+      </p>}
+
+      <div role="tabpanel" id="cartera-panel" aria-labelledby={`cartera-tab-${tab}`}>
+      {empty ? (
+        <div className="empty">
+          <p>Todavía no hay operaciones. Importa un Excel o CSV de tu bróker o añade la primera compra.</p>
+          <div className="row-actions" style={{ justifyContent: 'center' }}>
+            <button type="button" className="btn btn--primary" onClick={() => setImporting(true)}>
+              Importar operaciones
+            </button>
+            <button type="button" className="btn" data-tour="operation" onClick={() => setEditing({ op: null })}>
+              Añadir operación
+            </button>
+          </div>
+        </div>
+      ) : (filtered || q) && tab !== 'renta' && model.view.operations.length === 0 ? (
+        <p className="muted center">{q ? `Ningún valor de la cartera encaja con «${search.trim()}».` : 'Ningún valor de la cartera encaja con estos filtros.'}</p>
+      ) : (
+        <>
+          {tab === 'resumen' && <ResumenView model={model} />}
+          {tab === 'abiertas' && <HoldingsView model={model} onOpen={toggleOpen} onTag={onTag} expanded={expand} />}
+          {tab === 'exposicion' && <ExposureView model={model} onOpen={setTicker} search={search} filterSlot={filterSlot} />}
+          {tab === 'cerradas' && <ClosedView model={model} onOpen={toggleOpen} onTag={onTag} expanded={expand} />}
+          {tab === 'registro' && <RegistroView model={model} search={search} filterSlot={filterSlot} onImport={() => setImporting(true)} onEdit={(op) => setEditing({ op })} />}
+          {tab === 'renta' && <RentaView model={full} />}
+        </>
+      )}
+      </div>
+
+      {ticker && !editing && (
+        <TickerDialog
+          model={full}
+          ticker={ticker}
+          onClose={() => setTicker(null)}
+          onEditOperation={(op) => setEditing({ op })}
+          onAddOperation={(draft) => setEditing({ op: null, draft })}
+        />
+      )}
+      {editing && (
+        <OperationDialog
+          operation={editing.op}
+          draft={editing.draft}
+          // Un valor sin operaciones (se borraron) no manda: su símbolo guardado puede ser de otra cosa.
+          instruments={full.view.instruments.filter((i) => full.view.operations.some((o) => o.ticker === i.ticker))}
+          brokers={full.brokers}
+          holdings={full.valuation.open.map((r) => ({ ticker: r.ticker, members: r.ledger.members, name: r.name, shares: r.ledger.shares, price: r.price, currency: r.currency }))}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {importing && (
+        <Suspense fallback={null}>
+          <CarteraImportDialog view={full.view} onClose={() => setImporting(false)} />
+        </Suspense>
+      )}
+    </div>
+  );
+}
