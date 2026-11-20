@@ -10,26 +10,25 @@ Gracias por el interés. Es un proyecto personal, pero las correcciones y las pr
 
 ## Entorno local
 
-Requiere Node.js 22.13 o superior.
+Requiere Java 21, Node.js 22 y Docker.
 
 ```bash
-npm ci
-npm run dev
+docker compose up -d                    # PostgreSQL en localhost:5434
+cd backend && ./mvnw spring-boot:run    # API en http://localhost:8080
+cd frontend && npm ci && npm run dev    # web en http://localhost:5173
 ```
 
-La web arranca en `http://localhost:5173` y la API en `http://localhost:5174`. Sin `DATABASE_URL` se usa PGlite local, así que no hace falta instalar PostgreSQL. La [guía de configuración](docs/guia.md) detalla autenticación, notificaciones y despliegue, y [arquitectura](docs/arquitectura.md) explica cómo se reparte el código entre `apps/server`, `apps/web` y `packages/shared`.
+La [guía de configuración](docs/guia.md) detalla autenticación, notificaciones y despliegue, y [arquitectura](docs/arquitectura.md) explica cómo se reparte el código entre `backend` y `frontend`.
 
 ## Antes de abrir un pull request
 
 ```bash
-npm run lint
-npm run typecheck
-npm test
-npm run build
+cd backend && ./mvnw verify
+cd frontend && npm run lint && npm test && npm run build
 ```
 
 Son las mismas comprobaciones que ejecuta la CI; `main` solo admite cambios por pull request con la CI y CodeQL en verde.
 
-- Un pull request por cambio, con un título en formato [Conventional Commits](https://www.conventionalcommits.org/es/) en español (`feat(web): …`, `fix(server): …`).
+- Un pull request por cambio, con un título en formato [Conventional Commits](https://www.conventionalcommits.org/es/) en español (`feat(web): …`, `fix(api): …`).
 - Acompaña los cambios de comportamiento con sus tests.
 - No subas datos reales de carteras, claves ni archivos `.env`.

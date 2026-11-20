@@ -1,6 +1,6 @@
 name: CodeQL
 
-# Análisis estático de seguridad del código TypeScript. Las alertas aparecen en la pestaña
+# Análisis estático de seguridad del código (TypeScript de la web y Java de la API). Las alertas aparecen en la pestaña
 # Security del repositorio. No necesita compilar: build-mode none.
 on:
   push:
@@ -20,20 +20,24 @@ concurrency:
 
 jobs:
   analyze:
-    name: Analyze (javascript-typescript)
+    name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
       security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, java-kotlin]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Initialize CodeQL
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
-          languages: javascript-typescript
+          languages: ${{ matrix.language }}
           build-mode: none
       - name: Analyze
         uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
-          category: /language:javascript-typescript
+          category: /language:${{ matrix.language }}

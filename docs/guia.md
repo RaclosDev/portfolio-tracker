@@ -59,9 +59,9 @@ Se usa el último cierre conocido hasta cada fecha, con un máximo de siete día
 Todo en planes gratuitos: **Neon** (base de datos), **Render** (servidor), **UptimeRobot** (lo mantiene despierto) y el DNS de `raclos.es`.
 
 1. **Neon** → crea un proyecto en la región *AWS Europe Central 1 (Frankfurt)* y copia la cadena de conexión (*Connection string*, con `?sslmode=require`).
-2. **Claves de las notificaciones**: en este repositorio ejecuta `npm run claves-push` y guarda las dos claves.
+2. **Claves de las notificaciones**: `npx web-push generate-vapid-keys` y guarda las dos claves.
 3. **Render** → *New → Blueprint* con este repositorio (`render.yaml`). Rellena:
-   - `DATABASE_URL`: la cadena de Neon.
+   - `DATABASE_URL`: la cadena de conexión de Neon tal cual (`postgresql://usuario:clave@<host>.neon.tech/<base>?sslmode=require`). Si prefieres una URL `jdbc:postgresql://…` sin credenciales, añade `PGUSER` y `PGPASSWORD`.
    - `APP_PASSWORD`: la contraseña inicial de la cuenta propietaria (conserva la contraseña anterior al habilitar el registro).
    - `APP_OWNER_EMAIL`: el correo de la cuenta propietaria. Los datos existentes se conservan en la misma base de datos.
    - `VAPID_PUBLIC_KEY` y `VAPID_PRIVATE_KEY`: las del paso 2.
@@ -70,9 +70,9 @@ Todo en planes gratuitos: **Neon** (base de datos), **Render** (servidor), **Upt
 6. **UptimeRobot** → monitor HTTP(s) a `https://cartera.raclos.es/api/health` cada 5 minutos. Así no se duerme y los avisos funcionan siempre.
 7. **Datos**: entra en la web, *Ajustes → Copias y Excel → Importar JSON…* con una copia exportada antes (o importa el Excel con *Importar desde Excel o CSV…*).
 
-En producción se necesitan `APP_OWNER_EMAIL`, `APP_PASSWORD` y `SESSION_SECRET`. Al primer arranque con cuentas, los datos existentes se asignan al propietario sin moverlos. La contraseña se guarda como hash scrypt; posteriores cambios de `APP_PASSWORD` no la sustituyen. `APP_OWNER_EMAIL` debe seguir coincidiendo con el propietario. `SESSION_SECRET` firma el flujo de Google; las sesiones se almacenan en la base de datos y se revocan al cerrar sesión.
+En producción se necesitan `APP_OWNER_EMAIL`, `APP_PASSWORD` y `JWT_SECRET` (Render lo genera). Al primer arranque, la migración V2 copia los datos de la versión anterior (un esquema por cuenta) a las tablas nuevas y deja los esquemas antiguos como copia; en una base de datos vacía no hace nada. Las contraseñas anteriores (scrypt) siguen valiendo; posteriores cambios de `APP_PASSWORD` no las sustituyen. La sesión es un JWT de 15 minutos con un token de refresco rotatorio en cookie, guardado en la base de datos y revocado al cerrar sesión.
 
-Para habilitar Google, crea un cliente OAuth de tipo **Aplicación web** en Google Auth Platform. Añade `https://cartera.raclos.es/api/auth/google/callback` como URI de redirección autorizada y configura `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` en Render. La app pide los permisos `openid email`. Configura la audiencia externa y el estado de publicación en producción para admitir a cualquier usuario.
+Para habilitar Google, crea un cliente OAuth de tipo **Aplicación web** en Google Auth Platform. Añade `https://cartera.raclos.es` como origen de JavaScript autorizado y configura `GOOGLE_CLIENT_ID` en Render (el inicio de sesión usa Google Identity Services: no hace falta secreto). La app pide los permisos `openid email`. Configura la audiencia externa y el estado de publicación en producción para admitir a cualquier usuario.
 
 ### Cuentas
 
@@ -92,18 +92,17 @@ Las copias JSON contienen los datos de la cuenta que las exporta, sin credencial
 ## Desarrollo
 
 ```bash
-npm install
-npm run dev        # API :5174 + Vite :5173 con recarga al instante
-npm start          # web compilada en http://localhost:5174 (antes: npm run build)
-npm test           # tests (la base de datos de los tests es un PostgreSQL en memoria)
-npm run typecheck
-npm run seed -- copia.json --force   # carga una copia en la base de datos local
+docker compose up -d                     # PostgreSQL en localhost:5434 (contenedor cartera-db)
+cd backend && ./mvnw spring-boot:run     # API en :8080; Flyway crea o actualiza las tablas al arrancar
+cd frontend && npm run dev               # Vite en :5173 con recarga al instante; /api va a :8080 (API_URL para otro)
+cd backend && ./mvnw verify              # tests con PostgreSQL en Testcontainers y mínimo de cobertura
+docker compose --profile app up --build  # la imagen de producción contra la base de datos local
 ```
 
-En local no hace falta PostgreSQL: sin `DATABASE_URL` se usa **PGlite** (PostgreSQL en WebAssembly) en `apps/server/data/pg`. Sin `APP_PASSWORD` no se pide contraseña y sin claves VAPID no hay notificaciones.
+Sin `APP_PASSWORD` la cuenta propietaria no tiene contraseña; sin claves VAPID no hay notificaciones. Los avisos programados solo se envían con `ALERTS_SCHEDULER=true` (en local, déjalo sin poner: la base de datos puede tener suscripciones reales).
 
-Variables de entorno: `DATABASE_URL`, `APP_PASSWORD`, `APP_OWNER_EMAIL`, `SESSION_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `PUBLIC_URL`, `TZ` (Europe/Madrid), `PORT` (5174), `HOST`, `DATA_DIR`, `QUOTE_TTL_SECONDS` (45), `TARGETS_TTL_HOURS` (12).
+Variables de entorno: `DATABASE_URL` (la de Neon o JDBC), `PGUSER` y `PGPASSWORD` (solo con URL JDBC), `JWT_SECRET`, `APP_OWNER_EMAIL`, `APP_PASSWORD`, `REGISTRATION_ENABLED` (true), `GOOGLE_CLIENT_ID`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `ALERTS_SCHEDULER` (false), `PUBLIC_URL`, `CORS_ALLOWED_ORIGINS`, `PORT` (8080), `DB_POOL_SIZE` (5), `QUOTE_TTL_SECONDS`, `TARGETS_TTL_HOURS`.
 
-Estructura: `apps/server` (API, avisos y notificaciones), `apps/web` (interfaz, PWA), `packages/shared` (tipos y cálculos). Arquitectura y decisiones: [Arquitectura](arquitectura.md).
+Estructura: `backend` (API Spring Boot, avisos y notificaciones), `frontend` (interfaz React, PWA). El `Dockerfile` de la raíz compila las dos y sirve la web desde la API. Arquitectura y decisiones: [Arquitectura](arquitectura.md).
 
 > Los datos de Yahoo Finance pueden llevar retraso y no son asesoramiento de inversión.
