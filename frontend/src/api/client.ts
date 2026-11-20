@@ -35,6 +35,8 @@ import type {
 
 export const SESSION_LOST = 'watchlist:sin-sesion';
 export const AUTH_CHANGED = 'watchlist.auth-changed';
+/** Última primera pantalla recibida (ver `api/bootstrap.ts`); se borra al perder la sesión. */
+export const LS_SNAPSHOT = 'watchlist.primeraPantalla';
 
 export function reloadSession() {
   localStorage.setItem(AUTH_CHANGED, crypto.randomUUID());
@@ -87,7 +89,10 @@ function setAccessToken(token: string | null, user: SessionUser | null = null) {
   accessToken = token;
   tokenUser = token ? user : null;
   if (token) localStorage.setItem(SESSION_HINT, '1');
-  else localStorage.removeItem(SESSION_HINT);
+  else {
+    localStorage.removeItem(SESSION_HINT);
+    localStorage.removeItem(LS_SNAPSHOT);
+  }
 }
 
 /** Pide un access token con la cookie. Falso si no hay sesión; lanza si no hay conexión. */
