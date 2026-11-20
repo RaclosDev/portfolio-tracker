@@ -1905,8 +1905,8 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
 .sync:hover .sync__panel, .sync:focus-within .sync__panel { visibility: visible; opacity: 1; transition-delay: 0.15s; }
 .sync__panel p { margin: 0; }
 .sync__state { font-weight: 600; }
-.sync--warn .sync__state { color: color-mix(in oklab, var(--c-near), var(--text) 35%); }
 .sync--stale .sync__state { color: var(--down); }
+.sync__via { color: var(--text-2); font-weight: 400; }
 .sync__hint { margin-top: 4px !important; color: var(--text-2); font-size: var(--fs-xs); }
 .sync__title { margin-top: 10px !important; font-size: var(--fs-xs); color: var(--text-2); }
 .sync__title--warn { color: var(--down); }

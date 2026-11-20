@@ -1,14 +1,22 @@
 import type { Quote } from '@watchlist/shared';
 
-/** Marca de cada fuente: Financial Hub con su pizarra, Yahoo con su Y y el resto con su inicial. */
+/** Marca de cada fuente: Financial Hub con su F, FT Markets con FT y el resto con su inicial. */
 export const sourceMark = (source: string) =>
-  /financial hub/i.test(source) ? '🪧' : /yahoo/i.test(source) ? 'Y' : (source.trim()[0] ?? '?').toUpperCase();
+  /^ft\b/i.test(source) ? 'FT' : (source.trim()[0] ?? '?').toUpperCase();
 
 /** Fuentes de las que han llegado los precios que se ven, de la que más trae a la que menos. */
 export function quoteSources(quotes: (Quote | null | undefined)[]) {
-  const count = new Map<string, number>();
-  for (const q of quotes) if (q?.source && !q.stale) count.set(q.source, (count.get(q.source) ?? 0) + 1);
-  return [...count].sort((a, b) => b[1] - a[1]).map(([source, n]) => ({ source, n, mark: sourceMark(source) }));
+  const count = new Map<string, { n: number; fallback: number }>();
+  for (const q of quotes) {
+    if (!q?.source || q.stale) continue;
+    const c = count.get(q.source) ?? { n: 0, fallback: 0 };
+    c.n++;
+    if (q.fallback) c.fallback++;
+    count.set(q.source, c);
+  }
+  return [...count]
+    .sort((a, b) => b[1].n - a[1].n)
+    .map(([source, c]) => ({ source, ...c, mark: sourceMark(source) }));
 }
 
 /** Junto a «Actualizado…»: de dónde vienen los precios (al pasar el ratón, cuántos de cada fuente). */

@@ -242,10 +242,6 @@ export function App() {
   const anyStale = fxStale.size > 0 || (onPortfolio
     ? Object.values(pf.data?.quotes ?? {}).some((q) => q.stale)
     : view?.rows.some((r) => r.quote?.stale));
-  // La consulta principal de Yahoo falla y los precios llegan por la vía alternativa (más lenta, sin estado del mercado).
-  const anyFallback = onPortfolio
-    ? Object.values(pf.data?.quotes ?? {}).some((q) => q.fallback && !q.stale)
-    : view?.rows.some((r) => r.quote?.fallback && !r.quote.stale);
   const fetching = onPortfolio ? pf.isFetching || pfRefreshing : wl.isFetching || refresh.isPending;
   const generatedAt = onPortfolio ? pf.data?.generatedAt : view?.generatedAt;
   const refetchFailed = onPortfolio ? pf.isRefetchError : wl.isRefetchError;
@@ -259,7 +255,7 @@ export function App() {
   const updateLabel = manualRefreshing ? 'Actualizando…'
     : refetchFailed ? `Sin conexión con el servidor · precios de ${timeAgo(generatedAt, now)}`
     : anyStale ? 'Sin conexión: datos guardados'
-    : `Actualizado ${timeAgo(generatedAt, now)}${anyFallback ? ' · fuente alternativa' : ''}`;
+    : `Actualizado ${timeAgo(generatedAt, now)}`;
   const fxBadges = fxChips.map(([currency, rate]) => (
     <span key={currency} className={fxStale.has(currency) ? 'chip chip--stale' : 'chip'}
       title={`1 ${base} = ${rate} ${currency}${fxStale.has(currency) ? ' · cambio guardado: la fuente no responde y la valoración en esta divisa no está al día' : ''}`}>
@@ -430,8 +426,7 @@ export function App() {
           {(anyStale || refetchFailed) && <span className="updated updated--stale" aria-live="polite">{updateLabel}</span>}
           <SyncStatus
             label={updateLabel}
-            tone={anyStale || refetchFailed ? 'stale' : anyFallback ? 'warn' : 'ok'}
-            hint={anyFallback ? 'La consulta principal de cotizaciones está fallando: los precios llegan por una vía alternativa y pueden tardar hasta 2 minutos más.' : undefined}
+            tone={anyStale || refetchFailed ? 'stale' : 'ok'}
             quotes={shownQuotes}
             missing={missingQuotes}
             spinning={manualRefreshing}
