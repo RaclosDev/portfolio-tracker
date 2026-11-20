@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { LS_PAGE, seedFirstScreen } from '../../api/bootstrap.ts';
+import { LS_PAGE, seedFirstScreen, seedFromSnapshot } from '../../api/bootstrap.ts';
 import { AppSkeleton } from '../../components/Skeleton.tsx';
-import { ApiError, AUTH_CHANGED, DEMO, SESSION_LOST, api, reloadSession } from '../../api/client.ts';
+import { ApiError, AUTH_CHANGED, DEMO, LS_SNAPSHOT, SESSION_LOST, api, reloadSession } from '../../api/client.ts';
 import { GoogleSignInButton } from './GoogleSignInButton.tsx';
 import { AUTH_PATH, EnterSplash, Landing } from './Landing.tsx';
 
@@ -14,14 +14,25 @@ const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)'
 export function Gate({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const session = useQuery({ queryKey: ['session'], queryFn: api.session, staleTime: Infinity, refetchOnWindowFocus: 'always', retry: 2 });
+  // Quien ya entró en este navegador ve al instante su última pantalla mientras llegan la sesión y los datos.
+  const [snapshotAccount] = useState(() => {
+    const known = localStorage.getItem(AUTH_CHANGED);
+    return sessionStorage.getItem(ENTERING) === null && seedFromSnapshot(qc, known) ? known : null;
+  });
   const [initialAccount, setInitialAccount] = useState<string>();
   const accountId = session.data ? session.data.user?.id ?? 'anonymous' : undefined;
   useEffect(() => {
     if (!accountId) return;
-    if (initialAccount && initialAccount !== accountId) { window.location.reload(); return; }
+    if (accountId === 'anonymous') localStorage.removeItem(LS_SNAPSHOT);
+    const pinned = initialAccount ?? (snapshotAccount && accountId !== 'anonymous' ? snapshotAccount : undefined);
+    if (pinned && pinned !== accountId) {
+      localStorage.setItem(AUTH_CHANGED, accountId);
+      window.location.reload();
+      return;
+    }
     setInitialAccount(accountId);
     if (localStorage.getItem(AUTH_CHANGED) !== accountId) localStorage.setItem(AUTH_CHANGED, accountId);
-  }, [accountId, initialAccount]);
+  }, [accountId, initialAccount, snapshotAccount]);
 
   useEffect(() => {
     const lost = () => {
@@ -42,7 +53,7 @@ export function Gate({ children }: { children: ReactNode }) {
   // Con sesión, la primera pantalla llega en una sola petición y la app se monta con todo ya en la caché.
   const firstScreen = useQuery({
     queryKey: ['bootstrap', accountId],
-    queryFn: () => seedFirstScreen(qc),
+    queryFn: () => seedFirstScreen(qc, accountId),
     enabled: authenticated && !DEMO,
     staleTime: Infinity,
     gcTime: Infinity,
@@ -60,6 +71,7 @@ export function Gate({ children }: { children: ReactNode }) {
   }, [authenticated]);
 
   const lastPage = localStorage.getItem(LS_PAGE) === 'cartera' ? 'cartera' : 'lista';
+  if (session.isPending && snapshotAccount) return <>{children}</>;
   if (session.isPending) {
     // Quien ya entró otras veces ve la app tomando forma; la pantalla del logo queda para el paso desde la portada.
     const known = (localStorage.getItem(AUTH_CHANGED) ?? 'anonymous') !== 'anonymous';
@@ -88,7 +100,7 @@ export function Gate({ children }: { children: ReactNode }) {
       />
     );
   }
-  if (!DEMO && firstScreen.isPending) return <AppSkeleton page={lastPage} />;
+  if (!DEMO && firstScreen.isPending && !snapshotAccount) return <AppSkeleton page={lastPage} />;
   if (window.location.pathname === AUTH_PATH) window.history.replaceState(null, '', '/');
   return <>{children}</>;
 }
