@@ -20,6 +20,11 @@ public record ItemResponse(
                 i.getCreatedAt(), i.getUpdatedAt());
     }
 
+    public ItemResponse withName(String name) {
+        return new ItemResponse(id, listId, symbol, ticker, isin, name, buyPrices, brokerTarget, brokerName,
+                investAmount, sharesOverride, orderActive, orderPrice, orderUntil, notes, mutedUntil, createdAt, updatedAt);
+    }
+
     /** Los mismos datos como petición: punto de partida de un PATCH. */
     public ItemRequest toRequest() {
         return new ItemRequest(listId, symbol, ticker, isin, name, buyPrices, brokerTarget, brokerName, investAmount,

@@ -48,7 +48,10 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HandlerMethodValidationException.class)
     public ResponseEntity<ErrorResponse> invalidParams(HandlerMethodValidationException e) {
-        List<String> issues = e.getAllErrors().stream().map(err -> String.valueOf(err.getDefaultMessage())).toList();
+        List<String> issues = e.getParameterValidationResults().stream()
+                .flatMap(r -> r.getResolvableErrors().stream()
+                        .map(err -> r.getMethodParameter().getParameterName() + ": " + err.getDefaultMessage()))
+                .toList();
         return ResponseEntity.badRequest().body(new ErrorResponse("Revisa los datos enviados.", issues));
     }
 
