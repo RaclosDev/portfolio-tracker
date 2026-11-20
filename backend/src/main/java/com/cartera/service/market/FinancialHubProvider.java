@@ -122,6 +122,7 @@ public class FinancialHubProvider implements MarketDataProvider {
     private final HttpClient client = MarketHttp.newClient(false);
     private final Map<String, Cached<FhRef>> refs = new ConcurrentHashMap<>();
     private final Map<String, Cached<Range>> ranges = new ConcurrentHashMap<>();
+    private final Map<String, Cached<String>> logos = new ConcurrentHashMap<>();
     private final ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
 
     public FinancialHubProvider(MarketHttp http) {
@@ -219,6 +220,36 @@ public class FinancialHubProvider implements MarketDataProvider {
         FhRef ref = want != null ? find(want) : null;
         refs.put(key, new Cached<>(ref, now));
         return ref;
+    }
+
+    /**
+     * Dirección del logo de un producto en Financial Hub (SVG, versionada con su hash), o null si no tiene.
+     * Se busca por ISIN y se guarda una semana; los que no tienen logo, un día. Si la búsqueda falla
+     * (límite de la API, red), no se guarda y se reintenta en la siguiente petición.
+     */
+    public String logoUrl(String isin) {
+        String key = isin.trim().toUpperCase(Locale.ROOT);
+        Cached<String> cached = logos.get(key);
+        long now = System.currentTimeMillis();
+        if (cached != null && now - cached.at() < (cached.value() != null ? REF_TTL_MS : NO_REF_TTL_MS)) {
+            return cached.value();
+        }
+        String path = logoPath(lookup(key, null), key);
+        String url = path != null ? API + path : null;
+        logos.put(key, new Cached<>(url, now));
+        return url;
+    }
+
+    /** El logo del resultado cuyo ISIN coincide (la clase buscada o la cotización principal). */
+    static String logoPath(List<JsonNode> hits, String isin) {
+        for (JsonNode h : hits) {
+            for (JsonNode c : new JsonNode[]{h.get("matchedChild"), h.get("primary")}) {
+                if (!present(c) || !isin.equals(str(c.get("isin")))) continue;
+                String path = str(c.get("logoUrl")) != null ? str(c.get("logoUrl")) : str(h.get("logoUrl"));
+                return path != null && path.startsWith("/market/logos/") ? path : null;
+            }
+        }
+        return null;
     }
 
     /** ISIN de un símbolo según Financial Hub (para la composición de fondos y ETF). */

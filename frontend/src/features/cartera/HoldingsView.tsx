@@ -44,7 +44,7 @@ function NameCell({ r, onOpen, onTag }: { r: HoldingRow | ClosedRow; onOpen: (ti
   const kindLabel = kind === 'ETF' ? names.etf : kind === 'EQUITY' ? names.equity : kind === 'FUND' ? 'Fondo' : null;
   return (
     <div className="with-logo">
-    <CompanyLogo isin={r.instrument?.isin} symbol={r.instrument?.symbol} name={r.name} />
+    <CompanyLogo isin={r.instrument?.isin ?? r.quote?.isin} name={r.name} />
     <div className="stack">
       <button type="button" className="name name-btn" onClick={(event) => {
         event.stopPropagation();
