@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { seedFirstScreen } from '../../api/bootstrap.ts';
+import { LS_PAGE, seedFirstScreen } from '../../api/bootstrap.ts';
+import { AppSkeleton } from '../../components/Skeleton.tsx';
 import { ApiError, AUTH_CHANGED, DEMO, SESSION_LOST, api, reloadSession } from '../../api/client.ts';
 import { GoogleSignInButton } from './GoogleSignInButton.tsx';
 import { AUTH_PATH, EnterSplash, Landing } from './Landing.tsx';
@@ -58,7 +59,13 @@ export function Gate({ children }: { children: ReactNode }) {
     return () => { window.clearTimeout(t); root.classList.remove('is-entering'); };
   }, [authenticated]);
 
-  if (session.isPending) return <EnterSplash label="Cargando…" instant={sessionStorage.getItem(ENTERING) !== null} />;
+  const lastPage = localStorage.getItem(LS_PAGE) === 'cartera' ? 'cartera' : 'lista';
+  if (session.isPending) {
+    // Quien ya entró otras veces ve la app tomando forma; la pantalla del logo queda para el paso desde la portada.
+    const known = (localStorage.getItem(AUTH_CHANGED) ?? 'anonymous') !== 'anonymous';
+    if (known && sessionStorage.getItem(ENTERING) === null) return <AppSkeleton page={lastPage} />;
+    return <EnterSplash label="Cargando…" instant={sessionStorage.getItem(ENTERING) !== null} />;
+  }
   if (session.isError) {
     return (
       <main className="login">
@@ -81,7 +88,7 @@ export function Gate({ children }: { children: ReactNode }) {
       />
     );
   }
-  if (!DEMO && firstScreen.isPending) return <EnterSplash label="Cargando…" instant />;
+  if (!DEMO && firstScreen.isPending) return <AppSkeleton page={lastPage} />;
   if (window.location.pathname === AUTH_PATH) window.history.replaceState(null, '', '/');
   return <>{children}</>;
 }

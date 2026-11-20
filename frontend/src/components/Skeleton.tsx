@@ -82,3 +82,31 @@ export function HighlightsSkeleton() {
     </section>
   );
 }
+
+/**
+ * La app entera mientras llegan la sesión y la primera pantalla: la cabecera de verdad y, debajo, la forma de la
+ * última página abierta. Un logo con una barra en el centro hace que la espera parezca más larga.
+ */
+export function AppSkeleton({ page }: { page: 'lista' | 'cartera' }) {
+  return (
+    <div className="app">
+      <header className="topbar">
+        <div className="brand">
+          <img src="/favicon.svg" alt="" width={24} height={24} />
+          <h1>Portfolio Tracker</h1>
+        </div>
+        <span className="skel-seg" aria-hidden="true">
+          {[96, 72, 64].map((w, i) => <SkeletonBar key={i} w={w} h={14} />)}
+        </span>
+      </header>
+      <main className="content">
+        {page === 'cartera' ? <PortfolioSkeleton /> : (
+          <>
+            <HighlightsSkeleton />
+            <TableSkeleton rows={8} cols={6} label="Cargando cotizaciones…" />
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
