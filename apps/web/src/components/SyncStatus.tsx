@@ -21,7 +21,7 @@ export function SyncStatus({
 }: {
   /** «Actualizado hace 3 s», «Sin conexión…»: solo se ve en el panel, así la cabecera no baila. */
   label: string;
-  tone: 'ok' | 'warn' | 'stale';
+  tone: 'ok' | 'stale';
   hint?: string;
   quotes: (Quote | null | undefined)[];
   /** Valores sin precio al día (no cargado o dato guardado). */
@@ -59,7 +59,10 @@ export function SyncStatus({
               {sources.map((s) => (
                 <li key={s.source}>
                   <span className="quote-source" aria-hidden="true">{s.mark}</span>
-                  <span>{s.source}</span>
+                  <span>
+                    {s.source}
+                    {s.fallback > 0 && <small className="sync__via"> · {s.fallback === s.n ? 'vía de reserva' : `${s.fallback} por vía de reserva`}</small>}
+                  </span>
                   <span className="num">{s.n}</span>
                 </li>
               ))}
@@ -74,6 +77,9 @@ export function SyncStatus({
               {missing.length > 8 && <li className="muted">y {missing.length - 8} más</li>}
             </ul>
           </>
+        )}
+        {sources.some((s) => s.fallback > 0) && (
+          <p className="sync__hint">Vía de reserva: la consulta habitual de esa fuente está limitada y los precios llegan por otra más lenta, sin estado del mercado. Siguen siendo precios al día.</p>
         )}
         {extra}
         <p className="sync__foot">Pulsa para actualizar ahora.</p>
