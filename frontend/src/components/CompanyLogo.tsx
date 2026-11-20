@@ -4,6 +4,7 @@ import { useState } from 'react';
 const missing = new Set<string>();
 
 const ISIN = /^[A-Z]{2}[A-Z0-9]{9}\d$/;
+const RETRY_MS = 4_000;
 
 /** Iniciales del nombre (o del ticker) para cuando no hay logo. */
 function initials(name: string) {
@@ -28,6 +29,8 @@ interface Props {
  */
 export function CompanyLogo({ isin, name, size = 28, className = '' }: Props) {
   const code = isin?.trim().toUpperCase();
+  // Un fallo puede ser pasajero (límite de la API al desplegar): se reintenta una vez antes de quedarse con iniciales.
+  const [retried, setRetried] = useState(false);
   const [, rerender] = useState(0);
   const style = { '--logo-size': `${size}px` } as React.CSSProperties;
   if (!code || !ISIN.test(code) || missing.has(code)) {
@@ -41,7 +44,7 @@ export function CompanyLogo({ isin, name, size = 28, className = '' }: Props) {
     <img
       className={`logo ${className}`}
       style={style}
-      src={`/api/public/logo/${code}`}
+      src={`/api/public/logo/${code}${retried ? '?r=1' : ''}`}
       alt=""
       aria-hidden
       width={size}
@@ -49,6 +52,10 @@ export function CompanyLogo({ isin, name, size = 28, className = '' }: Props) {
       loading="lazy"
       decoding="async"
       onError={() => {
+        if (!retried) {
+          window.setTimeout(() => setRetried(true), RETRY_MS);
+          return;
+        }
         missing.add(code);
         rerender((n) => n + 1);
       }}
