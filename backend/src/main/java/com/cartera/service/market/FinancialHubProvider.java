@@ -8,6 +8,7 @@ import com.cartera.dto.market.IntradayInterval;
 import com.cartera.dto.market.PricePoint;
 import com.cartera.dto.market.Quote;
 import com.cartera.dto.market.SymbolSearchResult;
+import com.cartera.repository.MarketCacheRepository;
 import com.cartera.util.Isin;
 import com.cartera.util.MarketSymbols;
 import lombok.extern.slf4j.Slf4j;
@@ -125,9 +126,15 @@ public class FinancialHubProvider implements MarketDataProvider {
     private final Map<String, Cached<String>> logos = new ConcurrentHashMap<>();
     private final ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
 
-    public FinancialHubProvider(MarketHttp http) {
+    private final MarketCacheRepository store;
+
+    public FinancialHubProvider(MarketHttp http, MarketCacheRepository store) {
         this.http = http;
+        this.store = store;
     }
+
+    /** Fila de {@code market_cache} con el logo de cada ISIN: sobrevive a los reinicios (cada despliegue vaciaba la caché). */
+    private static final String LOGO_KIND = "fh-logo";
 
     @Override
     public String id() {
@@ -234,9 +241,18 @@ public class FinancialHubProvider implements MarketDataProvider {
         if (cached != null && now - cached.at() < (cached.value() != null ? REF_TTL_MS : NO_REF_TTL_MS)) {
             return cached.value();
         }
+        MarketCacheRepository.Row row = store.find(LOGO_KIND, key);
+        if (row != null) {
+            String saved = str(row.data());
+            if (now - row.fetchedAtMillis() < (saved != null ? REF_TTL_MS : NO_REF_TTL_MS)) {
+                logos.put(key, new Cached<>(saved, row.fetchedAtMillis()));
+                return saved;
+            }
+        }
         String path = logoPath(lookup(key, null), key);
         String url = path != null ? API + path : null;
         logos.put(key, new Cached<>(url, now));
+        store.save(LOGO_KIND, key, url);
         return url;
     }
 
