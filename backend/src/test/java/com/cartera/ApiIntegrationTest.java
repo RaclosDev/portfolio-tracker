@@ -1,5 +1,7 @@
 package com.cartera;
 
+import com.cartera.repository.UserRepository;
+import com.cartera.service.alerts.AlertWorkset;
 import com.cartera.service.market.composition.IsinLookup;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,6 +53,8 @@ class ApiIntegrationTest {
 
     @Autowired private MockMvc mvc;
     @Autowired private JsonMapper json;
+    @Autowired private UserRepository users;
+    @Autowired private AlertWorkset workset;
 
     @Test
     void healthAndConfigArePublic() throws Exception {
@@ -133,6 +137,36 @@ class ApiIntegrationTest {
                 .andExpect(status().isBadRequest());
         mvc.perform(auth(get("/api/portfolio/history"), token).param("from", "2026-02-30").param("to", "2026-03-01"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void watcherKeepsUserDataInMemoryUntilTheUserChangesSomething() throws Exception {
+        when(isins.isinOf(anyString())).thenReturn("ES0113900J37");
+        String email = "vigilante-" + UUID.randomUUID() + "@test.invalid";
+        String token = register(email);
+        UUID userId = users.findByEmail(email).orElseThrow().getId();
+        assertThat(workset.users()).contains(userId);
+
+        JsonNode list = body(mvc.perform(auth(post("/api/lists"), token).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Vigilar\"}")).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        long itemId = body(mvc.perform(auth(post("/api/items"), token).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"listId\":" + list.get("id").asLong() + ",\"symbol\":\"san.mc\",\"buyPrices\":[4.5]}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asLong();
+
+        AlertWorkset.UserData first = workset.get(userId);
+        assertThat(first.lists()).filteredOn(l -> l.list().name().equals("Vigilar")).singleElement()
+                .satisfies(l -> assertThat(l.items()).hasSize(1));
+        // Sin cambios, la siguiente vuelta usa lo que ya tiene en memoria (no vuelve a leer la base de datos).
+        mvc.perform(auth(get("/api/lists"), token)).andExpect(status().isOk());
+        assertThat(workset.get(userId)).isSameAs(first);
+
+        // Un cambio por la API lo invalida y la siguiente vuelta ya ve la orden nueva.
+        mvc.perform(auth(patch("/api/items/" + itemId), token).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"orderPrice\":4.2,\"orderActive\":true}")).andExpect(status().isOk());
+        AlertWorkset.UserData second = workset.get(userId);
+        assertThat(second).isNotSameAs(first);
+        assertThat(second.lists()).flatMap(AlertWorkset.ListData::items).singleElement()
+                .satisfies(i -> assertThat(i.orderPrice()).isEqualTo(4.2));
     }
 
     private static final String PASSWORD = "una-contraseña-de-prueba-larga";

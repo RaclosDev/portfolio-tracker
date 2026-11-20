@@ -20,9 +20,11 @@ import com.cartera.util.MarketSymbols;
 import com.cartera.util.Words;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
@@ -46,6 +48,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -62,6 +65,8 @@ public class MarketService {
 
     /** Sube la versión cuando AnalystTargets gane campos: así no se sirve la caché antigua sin ellos. */
     private static final String TARGETS_KIND = "targets-v2";
+    /** Si falla la fuente del consenso, cuánto se espera para volver a pedirlo. */
+    private static final long TARGETS_RETRY_MS = 5 * 60_000;
     private static final long HISTORY_TTL_MS = 60 * 60_000L;
     private static final long EMPTY_HISTORY_TTL_MS = 5 * 60_000L;
     private static final long PROFILE_TTL_MS = 30L * 24 * 60 * 60_000;
@@ -107,7 +112,10 @@ public class MarketService {
     private final long targetsTtlMs;
 
     private final Cache<String, Entry<?>> mem = Caffeine.newBuilder().maximumSize(50_000).build();
-    private final Map<String, Long> quotePersistedAt = new ConcurrentHashMap<>();
+    /** Cotizaciones nuevas aún sin guardar: se guardan juntas de vez en cuando ({@link #flushQuotes()}). */
+    private final Set<String> quotesUnsaved = ConcurrentHashMap.newKeySet();
+    /** Símbolos ya buscados en la base de datos como reserva: no se vuelven a leer. */
+    private final Set<String> quotesLoaded = ConcurrentHashMap.newKeySet();
     private final Map<String, CompletableFuture<Quote>> quotePending = new ConcurrentHashMap<>();
     private final Map<String, CompletableFuture<DailyHistoryResult>> dailyPending = new ConcurrentHashMap<>();
     private final Map<String, CompletableFuture<CandlesResult>> candlesPending = new ConcurrentHashMap<>();
@@ -242,18 +250,37 @@ public class MarketService {
             if (q != null) {
                 Quote quote = q.withSymbol(sym).withStale(false);
                 mem.put("quote:" + sym, new Entry<>(quote, now));
-                // En directo llega una cada pocos segundos: a la base de datos, como mucho una por periodo de caché.
-                if (now - quotePersistedAt.getOrDefault(sym, 0L) >= quoteTtlMs) {
-                    quotePersistedAt.put(sym, now);
-                    cache.save("quote", sym, quote);
-                }
+                // En directo llega una cada pocos segundos: se guarda en la base de datos solo de vez en cuando, como
+                // reserva para cuando la fuente falle tras un reinicio. Así el vigilante no la despierta.
+                quotesUnsaved.add(sym);
                 out.put(sym, quote);
             } else {
-                Entry<Quote> stored = load("quote", sym, Quote.class);
-                if (stored != null && stored.value() != null) out.put(sym, stored.value().withStale(true));
+                // Sin precio nuevo: el último en memoria y, si no hay, el guardado (se lee una sola vez).
+                Entry<Quote> last = memGet("quote:" + sym);
+                if (last == null && quotesLoaded.add(sym)) {
+                    last = load("quote", sym, Quote.class);
+                    if (last != null && last.value() != null) mem.put("quote:" + sym, last);
+                }
+                if (last != null && last.value() != null) out.put(sym, last.value().withStale(true));
             }
         }
         return out;
+    }
+
+    /** Guarda en la base de datos las cotizaciones nuevas (cada pocas horas y al apagar). */
+    @Scheduled(initialDelay = 6, fixedDelay = 6, timeUnit = TimeUnit.HOURS)
+    @PreDestroy
+    public void flushQuotes() {
+        for (String sym : List.copyOf(quotesUnsaved)) {
+            quotesUnsaved.remove(sym);
+            Entry<Quote> e = memGet("quote:" + sym);
+            if (e == null || e.value() == null) continue;
+            try {
+                cache.save("quote", sym, e.value());
+            } catch (RuntimeException ex) {
+                log.warn("No se pudo guardar la cotización de {}: {}", sym, ex.toString());
+            }
+        }
     }
 
     // ---------------------------------------------------------------- consenso
@@ -266,7 +293,8 @@ public class MarketService {
             Entry<AnalystTargets> cached = memGet(key);
             if (cached == null) cached = load(TARGETS_KIND, sym, AnalystTargets.class);
             if ((!force && cached != null && System.currentTimeMillis() - cached.fetchedAt() < targetsTtlMs) || throttled()) {
-                if (cached != null) mem.put(key, cached);
+                // Con la fuente parada y nada guardado, se recuerda el hueco un rato para no leer la base de datos cada vez.
+                mem.put(key, cached != null ? cached : new Entry<>(null, System.currentTimeMillis() - targetsTtlMs + TARGETS_RETRY_MS));
                 put(out, nulls, sym, cached != null ? cached.value() : null);
                 return;
             }
@@ -278,7 +306,10 @@ public class MarketService {
                 put(out, nulls, sym, value);
             } catch (RuntimeException e) {
                 onProviderError(e, "Sin consenso para " + sym);
-                put(out, nulls, sym, cached != null ? cached.value() : null);
+                // Lo que hubiera vale un rato más: no se vuelve a leer la base de datos ni a pedir en cada vuelta.
+                AnalystTargets value = cached != null ? cached.value() : null;
+                mem.put(key, new Entry<>(value, System.currentTimeMillis() - targetsTtlMs + TARGETS_RETRY_MS));
+                put(out, nulls, sym, value);
             }
         });
         // El mapa admite null: «la fuente no tiene consenso» para ese valor.

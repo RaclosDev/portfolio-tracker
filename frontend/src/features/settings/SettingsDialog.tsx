@@ -525,8 +525,6 @@ export function SettingsDialog({ settings, lists, onClose, onStartTour }: Props)
       <NotificationsPanel
         value={notif}
         onChange={setNotif}
-        refreshSeconds={Number(refresh) || settings.refreshSeconds}
-        onGoGeneral={() => setSection('general')}
         Row={Row}
         Switch={Switch}
       />
