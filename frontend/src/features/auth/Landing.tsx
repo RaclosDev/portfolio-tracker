@@ -291,7 +291,16 @@ function Screens() {
   }, [active]);
   return (
     <section className="lp-screens" aria-labelledby="lp-screens-title">
-      <h2 id="lp-screens-title" data-reveal>De la lista de vigilancia al registro de operaciones</h2>
+      <div className="lp-screens__head" data-reveal>
+        <h2 id="lp-screens-title">De la lista de vigilancia al registro de operaciones</h2>
+        <div className="lp-screens__demo">
+          {live && <span className="lp-live-chip"><i aria-hidden="true" />Demo en directo</span>}
+          <a className="btn" href="/demo">
+            {live ? 'Abrir la demo' : 'Probar la demo'}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9" /></svg>
+          </a>
+        </div>
+      </div>
       <div
         ref={tabs} data-reveal className={`lp-tabs${pill ? ' lp-tabs--pill' : ''}`} role="tablist" aria-label="Pantallas de la aplicación"
         style={pill ? ({ '--pill-x': `${pill.x}px`, '--pill-w': `${pill.w}px` } as CSSProperties) : undefined}
@@ -322,12 +331,6 @@ function Screens() {
           />
           {live && <LiveDemo key={screen.id} view={screen.id} label={screen.tab} />}
         </div>
-        <p className="lp-screen__more">
-          {live ? 'Es la demo de verdad: toca, filtra y abre valores. ' : null}
-          <a href="/demo" className={live ? undefined : 'btn lp-btn'}>
-            {live ? 'Abrirla a pantalla completa' : 'Probar la demo'}
-          </a>
-        </p>
       </div>
     </section>
   );

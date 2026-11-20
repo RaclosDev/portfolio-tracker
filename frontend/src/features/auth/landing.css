@@ -173,7 +173,20 @@
   opacity: 0; transition: opacity 500ms var(--lp-ease);
 }
 .lp-live--ready { opacity: 1; }
-.lp-screen__more { margin-top: 14px; color: var(--text-2); font-size: var(--fs-md); }
+.lp-screens__head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 24px; }
+.lp-screens__demo { display: flex; align-items: center; gap: 12px; }
+.lp-screens__demo .btn { gap: 6px; text-decoration: none; }
+/* Mismo lenguaje que los chips de estado de la app: punto de color y texto corto. */
+.lp-live-chip {
+  display: inline-flex; align-items: center; gap: 7px; height: 28px; padding-inline: 10px;
+  border: 1px solid color-mix(in oklab, var(--reached-fg), transparent 70%); border-radius: 999px;
+  background: var(--reached-bg); color: var(--reached-fg); font-size: var(--fs-sm); font-weight: 600;
+}
+.lp-live-chip i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+@media (prefers-reduced-motion: no-preference) {
+  .lp-live-chip i { animation: lp-beat 1.8s ease-out infinite; }
+}
+@keyframes lp-beat { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, currentColor, transparent 40%); } 100% { box-shadow: 0 0 0 7px transparent; } }
 @keyframes lp-swap { from { opacity: 0; filter: blur(8px); transform: scale(1.01); } }
 @keyframes lp-in { from { opacity: 0; transform: scale(0.992); } }
 
