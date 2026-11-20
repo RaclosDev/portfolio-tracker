@@ -100,14 +100,15 @@ export class PortfolioService {
     return { from, to, points, stale, missing: [...new Set(points.flatMap((p) => p.missing))], available };
   }
 
-  async view({ force = false } = {}): Promise<CarteraView> {
+  /** `maxAgeMs`: antigüedad máxima de los precios (más corta con la cartera en pantalla, ver `MarketService.getQuotes`). */
+  async view({ force = false, maxAgeMs }: { force?: boolean; maxAgeMs?: number } = {}): Promise<CarteraView> {
     const [operations, instruments] = await Promise.all([this.operations.all(), this.instruments.all()]);
     // Precio solo de lo que sigue en cartera (lo cerrado no lo necesita).
     // Todos los tickers de una posición: con el mismo ISIN, se cotiza el que tenga el precio más fresco.
     const ledger = computeLedger(operations, instruments);
     const open = new Set(ledger.tickers.filter((t) => t.shares > 1e-9).flatMap((t) => [t.ticker, ...t.members]));
     const symbols = instruments.filter((i) => i.symbol && open.has(i.ticker)).map((i) => i.symbol!);
-    const quotes = await this.market.getQuotes(symbols, { force });
+    const quotes = await this.market.getQuotes(symbols, { force, maxAgeMs });
     // La cartera va siempre en euros (costes, Renta): no depende de la divisa base de la lista.
     const fxStale = new Set<string>();
     const fx = await this.market.getFxRates('EUR', [

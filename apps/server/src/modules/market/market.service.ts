@@ -142,8 +142,9 @@ export class MarketService {
   }
 
   /**
-   * Cotizaciones con caché de `quoteTtlMs`. `maxAgeMs` la acorta (el gráfico abierto pide su valor cada dos
-   * segundos): las pantallas que lo piden a la vez siguen compartiendo una sola petición al proveedor.
+   * Cotizaciones con caché de `quoteTtlMs`. `maxAgeMs` la acorta (el gráfico abierto y la lista o la cartera
+   * en pantalla piden sus precios cada dos segundos): las pantallas que lo piden a la vez siguen compartiendo
+   * una sola petición al proveedor. Los fondos (valor liquidativo diario, `asOf`) no se piden más a menudo.
    */
   async getQuotes(symbols: string[], { force = false, maxAgeMs = this.opts.quoteTtlMs } = {}): Promise<Map<string, Quote>> {
     const out = new Map<string, Quote>();
@@ -151,7 +152,8 @@ export class MarketService {
     const missing: string[] = [];
     for (const sym of new Set(symbols)) {
       const hit = this.mem.get(`quote:${sym}`) as Entry<Quote> | undefined;
-      if (!force && hit && now - hit.fetchedAt < Math.min(maxAgeMs, this.opts.quoteTtlMs)) out.set(sym, hit.value);
+      const ttl = hit?.value.asOf ? this.opts.quoteTtlMs : Math.min(maxAgeMs, this.opts.quoteTtlMs);
+      if (!force && hit && now - hit.fetchedAt < ttl) out.set(sym, hit.value);
       else missing.push(sym);
     }
     if (!missing.length) return out;
@@ -429,6 +431,41 @@ export class MarketService {
       }
     }
     const stored = hit ?? (daily ? await this.load<Candle[]>(kind, symbol) : undefined);
+    return { candles: stored?.value ?? [], stale: true };
+  }
+
+  private allCandlesPending = new Map<string, Promise<{ candles: Candle[]; stale: boolean }>>();
+
+  /**
+   * Velas diarias de toda la historia del valor, para cuando el gráfico se aleja más allá de los cinco años.
+   * Lo antiguo no cambia: caché de seis horas y, sin conexión, lo último guardado.
+   */
+  getAllCandles(symbol: string): Promise<{ candles: Candle[]; stale: boolean }> {
+    const pending = this.allCandlesPending.get(symbol);
+    if (pending) return pending;
+    const request = this.loadAllCandles(symbol).finally(() => this.allCandlesPending.delete(symbol));
+    this.allCandlesPending.set(symbol, request);
+    return request;
+  }
+
+  private async loadAllCandles(symbol: string): Promise<{ candles: Candle[]; stale: boolean }> {
+    const kind = 'candles-max';
+    const key = `${kind}:${symbol}`;
+    const hit = this.mem.get(key) as Entry<Candle[]> | undefined;
+    if (hit && Date.now() - hit.fetchedAt < 6 * 3_600_000) return { candles: hit.value, stale: false };
+    if (!this.throttled && this.provider.getCandles) {
+      try {
+        const candles = await this.provider.getCandles(symbol, '1970-01-01');
+        if (candles.length) {
+          this.mem.set(key, { value: candles, fetchedAt: Date.now() });
+          await this.persist(kind, symbol, candles);
+          return { candles, stale: false };
+        }
+      } catch (err) {
+        this.onProviderError(err, `Sin histórico completo de ${symbol}`);
+      }
+    }
+    const stored = hit ?? (await this.load<Candle[]>(kind, symbol));
     return { candles: stored?.value ?? [], stale: true };
   }
 

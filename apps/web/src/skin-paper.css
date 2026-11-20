@@ -87,8 +87,8 @@
 
 /* ---------- Títulos a rotulador ---------- */
 :root[data-skin='paper'] :is(
-  .brand h1, .dialog__header h2, .settings__panel h3, .portfolio-charts__heading h2, .tour__pop h2,
-  .login__title, .renta__title, .list-picker__title, .crash h1
+  .brand h1, .dialog__header h2, .settings__panel h3, .pcard__head h2, .tour__pop h2,
+  .login__title, .list-picker__title, .crash h1
 ) {
   font-family: var(--font-marker); font-weight: 400; letter-spacing: 0.01em;
 }
@@ -96,12 +96,12 @@
 
 /* ---------- Barra superior y pestañas ---------- */
 :root[data-skin='paper'] .topbar { border-bottom: 2px solid var(--edge); }
-:root[data-skin='paper'] .tab {
+:root[data-skin='paper'] :is(.tab, .list-menu__btn--tab, .list-menu__split) {
   font-family: var(--font-display); font-weight: 400; text-transform: uppercase; letter-spacing: 0.05em;
   border-radius: 3px;
 }
 /* La pestaña activa es una pegatina de tinta. */
-:root[data-skin='paper'] .tab--active:not(.tabs__select) {
+:root[data-skin='paper'] .tab--active {
   background: var(--text); color: var(--surface); font-weight: 400; transform: rotate(-1deg);
 }
 :root[data-skin='paper'] .tab--active .tab__count { background: rgb(127 127 127 / 40%); }
@@ -118,7 +118,8 @@
 :root[data-skin='paper'] .btn:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--edge); }
 :root[data-skin='paper'] .btn--danger-ghost { border-color: transparent; box-shadow: none; }
 :root[data-skin='paper'] .icon-btn { border-radius: 4px; }
-:root[data-skin='paper'] :is(.search, .field input, .field textarea, .field select, select.select, .tabs__select, .login__card input) {
+:root[data-skin='paper'] :is(.list-menu, .sync__panel) { border: 1.5px solid var(--edge); border-radius: 4px; box-shadow: 3px 3px 0 var(--edge); }
+:root[data-skin='paper'] :is(.search, .field input, .field textarea, .field select, select.select, .select-menu, .login__card input) {
   border-color: var(--field-edge); border-radius: 4px;
 }
 :root[data-skin='paper'] .segmented { border: 1.5px solid var(--edge); border-radius: 4px; }
@@ -128,7 +129,7 @@
 :root[data-skin='paper'] :is(.pill, .chip, .tab__count) { border-radius: 3px; }
 
 /* ---------- Hojas ---------- */
-:root[data-skin='paper'] :is(.table-wrap, .highlights, .portfolio-summary, .portfolio-charts, .donut, .xp__panel, .login__card) {
+:root[data-skin='paper'] :is(.table-wrap, .skel-table, .skel-seg, .highlights, .portfolio-summary, .portfolio-charts, .donut, .xp__panel, .login__card) {
   border: 1.5px solid var(--edge); box-shadow: var(--sheet-shadow);
 }
 :root[data-skin='paper'] .highlights { background: var(--edge); }

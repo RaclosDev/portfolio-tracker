@@ -7,17 +7,25 @@ export const keys = {
   lists: ['lists'] as const,
   watchlist: (id: number) => ['watchlist', id] as const,
   portfolio: ['portfolio'] as const,
+  visited: ['visited'] as const,
 };
 
 export const useSettings = () => useQuery({ queryKey: keys.settings, queryFn: api.settings });
 export const useLists = () => useQuery({ queryKey: keys.lists, queryFn: api.lists });
 
-export function useWatchlist(listId: number | null, refreshSeconds: number) {
+/** Cada cuánto se piden los precios de lo que está en pantalla (lista o cartera), como el gráfico abierto. */
+export const LIVE_REFRESH_MS = 2_000;
+
+/**
+ * Lista en pantalla: con `live`, precios cada dos segundos (se pausa con la pestaña en segundo plano);
+ * si no, cada `refreshSeconds`.
+ */
+export function useWatchlist(listId: number | null, refreshSeconds: number, live = false) {
   return useQuery({
     queryKey: keys.watchlist(listId ?? 0),
-    queryFn: () => api.watchlist(listId!),
+    queryFn: () => api.watchlist(listId!, false, live),
     enabled: listId != null,
-    refetchInterval: refreshSeconds * 1000,
+    refetchInterval: live ? LIVE_REFRESH_MS : refreshSeconds * 1000,
     placeholderData: keepPreviousData,
   });
 }
@@ -72,12 +80,12 @@ export function useImportBackup() {
   return useMutation({ mutationFn: api.importBackup, onSuccess: invalidate });
 }
 
-export function usePortfolio(refreshSeconds: number, enabled = true) {
+export function usePortfolio(refreshSeconds: number, enabled = true, live = false) {
   return useQuery({
     queryKey: keys.portfolio,
-    queryFn: () => api.portfolio(),
+    queryFn: () => api.portfolio(false, live),
     enabled,
-    refetchInterval: refreshSeconds * 1000,
+    refetchInterval: live ? LIVE_REFRESH_MS : refreshSeconds * 1000,
     placeholderData: keepPreviousData,
   });
 }

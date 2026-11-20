@@ -1,4 +1,4 @@
-import type { Candle, ChartDrawing, ChartDrawingType, ChartPoint, WatchlistRow } from '@watchlist/shared';
+import type { Candle, ChartDrawing, ChartDrawingType, ChartPoint, LevelStatus, WatchlistRow } from '@watchlist/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AreaSeries,
@@ -6,6 +6,7 @@ import {
   ColorType,
   createChart,
   CrosshairMode,
+  HistogramSeries,
   LineSeries,
   LineStyle,
   PriceScaleMode,
@@ -18,15 +19,15 @@ import {
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
-import { useEffect, useMemo, useReducer, useRef, useState, type MutableRefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type MutableRefObject } from 'react';
 import { api } from '../../api/client.ts';
+import { decimals } from '../../lib/format.ts';
 import {
   aggregate,
   DEFAULT_DRAWING_COLOR,
   distToSegment,
   dragHandle,
   DRAWING_COLORS,
-  ema,
   fromLogical,
   insidePolygon,
   moveDrawing,
@@ -35,7 +36,6 @@ import {
   periodReturn,
   PERIODS,
   round7,
-  sma,
   snapPrice,
   isIntraday,
   mergeLive,
@@ -47,16 +47,23 @@ import {
 } from './chartDrawing.ts';
 import { ChartIcon, type IconName } from './chartIcons.tsx';
 import { DEFAULT_TEXT, DrawingsPrimitive } from './DrawingsPrimitive.ts';
+import { BandFillPrimitive } from './BandFillPrimitive.ts';
+import {
+  defaultParams,
+  IND_COLORS,
+  IND_GROUPS,
+  INDICATOR_DEFS,
+  indicatorLabel,
+  normalizeIndicator,
+  TEMPLATES,
+  type Indicator,
+  type IndicatorDef,
+  type IndKind,
+  type Series,
+} from './indicators.ts';
 
 type ChartType = 'candles' | 'area' | 'line';
 type ScaleMode = 'normal' | 'log' | 'percent';
-interface Indicator {
-  id: string;
-  kind: 'sma' | 'ema';
-  period: number;
-  color: string;
-  hidden?: boolean;
-}
 type DrawTool = Exclude<Tool, 'cursor'>;
 
 const NO_DRAWINGS: ChartDrawing[] = [];
@@ -79,11 +86,6 @@ function chartTime(t: string): Time {
   const ms = Date.parse(t);
   return (ms / 1000 - new Date(ms).getTimezoneOffset() * 60) as UTCTimestamp;
 }
-/** Fecha corta de una vela, con la hora si es intradía. */
-const fmtBarDate = (t: string) =>
-  t.length > 10
-    ? new Date(t).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-    : new Date(`${t}T12:00:00Z`).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
 const CHART_TYPES: [ChartType, string][] = [['candles', 'Velas'], ['area', 'Área'], ['line', 'Línea']];
 const SCALES: [ScaleMode, string, string][] = [
   ['normal', 'Lineal', 'Escala lineal'],
@@ -115,13 +117,21 @@ const GROUPS: { id: string; label: string; tools: DrawTool[] }[] = [
   { id: 'measure', label: 'Medir', tools: ['measure'] },
 ];
 const SHORTCUTS: Record<string, DrawTool> = { KeyT: 'trend', KeyH: 'hline', KeyJ: 'hray', KeyV: 'vline', KeyF: 'fib' };
-const IND_COLORS = ['#f6a609', '#2962ff', '#e040fb', '#00bcd4', '#43a047'];
-const DEFAULT_INDICATORS: Indicator[] = [{ id: 'sma-20', kind: 'sma', period: 20, color: IND_COLORS[0]! }];
+const DEFAULT_INDICATORS: Indicator[] = [{ id: 'sma-20', kind: 'sma', params: { n: 20 }, color: IND_COLORS[0]! }];
+const IND_LIST = Object.values(INDICATOR_DEFS);
+const LEVEL_COLOR = 'rgba(140, 143, 154, 0.85)';
+const HIST_UP = 'rgba(38, 166, 154, 0.6)';
+const HIST_DOWN = 'rgba(239, 83, 80, 0.6)';
+/** Alto de cada panel de osciladores frente al del precio. */
+const SUB_STRETCH = 0.32;
+const fold = (t: string) => t.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+const alpha = (hex: string, a: number) => {
+  const n = parseInt(hex.slice(1, 7), 16);
+  return Number.isNaN(n) ? hex : `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+};
 const STYLES: [NonNullable<ChartDrawing['style']>, string][] = [['solid', 'Continua'], ['dashed', 'Discontinua'], ['dotted', 'Punteada']];
 
-const isIndicators = (v: unknown) =>
-  Array.isArray(v) &&
-  v.every((i) => i && typeof i === 'object' && (i.kind === 'sma' || i.kind === 'ema') && Number.isInteger(i.period) && i.period >= 1 && i.period <= 500 && typeof i.color === 'string' && typeof i.id === 'string');
+const isIndicators = (v: unknown) => Array.isArray(v) && v.every((i) => normalizeIndicator(i) != null);
 
 /** Estado guardado en el navegador (el formato antiguo del periodo era texto sin JSON). */
 function usePersisted<T>(key: string, fallback: T, valid: (v: unknown) => boolean) {
@@ -176,8 +186,28 @@ function mainSeriesOptions(kind: ChartType, c: Colors) {
 const precisionFor = (price: number) => (price < 1 ? 4 : price < 10 ? 3 : 2);
 const fmtPct = (r: number) => `${r >= 0 ? '+' : ''}${(r * 100).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
 
+/** Línea fija de referencia sobre el gráfico (compras de la lista, orden, coste medio…). */
+export interface ChartLine {
+  price: number;
+  title: string;
+  /** Discontinua en el color de acento (por defecto) o punteada en el color del texto. */
+  style?: 'dashed' | 'dotted';
+  /** Estado de una compra (alcanzada, cerca…): la línea toma su color, el mismo de la tabla. */
+  status?: LevelStatus | 'order';
+}
+
+/** Líneas de un valor de la lista: sus compras y la orden activa. */
+export const watchlistLines = ({ item, metrics }: WatchlistRow): ChartLine[] => [
+  ...metrics.levels.map((l, i) => ({ price: l.price, title: `Compra ${i + 1}`, status: l.status })),
+  ...(item.orderActive && item.orderPrice ? [{ price: item.orderPrice, title: 'Orden', style: 'dotted' as const, status: 'order' as const }] : []),
+];
+
 interface Props {
-  row: WatchlistRow;
+  symbol: string;
+  name: string;
+  /** Último precio conocido, para afinar los decimales. */
+  price?: number | null;
+  lines: ChartLine[];
   /** Símbolo de TradingView, si lo tiene: para el enlace de abrirlo allí. */
   tvSymbol: string | null;
 }
@@ -189,9 +219,8 @@ interface Props {
  * posiciones), que se seleccionan, se arrastran y se editan. Las compras de la lista y la orden salen como
  * líneas discontinuas.
  */
-export function CandleChart({ row, tvSymbol }: Props) {
-  const { item, metrics } = row;
-  const symbol = item.symbol;
+export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Props) {
+  const linesKey = JSON.stringify(lines);
   const qc = useQueryClient();
   const candlesQ = useQuery({
     queryKey: ['candles', symbol],
@@ -206,7 +235,25 @@ export function CandleChart({ row, tvSymbol }: Props) {
     onError: () => qc.invalidateQueries({ queryKey: ['drawings', symbol] }),
   });
   const drawings = drawingsQ.data ?? NO_DRAWINGS;
-  const candles = candlesQ.data?.candles ?? NO_CANDLES;
+  const recent = candlesQ.data?.candles ?? NO_CANDLES;
+  /** Toda la historia del valor: se pide solo al alejar el gráfico hasta el principio de los cinco años. */
+  const [wantAllOf, setWantAllOf] = useState<string | null>(null);
+  const wantAll = wantAllOf === symbol;
+  const allQ = useQuery({
+    queryKey: ['candles', symbol, 'max'],
+    queryFn: () => api.allCandles(symbol),
+    enabled: wantAll,
+    staleTime: 6 * 3_600_000,
+    retry: false,
+  });
+  const older = allQ.data?.candles;
+  // Lo antiguo se antepone a las velas recientes, que son las que se actualizan en directo.
+  const candles = useMemo(() => {
+    const first = recent[0]?.t;
+    if (!older?.length || !first) return recent;
+    const before = older.filter((c) => c.t < first);
+    return before.length ? [...before, ...recent] : recent;
+  }, [older, recent]);
   const flat = candles.length > 0 && candles.every((c) => c.o === c.c && c.h === c.c && c.l === c.c);
 
   const [step, setStep] = usePersisted<Step>('watchlist.velas.intervalo', 'D', (v) => STEPS.some(([s]) => s === v));
@@ -245,7 +292,10 @@ export function CandleChart({ row, tvSymbol }: Props) {
   const [chartType, setChartType] = usePersisted<ChartType>('watchlist.velas.tipo', 'candles', (v) => CHART_TYPES.some(([t]) => t === v));
   const [scale, setScale] = usePersisted<ScaleMode>('watchlist.velas.escala', 'normal', (v) => SCALES.some(([s]) => s === v));
   const [period, setPeriod] = usePersisted<PeriodId>('watchlist.velas.periodo', '1y', (v) => PERIODS.some(([p]) => p === v));
-  const [indicators, setIndicators] = usePersisted<Indicator[]>('watchlist.velas.indicadores', DEFAULT_INDICATORS, isIndicators);
+  const [storedInd, setIndicators] = usePersisted<Indicator[]>('watchlist.velas.indicadores', DEFAULT_INDICATORS, isIndicators);
+  // Lo guardado puede venir en el formato antiguo de las medias: se lee ya normalizado.
+  const indicators = useMemo(() => storedInd.map((i) => normalizeIndicator(i)!), [storedInd]);
+  const [indQuery, setIndQuery] = useState('');
   const [magnet, setMagnet] = usePersisted<boolean>('watchlist.velas.iman', false, (v) => typeof v === 'boolean');
   const [stay, setStay] = useState(false);
   const [lockAll, setLockAll] = useState(false);
@@ -255,6 +305,9 @@ export function CandleChart({ row, tvSymbol }: Props) {
   const [pending, setPending] = useState<ChartPoint[]>([]);
   const [groupTool, setGroupTool] = useState<Record<string, DrawTool>>({});
   const [flyout, setFlyout] = useState<{ group: string; top: number } | null>(null);
+  /** Menú del clic derecho: posición dentro del gráfico y precio bajo el cursor. */
+  const [menu, setMenu] = useState<{ x: number; y: number; price: number | null } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [indOpen, setIndOpen] = useState(false);
   const [full, setFull] = useState(false);
   const [, rerender] = useReducer((n: number) => n + 1, 0);
@@ -264,11 +317,16 @@ export function CandleChart({ row, tvSymbol }: Props) {
   /** Intervalo de lo que se pinta (un fondo en intradía se ve en diario). */
   const shown: Step = intraday || !isIntraday(step) ? step : 'D';
   const bars = useMemo(() => (intraday ? intradayBars : aggregate(candles, shown)), [candles, intradayBars, intraday, shown]);
-  const precision = precisionFor(candles.at(-1)?.c ?? 1);
-  const indData = useMemo(() => {
-    const closes = bars.map((b) => b.c);
-    return indicators.map((ind) => ({ ind, values: (ind.kind === 'sma' ? sma : ema)(closes, ind.period) }));
-  }, [bars, indicators]);
+  // Los mismos decimales que el precio de la tabla: si cotiza a 14,608, el gráfico no lo redondea a 14,61.
+  const precision = Math.max(precisionFor(candles.at(-1)?.c ?? 1), Math.min(4, quoted != null ? decimals(quoted) : 0));
+  const visibleInd = useMemo(() => indicators.filter((i) => !i.hidden), [indicators]);
+  /** Cifras de cada indicador visible, por línea y alineadas con las velas. */
+  const indData = useMemo(
+    () => new Map(visibleInd.map((ind) => [ind.id, INDICATOR_DEFS[ind.kind].compute(bars, ind.params)])),
+    [bars, visibleInd],
+  );
+  // Las series y los paneles se rehacen solo si cambia qué se ve o su color; los parámetros solo cambian datos.
+  const indKey = visibleInd.map((i) => `${i.id}:${i.kind}:${i.color}`).join('|');
   const returns = useMemo(() => new Map(PERIODS.map(([id]) => [id, periodReturn(candles, id)])), [candles]);
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -278,7 +336,7 @@ export function CandleChart({ row, tvSymbol }: Props) {
   const seriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
   const primRef = useRef(new DrawingsPrimitive());
   const levelLinesRef = useRef<IPriceLine[]>([]);
-  const indSeriesRef = useRef<ISeriesApi<'Line'>[]>([]);
+  const indSeriesRef = useRef<IndSeries[]>([]);
   const datesRef = useRef<string[]>([]);
   const barsRef = useRef<Candle[]>([]);
   const fittedRef = useRef(false);
@@ -347,10 +405,11 @@ export function CandleChart({ row, tvSymbol }: Props) {
     const colors = themeColors();
     const chart = createChart(box, {
       autoSize: true,
-      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: colors.text, fontFamily: 'inherit' },
+      // Sin el logo de TradingView dentro del gráfico; la atribución que pide la licencia va en la nota al pie.
+      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: colors.text, fontFamily: 'inherit', attributionLogo: false },
       grid: { vertLines: { color: colors.grid }, horzLines: { color: colors.grid } },
       rightPriceScale: { borderColor: colors.grid },
-      timeScale: { borderColor: colors.grid, rightOffset: RIGHT_OFFSET },
+      timeScale: { borderColor: colors.grid, rightOffset: RIGHT_OFFSET, minBarSpacing: 0.05 },
       crosshair: { mode: CrosshairMode.Normal },
       localization: { locale: 'es-ES' },
     });
@@ -417,8 +476,9 @@ export function CandleChart({ row, tvSymbol }: Props) {
       return [e.clientX - rect.left, e.clientY - rect.top];
     };
     // Fuera del panel de precios (en los ejes) no se dibuja ni se selecciona.
+    // Con osciladores debajo, solo cuenta el panel de arriba.
     const inPane = (x: number, y: number) =>
-      x >= 0 && y >= 0 && x <= chart.timeScale().width() && y <= box.clientHeight - chart.timeScale().height();
+      x >= 0 && y >= 0 && x <= chart.timeScale().width() && y <= (chart.panes()[0]?.getHeight() ?? box.clientHeight - chart.timeScale().height());
 
     const onClick = (x: number, y: number) => {
       const L = live.current;
@@ -553,6 +613,18 @@ export function CandleChart({ row, tvSymbol }: Props) {
     chart.timeScale().setVisibleLogicalRange({ from: Math.min(from, n - 15), to: n - 1 + RIGHT_OFFSET });
   };
 
+  // Al acercarse al principio de lo cargado (o pedir «Máx»), se trae toda la historia del valor.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || wantAll) return;
+    const ts = chart.timeScale();
+    const onRange = (r: LogicalRange | null) => {
+      if (r && r.from < 30 && !isIntraday(stepRef.current)) setWantAllOf(symbol);
+    };
+    ts.subscribeVisibleLogicalRangeChange(onRange);
+    return () => ts.unsubscribeVisibleLogicalRangeChange(onRange);
+  }, [hasData, kind, symbol, wantAll]);
+
   // Datos: se actualizan sin perder el zoom; la primera vez (o al cambiar de intervalo) se encuadra el periodo.
   useEffect(() => {
     const series = seriesRef.current;
@@ -565,6 +637,8 @@ export function CandleChart({ row, tvSymbol }: Props) {
       barsRef.current = [];
       return;
     }
+    const prevFirst = datesRef.current[0];
+    const before = chart.timeScale().getVisibleLogicalRange();
     datesRef.current = bars.map((b) => b.t);
     barsRef.current = bars;
     const prim = primRef.current;
@@ -574,6 +648,12 @@ export function CandleChart({ row, tvSymbol }: Props) {
     series.applyOptions({ priceFormat: { type: 'price', precision, minMove: 10 ** -precision } });
     if (kind === 'candles') (series as ISeriesApi<'Candlestick'>).setData(bars.map((c) => ({ time: chartTime(c.t), open: c.o, high: c.h, low: c.l, close: c.c })));
     else (series as ISeriesApi<'Line'>).setData(bars.map((c) => ({ time: chartTime(c.t), value: c.c })));
+    // Al llegar la historia antigua, las barras se anteponen: se corre el zoom para que no salte.
+    const added = prevFirst && stepRef.current === shown && bars[0]!.t < prevFirst ? bars.findIndex((b) => b.t >= prevFirst) : 0;
+    if (fittedRef.current && added > 0) {
+      if (period === 'max') showPeriod('max');
+      else if (before) chart.timeScale().setVisibleLogicalRange({ from: before.from + added, to: before.to + added });
+    }
     if (!fittedRef.current || stepRef.current !== shown) {
       const saved = savedRangeRef.current;
       if (!fittedRef.current && saved && stepRef.current === shown) chart.timeScale().setVisibleLogicalRange(saved);
@@ -586,23 +666,71 @@ export function CandleChart({ row, tvSymbol }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bars, kind]);
 
-  // Medias móviles: una línea por indicador visible.
+  // Indicadores: los de precio encima de las velas y cada oscilador en su panel, debajo.
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
-    for (const s of indSeriesRef.current) chart.removeSeries(s);
-    indSeriesRef.current = indData
-      .filter(({ ind }) => !ind.hidden)
-      .map(({ ind, values }) => {
-        const s = chart.addSeries(LineSeries, {
-          color: ind.color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
-          priceFormat: { type: 'price', precision, minMove: 10 ** -precision },
-        });
-        s.setData(values.flatMap((v, i) => (v == null ? [] : [{ time: chartTime(bars[i]!.t), value: v }])));
-        return s;
-      });
+    for (const r of indSeriesRef.current) for (const se of r.lines.values()) chart.removeSeries(se);
+    while (chart.panes().length > 1) chart.removePane(chart.panes().length - 1);
+    let sub = 0;
+    indSeriesRef.current = visibleInd.map((ind) => {
+      const def = INDICATOR_DEFS[ind.kind];
+      const pane = def.pane === 'sub' ? ++sub : 0;
+      const digits = def.precision ?? precision;
+      const common = {
+        priceLineVisible: false, lastValueVisible: def.pane === 'sub', crosshairMarkerVisible: false,
+        priceFormat: { type: 'price' as const, precision: digits, minMove: 10 ** -digits },
+      };
+      const lines = new Map<string, ISeriesApi<'Line' | 'Histogram'>>();
+      for (const l of def.lines) {
+        const color = l.color ?? ind.color;
+        lines.set(
+          l.key,
+          l.style === 'histogram'
+            ? chart.addSeries(HistogramSeries, { ...common, color }, pane)
+            : chart.addSeries(LineSeries, {
+                ...common, color, lineWidth: (l.width ?? 1) as 1 | 2,
+                lineStyle: l.style === 'dashed' ? LineStyle.Dashed : LineStyle.Solid,
+                lineVisible: l.style !== 'dots', pointMarkersVisible: l.style === 'dots', pointMarkersRadius: 1.6,
+              }, pane),
+        );
+      }
+      const first = lines.get(def.lines.find((l) => l.style !== 'histogram')!.key)!;
+      for (const v of def.levels ?? []) first.createPriceLine({ price: v, color: LEVEL_COLOR, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: '' });
+      const range = def.range;
+      if (range) first.applyOptions({ autoscaleInfoProvider: () => ({ priceRange: { minValue: range[0], maxValue: range[1] } }) });
+      let fill: BandFillPrimitive | null = null;
+      if (def.fill) {
+        fill = new BandFillPrimitive();
+        lines.get(def.fill.a)!.attachPrimitive(fill);
+      }
+      // Osciladores con zona de sobrecompra y sobreventa: la franja entre las dos referencias, sombreada.
+      let band: BandFillPrimitive | null = null;
+      if (def.levels?.length === 2) {
+        band = new BandFillPrimitive();
+        first.attachPrimitive(band);
+      }
+      return { ind, def, lines, fill, band };
+    });
+    chart.panes().forEach((p, i) => p.setStretchFactor(i === 0 ? 1 : SUB_STRETCH));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indData, hasData, kind]);
+  }, [indKey, hasData, kind, symbol]);
+
+  useEffect(() => {
+    for (const { ind, def, lines, fill, band } of indSeriesRef.current) {
+      const values = indData.get(ind.id);
+      if (!values) continue;
+      for (const [key, se] of lines) {
+        const hist = def.lines.find((l) => l.key === key)?.style === 'histogram';
+        se.setData((values[key] ?? []).flatMap((v, i) =>
+          v == null ? [] : [hist ? { time: chartTime(bars[i]!.t), value: v, color: v >= 0 ? HIST_UP : HIST_DOWN } : { time: chartTime(bars[i]!.t), value: v }],
+        ));
+      }
+      if (band && def.levels) band.set(bars.map(() => def.levels![1]!), bars.map(() => def.levels![0]!), alpha(ind.color, 0.08));
+      if (fill && def.fill) fill.set(values[def.fill.a] ?? [], values[def.fill.b] ?? [], def.fill.up ?? alpha(ind.color, 0.1), def.fill.down);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indData, indKey, hasData, kind, symbol]);
 
   useEffect(() => {
     chartRef.current?.priceScale('right').applyOptions({
@@ -616,15 +744,14 @@ export function CandleChart({ row, tvSymbol }: Props) {
     if (!series) return;
     for (const l of levelLinesRef.current) series.removePriceLine(l);
     const colors = themeColors();
-    levelLinesRef.current = [
-      ...metrics.levels.map((l, i) => series.createPriceLine({
-        price: l.price, color: colors.accent, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: `Compra ${i + 1}`,
-      })),
-      ...(item.orderActive && item.orderPrice ? [series.createPriceLine({
-        price: item.orderPrice, color: colors.text, lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: 'Orden',
-      })] : []),
-    ];
-  }, [metrics.levels, item.orderActive, item.orderPrice, hasData, kind]);
+    levelLinesRef.current = lines.map((l) => series.createPriceLine({
+      price: l.price,
+      color: l.status && l.status !== 'unknown' ? resolveColor(`var(--${l.status}-fg)`) : l.style === 'dotted' ? colors.text : colors.accent,
+      lineWidth: 1,
+      lineStyle: l.style === 'dotted' ? LineStyle.Dotted : LineStyle.Dashed, axisLabelVisible: true, title: l.title,
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- las líneas cambian cuando cambia su contenido
+  }, [linesKey, hasData, kind]);
 
   useEffect(() => {
     const prim = primRef.current;
@@ -644,16 +771,36 @@ export function CandleChart({ row, tvSymbol }: Props) {
 
   // Los menús desplegables se cierran al pulsar fuera.
   useEffect(() => {
-    if (!flyout && !indOpen) return;
+    if (!flyout && !indOpen && !menu) return;
     const onDown = (e: PointerEvent) => {
       if (!(e.target as Element).closest?.('.xp-candles__flyout, .xp-candles__panel, [data-popover]')) {
         setFlyout(null);
         setIndOpen(false);
+        setMenu(null);
       }
     };
+    const onLeave = () => setMenu(null);
     document.addEventListener('pointerdown', onDown);
-    return () => document.removeEventListener('pointerdown', onDown);
-  }, [flyout, indOpen]);
+    window.addEventListener('blur', onLeave);
+    window.addEventListener('resize', onLeave);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('blur', onLeave);
+      window.removeEventListener('resize', onLeave);
+    };
+  }, [flyout, indOpen, menu]);
+
+  // El menú del clic derecho no se sale del gráfico: si no cabe, se abre hacia la izquierda o hacia arriba.
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    const stage = stageRef.current;
+    if (!menu || !el || !stage) return;
+    const x = menu.x + el.offsetWidth > stage.clientWidth - 4 ? Math.max(4, menu.x - el.offsetWidth) : menu.x;
+    const y = menu.y + el.offsetHeight > stage.clientHeight - 4 ? Math.max(4, stage.clientHeight - el.offsetHeight - 4) : menu.y;
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    el.querySelector<HTMLElement>('[role=menuitem]')?.focus({ preventScroll: true });
+  }, [menu]);
 
   const chooseTool = (t: Tool) => {
     const next = t !== 'cursor' && t === tool ? 'cursor' : t;
@@ -699,6 +846,44 @@ export function CandleChart({ row, tvSymbol }: Props) {
     if (document.fullscreenElement) void document.exitFullscreen();
     else void rootRef.current?.requestFullscreen();
   };
+  /** Vuelve a la vista del periodo elegido, con las escalas de precio ajustadas solas (como Alt+R en TradingView). */
+  const resetView = () => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    for (const pane of chart.panes()) pane.priceScale('right').applyOptions({ autoScale: true });
+    showPeriod(period);
+  };
+  const priceText = (p: number) => p.toFixed(precision).replace('.', ',');
+  const openMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const stage = stageRef.current?.getBoundingClientRect();
+    const box = boxRef.current?.getBoundingClientRect();
+    if (!stage || !box) return;
+    const p = seriesRef.current?.coordinateToPrice(e.clientY - box.top);
+    setFlyout(null);
+    setIndOpen(false);
+    setMenu({ x: e.clientX - stage.left, y: e.clientY - stage.top, price: p == null || !Number.isFinite(p) ? null : p });
+  };
+  /** Ejecuta la opción del menú y lo cierra, devolviendo el foco al gráfico para seguir con el teclado. */
+  const pick = (fn: () => void) => () => {
+    setMenu(null);
+    rootRef.current?.focus({ preventScroll: true });
+    fn();
+  };
+  const menuKeys = (e: React.KeyboardEvent) => {
+    const items = [...(menuRef.current?.querySelectorAll<HTMLElement>('[role=menuitem]') ?? [])];
+    const i = items.indexOf(document.activeElement as HTMLElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      e.stopPropagation();
+      items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
+    } else if (e.key === 'Escape' || e.key === 'Tab') {
+      e.preventDefault();
+      e.stopPropagation();
+      setMenu(null);
+      rootRef.current?.focus({ preventScroll: true });
+    }
+  };
   const openFlyout = (group: string, el: HTMLElement) => {
     if (flyout?.group === group) return setFlyout(null);
     const top = el.getBoundingClientRect().top - (stageRef.current?.getBoundingClientRect().top ?? 0);
@@ -706,8 +891,25 @@ export function CandleChart({ row, tvSymbol }: Props) {
   };
   const updateIndicator = (id: string, patch: Partial<Indicator>) =>
     setIndicators(indicators.map((i) => (i.id === id ? { ...i, ...patch } : i)));
-  const addIndicator = (k: Indicator['kind']) =>
-    setIndicators([...indicators, { id: newDrawingId(), kind: k, period: k === 'sma' ? 50 : 20, color: IND_COLORS[indicators.length % IND_COLORS.length]! }]);
+  const newIndicator = (kind: IndKind, n: number, params?: Record<string, number>, color?: string): Indicator => ({
+    id: newDrawingId(), kind, params: { ...defaultParams(kind), ...params }, color: color ?? IND_COLORS[n % IND_COLORS.length]!,
+  });
+  const addIndicator = (kind: IndKind) => setIndicators([...indicators, newIndicator(kind, indicators.length)]);
+  /** Plantilla: añade lo que falte (un indicador igual que ya está no se repite, solo se vuelve a mostrar). */
+  const applyTemplate = (items: (typeof TEMPLATES)[number]['items']) => {
+    const next = [...indicators];
+    for (const it of items) {
+      const cand = newIndicator(it.kind, next.length, it.params, it.color);
+      const at = next.findIndex((i) => i.kind === cand.kind && JSON.stringify(i.params) === JSON.stringify(cand.params));
+      if (at >= 0) next[at] = { ...next[at]!, hidden: false };
+      else next.push(cand);
+    }
+    setIndicators(next);
+  };
+  const q = fold(indQuery.trim());
+  const catalog = IND_GROUPS.map(([g, label]) => ({
+    g, label, items: IND_LIST.filter((d) => d.group === g && (!q || fold(`${d.name} ${d.short} ${label}`).includes(q))),
+  })).filter((c) => c.items.length);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     const tag = (e.target as HTMLElement).tagName;
@@ -724,6 +926,9 @@ export function CandleChart({ row, tvSymbol }: Props) {
       e.preventDefault();
       if (e.code === 'KeyY' || e.shiftKey) redo();
       else undo();
+    } else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyR') {
+      e.preventDefault();
+      resetView();
     } else if (e.altKey && !mod) {
       const t = e.shiftKey ? (e.code === 'KeyR' ? 'rect' : undefined) : SHORTCUTS[e.code];
       if (t) {
@@ -734,16 +939,11 @@ export function CandleChart({ row, tvSymbol }: Props) {
   };
 
   const toolTitle = (t: DrawTool) => (TOOL_INFO[t][1] ? `${TOOL_INFO[t][0]} (${TOOL_INFO[t][1]})` : TOOL_INFO[t][0]);
-  const hint = tool === 'cursor'
-    ? selectedDrawing
-      ? selectedDrawing.locked || lockAll ? 'Dibujo bloqueado.' : 'Arrastra el dibujo o sus puntos para moverlo. Supr para borrarlo.'
-      : 'Pulsa un dibujo para seleccionarlo.'
-    : tool === 'measure'
-      ? 'Medir: haz clic en el inicio y en el final. Esc para salir.'
-      : TOOL_CLICKS[tool] === 1
-        ? `${TOOL_INFO[tool][0]}: haz clic en el gráfico. Esc para cancelar.`
-        : `${TOOL_INFO[tool][0]}: punto ${pending.length + 1} de ${TOOL_CLICKS[tool]}. Esc para cancelar.`;
-  const last = bars.at(-1);
+  // Sin instrucciones de uso de las herramientas: solo avisos de datos o de guardado.
+  const notes = [
+    (intraday ? intradayQ.data?.stale : candlesQ.data?.stale) && 'Datos guardados: la fuente no responde',
+    save.isError && 'No se pudo guardar el dibujo',
+  ].filter((n): n is string => !!n);
   const toggle = (icon: IconName, label: string, on: boolean, onClick: () => void) => (
     <button type="button" className={on ? 'on' : ''} aria-pressed={on} title={label} aria-label={label} onClick={onClick}>
       <ChartIcon name={icon} />
@@ -792,6 +992,20 @@ export function CandleChart({ row, tvSymbol }: Props) {
           <button type="button" title="Rehacer (Ctrl+Y)" aria-label="Rehacer" disabled={!redoRef.current.length} onClick={redo}><ChartIcon name="redo" /></button>
         </div>
         <div className="xp-candles__icons xp-candles__push">
+          {tvSymbol && (
+            <a
+              href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(tvSymbol)}`}
+              target="_blank"
+              rel="noreferrer"
+              title="Abrir en TradingView"
+              aria-label="Abrir en TradingView"
+            >
+              <svg width="20" height="16" viewBox="0 0 36 28" fill="currentColor" aria-hidden="true">
+                <path d="M14 22H7V11H0V4h14v18zM28 22h-8l7.5-18h8L28 22z" />
+                <circle cx="20" cy="8" r="4" />
+              </svg>
+            </a>
+          )}
           <button type="button" title="Descargar imagen" aria-label="Descargar imagen" disabled={!hasData} onClick={screenshot}><ChartIcon name="camera" /></button>
           <button type="button" title={full ? 'Salir de pantalla completa' : 'Pantalla completa'} aria-label="Pantalla completa" aria-pressed={full} onClick={toggleFull}>
             <ChartIcon name="fullscreen" />
@@ -839,7 +1053,8 @@ export function CandleChart({ row, tvSymbol }: Props) {
           <div
             className={`xp-candles__chart${tool !== 'cursor' ? ' is-drawing' : ''}`}
             ref={boxRef}
-            aria-label={`Gráfico de velas de ${item.name ?? symbol}`}
+            onContextMenu={hasData ? openMenu : undefined}
+            aria-label={`Gráfico de velas de ${name}`}
             role="img"
           >
             {candlesQ.isLoading && <p className="muted small xp-candles__msg">Cargando velas…</p>}
@@ -850,7 +1065,7 @@ export function CandleChart({ row, tvSymbol }: Props) {
             )}
           </div>
           {hasData && (
-            <Legend name={item.name ?? symbol} step={shown} bars={bars} flat={flat} indData={indData} precision={precision} setter={legendRef} />
+            <Legend name={name} step={shown} bars={bars} flat={flat} indicators={visibleInd} indData={indData} precision={precision} setter={legendRef} />
           )}
           {selectedDrawing && (
             <EditBar
@@ -875,39 +1090,107 @@ export function CandleChart({ row, tvSymbol }: Props) {
           </div>
         )}
 
+        {menu && (
+          <div
+            ref={menuRef}
+            className="xp-candles__flyout xp-candles__menu"
+            role="menu"
+            aria-label="Opciones del gráfico"
+            style={{ left: menu.x, top: menu.y }}
+            onKeyDown={menuKeys}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            <button type="button" role="menuitem" onClick={pick(resetView)}>
+              <ChartIcon name="reset" /><span>Restablecer visualización del gráfico</span><kbd>Alt + R</kbd>
+            </button>
+            {menu.price != null && (
+              <button type="button" role="menuitem" onClick={pick(() => void navigator.clipboard?.writeText(priceText(menu.price!)))}>
+                <ChartIcon name="copy" /><span>Copiar precio {priceText(menu.price)}</span>
+              </button>
+            )}
+            <hr />
+            <button type="button" role="menuitem" onClick={pick(() => zoom(0.7))}>
+              <ChartIcon name="zoomIn" /><span>Acercar</span>
+            </button>
+            <button type="button" role="menuitem" onClick={pick(() => zoom(1 / 0.7))}>
+              <ChartIcon name="zoomOut" /><span>Alejar</span>
+            </button>
+            {(drawings.length > 0 || indicators.length > 0) && <hr />}
+            {drawings.length > 0 && (
+              <button type="button" role="menuitem" onClick={pick(() => { setHidden(!hidden); setSelected(null); })}>
+                <ChartIcon name="eye" /><span>{hidden ? 'Mostrar dibujos' : 'Ocultar dibujos'}</span>
+              </button>
+            )}
+            {drawings.length > 0 && (
+              <button type="button" role="menuitem" onClick={pick(removeAll)}>
+                <ChartIcon name="trash" /><span>Eliminar {drawings.length === 1 ? 'el dibujo' : `${drawings.length} dibujos`}</span>
+              </button>
+            )}
+            {indicators.length > 0 && (
+              <button type="button" role="menuitem" onClick={pick(() => setIndicators([]))}>
+                <ChartIcon name="indicators" /><span>Eliminar {indicators.length === 1 ? 'el indicador' : `${indicators.length} indicadores`}</span>
+              </button>
+            )}
+            <hr />
+            <button type="button" role="menuitem" onClick={pick(screenshot)}>
+              <ChartIcon name="camera" /><span>Descargar imagen</span>
+            </button>
+            <button type="button" role="menuitem" onClick={pick(toggleFull)}>
+              <ChartIcon name="fullscreen" /><span>{full ? 'Salir de pantalla completa' : 'Pantalla completa'}</span>
+            </button>
+          </div>
+        )}
+
         {indOpen && (
-          <div className="xp-candles__panel" role="dialog" aria-label="Indicadores">
-            <strong className="small">Medias móviles</strong>
-            {indicators.length === 0 && <p className="muted small">Sin indicadores.</p>}
-            {indicators.map((ind) => (
-              <div className="xp-candles__ind" key={ind.id}>
-                <span className="xp-candles__dot" style={{ background: ind.color }} />
-                <select aria-label="Tipo de media" value={ind.kind} onChange={(e) => updateIndicator(ind.id, { kind: e.target.value as Indicator['kind'] })}>
-                  <option value="sma">SMA</option>
-                  <option value="ema">EMA</option>
-                </select>
-                <input
-                  type="number"
-                  aria-label="Periodo"
-                  min={1}
-                  max={500}
-                  value={ind.period}
-                  onChange={(e) => {
-                    const n = Math.round(Number(e.target.value));
-                    if (n >= 1 && n <= 500) updateIndicator(ind.id, { period: n });
-                  }}
-                />
-                <button type="button" className="icon-btn" aria-pressed={!ind.hidden} title={ind.hidden ? 'Mostrar' : 'Ocultar'} onClick={() => updateIndicator(ind.id, { hidden: !ind.hidden })}>
-                  <ChartIcon name="eye" />
+          <div className="xp-candles__panel xp-ind" role="dialog" aria-label="Indicadores">
+            <input
+              type="search"
+              className="xp-ind__search"
+              placeholder="Buscar: RSI, Bollinger, media…"
+              aria-label="Buscar indicador"
+              value={indQuery}
+              autoFocus
+              onChange={(e) => setIndQuery(e.target.value)}
+            />
+            <div className="xp-ind__templates" role="group" aria-label="Plantillas">
+              <span className="muted small">Plantillas</span>
+              {TEMPLATES.map((t) => (
+                <button key={t.id} type="button" className="btn btn--small" title={t.title} onClick={() => applyTemplate(t.items)}>
+                  {t.label}
                 </button>
-                <button type="button" className="icon-btn" title="Quitar" aria-label="Quitar" onClick={() => setIndicators(indicators.filter((i) => i.id !== ind.id))}>
-                  <ChartIcon name="trash" />
-                </button>
-              </div>
-            ))}
-            <div className="xp-candles__ind-add">
-              <button type="button" className="btn btn--small" onClick={() => addIndicator('sma')}>+ SMA</button>
-              <button type="button" className="btn btn--small" onClick={() => addIndicator('ema')}>+ EMA</button>
+              ))}
+            </div>
+            {indicators.length > 0 && (
+              <section className="xp-ind__section">
+                <div className="xp-ind__title">
+                  <strong className="small">En el gráfico</strong>
+                  <button type="button" className="btn btn--small btn--ghost" onClick={() => setIndicators([])}>Quitar todos</button>
+                </div>
+                {indicators.map((ind) => (
+                  <IndicatorRow
+                    key={ind.id}
+                    ind={ind}
+                    def={INDICATOR_DEFS[ind.kind]}
+                    onChange={(patch) => updateIndicator(ind.id, patch)}
+                    onRemove={() => setIndicators(indicators.filter((i) => i.id !== ind.id))}
+                  />
+                ))}
+              </section>
+            )}
+            <div className="xp-ind__catalog">
+              {catalog.map(({ g, label, items }) => (
+                <section key={g} className="xp-ind__section">
+                  <strong className="small muted">{label}</strong>
+                  {items.map((d) => (
+                    <button key={d.kind} type="button" className="xp-ind__add" onClick={() => addIndicator(d.kind)}>
+                      <span>{d.name}</span>
+                      <small className="muted">{d.short}{d.pane === 'sub' ? ' · panel' : ''}</small>
+                      <b aria-hidden="true">+</b>
+                    </button>
+                  ))}
+                </section>
+              ))}
+              {catalog.length === 0 && <p className="muted small">Ningún indicador con «{indQuery.trim()}».</p>}
             </div>
           </div>
         )}
@@ -942,20 +1225,8 @@ export function CandleChart({ row, tvSymbol }: Props) {
         </div>
       </div>
 
-      <p className="muted small xp-candles__note">
-        {hint}
-        {last && <> · Última vela {fmtBarDate(last.t)}</>}
-        {(intraday ? intradayQ.data?.stale : candlesQ.data?.stale) && <> · Datos guardados: la fuente no responde</>}
-        {save.isError && <> · No se pudo guardar el dibujo</>}
-        {tvSymbol && (
-          <>
-            {' · '}
-            <a href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(tvSymbol)}`} target="_blank" rel="noreferrer">
-              Abrir en TradingView
-            </a>
-          </>
-        )}
-      </p>
+      {/* Solo cuando hay algo que decir: la herramienta en curso, el dibujo elegido o un problema. */}
+      {notes.length > 0 && <p className="muted small xp-candles__note">{notes.join(' · ')}</p>}
     </div>
   );
 }
@@ -965,13 +1236,14 @@ interface LegendProps {
   step: Step;
   bars: Candle[];
   flat: boolean;
-  indData: { ind: Indicator; values: (number | null)[] }[];
+  indicators: Indicator[];
+  indData: Map<string, Record<string, Series>>;
   precision: number;
   setter: MutableRefObject<((i: number | null) => void) | null>;
 }
 
 /** Leyenda de arriba a la izquierda: la vela bajo el cursor (o la última) y el valor de las medias. */
-function Legend({ name, step, bars, flat, indData, precision, setter }: LegendProps) {
+function Legend({ name, step, bars, flat, indicators, indData, precision, setter }: LegendProps) {
   const [hover, setHover] = useState<number | null>(null);
   useEffect(() => {
     setter.current = setHover;
@@ -992,11 +1264,24 @@ function Legend({ name, step, bars, flat, indData, precision, setter }: LegendPr
         {' '}C <b className={tone}>{f(bar.c)}</b>
         {change != null && prev && <b className={tone}> {change >= 0 ? '+' : ''}{f(change)} ({fmtPct(change / prev.c)})</b>}
       </div>
-      {indData.filter(({ ind }) => !ind.hidden).map(({ ind, values }) => (
-        <div key={ind.id} style={{ color: ind.color }}>
-          {ind.kind.toUpperCase()} {ind.period} <b>{values[i] != null ? f(values[i]!) : '—'}</b>
-        </div>
-      ))}
+      {indicators.map((ind) => {
+        const def = INDICATOR_DEFS[ind.kind];
+        const values = indData.get(ind.id);
+        const d = def.precision ?? precision;
+        return (
+          <div key={ind.id} style={{ color: ind.color }}>
+            {indicatorLabel(ind)}
+            {def.lines.map((l) => {
+              const v = values?.[l.key]?.[i];
+              return (
+                <b key={l.key} style={{ color: l.color ?? ind.color }}>
+                  {' '}{v != null ? v.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d }) : '—'}
+                </b>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1064,6 +1349,48 @@ function EditBar({ drawing: d, locked, onPatch, onRemove }: EditBarProps) {
         <ChartIcon name="lock" />
       </button>
       <button type="button" className="icon-btn" title="Eliminar" aria-label="Eliminar" disabled={off} onClick={onRemove}>
+        <ChartIcon name="trash" />
+      </button>
+    </div>
+  );
+}
+
+interface IndSeries {
+  ind: Indicator;
+  def: IndicatorDef;
+  lines: Map<string, ISeriesApi<'Line' | 'Histogram'>>;
+  fill: BandFillPrimitive | null;
+  band: BandFillPrimitive | null;
+}
+
+/** Un indicador puesto: color, nombre, sus parámetros, ocultar y quitar. */
+function IndicatorRow({ ind, def, onChange, onRemove }: { ind: Indicator; def: IndicatorDef; onChange: (p: Partial<Indicator>) => void; onRemove: () => void }) {
+  return (
+    <div className={`xp-ind__row${ind.hidden ? ' xp-ind__row--off' : ''}`}>
+      <input type="color" className="xp-ind__color" aria-label={`Color de ${def.name}`} value={ind.color} onChange={(e) => onChange({ color: e.target.value })} />
+      <span className="xp-ind__name" title={def.name}>{def.short}</span>
+      <span className="xp-ind__params">
+        {def.params.map((p) => (
+          <input
+            key={p.key}
+            type="number"
+            title={p.label}
+            aria-label={`${def.short}: ${p.label}`}
+            min={p.min}
+            max={p.max}
+            step={p.step}
+            value={ind.params[p.key]}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (e.target.value !== '' && n >= p.min && n <= p.max) onChange({ params: { ...ind.params, [p.key]: n } });
+            }}
+          />
+        ))}
+      </span>
+      <button type="button" className="icon-btn" aria-pressed={!ind.hidden} title={ind.hidden ? 'Mostrar' : 'Ocultar'} aria-label={ind.hidden ? 'Mostrar' : 'Ocultar'} onClick={() => onChange({ hidden: !ind.hidden })}>
+        <ChartIcon name="eye" />
+      </button>
+      <button type="button" className="icon-btn" title="Quitar" aria-label={`Quitar ${def.name}`} onClick={onRemove}>
         <ChartIcon name="trash" />
       </button>
     </div>

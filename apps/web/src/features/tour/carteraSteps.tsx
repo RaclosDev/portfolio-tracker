@@ -34,11 +34,11 @@ export const CARTERA_TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="refresh"]',
     title: 'Actualizar cotizaciones',
-    body: <p>Pulsa <strong>Actualizar</strong> para consultar los últimos datos disponibles. Los precios de los fondos se actualizan una vez al día, cuando la gestora publica el valor liquidativo.</p>,
+    body: <p>Con la cartera en pantalla, los precios se refrescan solos cada pocos segundos. Pasa el ratón por este icono para ver el estado y púlsalo para forzar la actualización. Los precios de los fondos se actualizan una vez al día, cuando la gestora publica el valor liquidativo.</p>,
   },
   {
-    target: '[data-tour="tour"]',
+    target: '[data-tour="settings"]',
     title: 'Volver a la guía',
-    body: <p>Puedes abrir esta guía cuando quieras. En una lista de vigilancia, el mismo botón explica las herramientas de esa sección.</p>,
+    body: <p>Puedes abrir esta guía cuando quieras desde <strong>Ajustes → General → Ver la guía</strong>. En una lista de vigilancia explica las herramientas de esa sección.</p>,
   },
 ];

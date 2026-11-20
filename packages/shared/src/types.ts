@@ -66,6 +66,16 @@ export interface SymbolSearchResult {
   isin?: string | null;
 }
 
+/**
+ * «Visitados»: valores abiertos desde el buscador de la cabecera. Se ven como una lista más, pero no es
+ * una lista guardada (no cuenta para alertas, cartera ni copias): id fijo y negativo.
+ */
+export const VISITED_LIST_ID = -1;
+export const VISITED_LIST_NAME = 'Visitados';
+export interface VisitedSymbol extends SymbolSearchResult {
+  visitedAt: string;
+}
+
 /** Un producto (acción, ETF, fondo…) identificado por su ISIN, sin elegir aún la bolsa. */
 export interface InstrumentHit {
   isin: string;

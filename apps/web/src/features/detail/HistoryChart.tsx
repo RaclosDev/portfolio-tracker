@@ -1,6 +1,7 @@
 import type { HistoryRange, LevelStatus, PricePoint } from '@watchlist/shared';
 import { useMemo, useRef, useState, type PointerEvent } from 'react';
 import { pct, price } from '../../lib/format.ts';
+import { useSize } from '../../lib/useSize.ts';
 
 export interface RefLine {
   label: string;
@@ -9,8 +10,6 @@ export interface RefLine {
   kind: LevelStatus | 'order' | 'broker' | 'consensus' | 'price';
 }
 
-const W = 640;
-const H = 300;
 const M = { top: 14, right: 118, bottom: 28, left: 52 };
 
 /** Valores "redondos" para las marcas del eje vertical. */
@@ -36,6 +35,7 @@ export function HistoryChart({
   range,
   current,
   currency,
+  fill = false,
 }: {
   points: PricePoint[];
   refs: RefLine[];
@@ -44,10 +44,16 @@ export function HistoryChart({
   current?: number | null;
   /** Moneda del valor: sus precios llevan el símbolo (en el eje, solo las cifras). */
   currency?: string | null;
+  /** Ocupa todo el alto de su contenedor (detalle a pantalla completa); si no, alto según el ancho. */
+  fill?: boolean;
 }) {
   const pr = (v: number) => price(v, currency);
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
+  // Se dibuja a tamaño real (sin escalar un viewBox fijo): los textos no crecen al ensanchar y la curva llena el hueco.
+  const [plotRef, size] = useSize<HTMLDivElement>();
+  const W = Math.max(size.w, 320);
+  const H = fill ? Math.max(size.h, 240) : Math.min(380, Math.max(220, Math.round(W * 0.45)));
 
   const geo = useMemo(() => {
     const closes = points.map((p) => p.c);
@@ -63,7 +69,8 @@ export function HistoryChart({
     const y = (v: number) => M.top + (1 - (v - min) / (max - min)) * (H - M.top - M.bottom);
     const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(p.c).toFixed(1)}`).join('');
     const area = `${line}L${x(points.length - 1).toFixed(1)} ${H - M.bottom}L${x(0).toFixed(1)} ${H - M.bottom}Z`;
-    const xTicks = points.length > 1 ? [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(f * (points.length - 1))) : [];
+    const nx = Math.min(8, Math.max(2, Math.floor((W - M.left - M.right) / 150)));
+    const xTicks = points.length > 1 ? Array.from({ length: nx + 1 }, (_, i) => Math.round((i / nx) * (points.length - 1))) : [];
     // Etiquetas de referencia sin solaparse: se separan al menos 13 px en vertical.
     const labels = all
       .map((r) => ({ ...r, y: y(r.value) }))
@@ -73,8 +80,9 @@ export function HistoryChart({
         acc.push({ ...r, ly: prev ? Math.max(r.y, prev.ly + 13) : r.y });
         return acc;
       }, []);
-    return { x, y, line, area, yTicks: niceTicks(min, max), xTicks, labels, min, max };
-  }, [points, refs, current]);
+    const yTicks = niceTicks(min, max, Math.min(10, Math.max(4, Math.round(H / 70))));
+    return { x, y, line, area, yTicks, xTicks, labels, min, max };
+  }, [points, refs, current, W, H]);
 
   if (points.length < 2) return <p className="muted chart-empty">No hay datos de cotización para este periodo.</p>;
 
@@ -100,62 +108,68 @@ export function HistoryChart({
   const h = hover != null ? { t: new Date(+new Date(points[lo]!.t) + (+new Date(points[hi]!.t) - +new Date(points[lo]!.t)) * k).toISOString(), c: points[lo]!.c + (points[hi]!.c - points[lo]!.c) * k } : null;
 
   return (
-    <figure className="chart">
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${W} ${H}`}
-        className="chart__svg"
-        role="img"
-        aria-label={summary}
-        onPointerMove={onMove}
-        onPointerLeave={() => setHover(null)}
-      >
-        {geo.yTicks.map((v) => (
-          <g key={v} className="chart__grid">
-            <line x1={M.left} x2={W - M.right} y1={geo.y(v)} y2={geo.y(v)} />
-            <text x={M.left - 6} y={geo.y(v) + 3.5} textAnchor="end">
-              {pr(v)}
-            </text>
-          </g>
-        ))}
-        {geo.xTicks.map((i, k) => (
-          <text key={k} className="chart__xlabel" x={geo.x(i)} y={H - 8} textAnchor={k === 0 ? 'start' : k === geo.xTicks.length - 1 ? 'end' : 'middle'}>
-            {fmtDate(points[i]!.t, range)}
-          </text>
-        ))}
-
-        <path className="chart__area" d={geo.area} />
-        <path className="chart__line" d={geo.line} />
-
-        {geo.labels.map((r) =>
-          r.kind === 'price' ? (
-            // El precio actual va en un recuadro, como en los gráficos de los brókers.
-            <g key={`precio-${r.label}`} className="chart__ref chart__ref--price">
-              <line x1={geo.x(points.length - 1)} x2={W - M.right} y1={r.y} y2={r.y} />
-              <rect x={W - M.right + 2} y={r.ly - 7.5} width={(r.label.length + pr(r.value).length + 1) * 6.2 + 8} height={15} rx={3} />
-              <text x={W - M.right + 6} y={r.ly + 3.5}>
-                {r.label} {pr(r.value)}
+    <figure className={`chart${fill ? ' chart--fill' : ''}`}>
+      <div ref={plotRef} className="chart__plot" style={fill ? undefined : { height: H }}>
+        {size.w > 0 && (
+          <svg
+            ref={svgRef}
+            width={W}
+          height={H}
+          viewBox={`0 0 ${W} ${H}`}
+            className="chart__svg"
+            role="img"
+            aria-label={summary}
+            onPointerMove={onMove}
+            onPointerLeave={() => setHover(null)}
+          >
+            {geo.yTicks.map((v) => (
+              <g key={v} className="chart__grid">
+                <line x1={M.left} x2={W - M.right} y1={geo.y(v)} y2={geo.y(v)} />
+                <text x={M.left - 6} y={geo.y(v) + 3.5} textAnchor="end">
+                  {pr(v)}
+                </text>
+              </g>
+            ))}
+            {geo.xTicks.map((i, k) => (
+              <text key={k} className="chart__xlabel" x={geo.x(i)} y={H - 8} textAnchor={k === 0 ? 'start' : k === geo.xTicks.length - 1 ? 'end' : 'middle'}>
+                {fmtDate(points[i]!.t, range)}
               </text>
-            </g>
-          ) : (
-            <g key={`${r.label}-${r.value}`} className={`chart__ref chart__ref--${r.kind}`}>
-              <line x1={M.left} x2={W - M.right} y1={r.y} y2={r.y} />
-              <text x={W - M.right + 6} y={r.ly + 3.5}>
-                {r.label} {pr(r.value)}
-              </text>
-            </g>
-          ),
-        )}
+            ))}
 
-        <circle className="chart__last" cx={geo.x(points.length - 1)} cy={geo.y(last.c)} r={3.5} />
+            <path className="chart__area" d={geo.area} />
+            <path className="chart__line" d={geo.line} />
 
-        {h && (
-          <g className="chart__hover">
-            <line x1={geo.x(hover!)} x2={geo.x(hover!)} y1={M.top} y2={H - M.bottom} />
-            <circle cx={geo.x(hover!)} cy={geo.y(h.c)} r={4} />
-          </g>
+            {geo.labels.map((r) =>
+              r.kind === 'price' ? (
+                // El precio actual va en un recuadro, como en los gráficos de los brókers.
+                <g key={`precio-${r.label}`} className="chart__ref chart__ref--price">
+                  <line x1={geo.x(points.length - 1)} x2={W - M.right} y1={r.y} y2={r.y} />
+                  <rect x={W - M.right + 2} y={r.ly - 7.5} width={(r.label.length + pr(r.value).length + 1) * 6.2 + 8} height={15} rx={3} />
+                  <text x={W - M.right + 6} y={r.ly + 3.5}>
+                    {r.label} {pr(r.value)}
+                  </text>
+                </g>
+              ) : (
+                <g key={`${r.label}-${r.value}`} className={`chart__ref chart__ref--${r.kind}`}>
+                  <line x1={M.left} x2={W - M.right} y1={r.y} y2={r.y} />
+                  <text x={W - M.right + 6} y={r.ly + 3.5}>
+                    {r.label} {pr(r.value)}
+                  </text>
+                </g>
+              ),
+            )}
+
+            <circle className="chart__last" cx={geo.x(points.length - 1)} cy={geo.y(last.c)} r={3.5} />
+
+            {h && (
+              <g className="chart__hover">
+                <line x1={geo.x(hover!)} x2={geo.x(hover!)} y1={M.top} y2={H - M.bottom} />
+                <circle cx={geo.x(hover!)} cy={geo.y(h.c)} r={4} />
+              </g>
+            )}
+          </svg>
         )}
-      </svg>
+      </div>
       <figcaption className="chart__caption" aria-live="polite">
         {h ? (
           <>

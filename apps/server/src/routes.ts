@@ -21,9 +21,12 @@ import { ListsRepository } from './modules/lists/lists.repository.ts';
 import { ItemsRepository } from './modules/items/items.repository.ts';
 import { InstrumentsRepository, OperationsRepository } from './modules/portfolio/cartera.repository.ts';
 import { PortfolioService } from './modules/portfolio/portfolio.service.ts';
+import { NO_ANALYST_COVERAGE } from './modules/watchlist/watchlist.service.ts';
 
 const idParam = z.object({ id: z.coerce.number().int().positive() });
-const forceQuery = z.object({ force: z.enum(['1', 'true']).optional() });
+const forceQuery = z.object({ force: z.enum(['1', 'true']).optional(), live: z.enum(['1', 'true']).optional() });
+/** Caché de precios de lo que está en pantalla con `?live=1` (se pide cada dos segundos). */
+const LIVE_MAX_AGE_MS = 1_500;
 const pushSubscriptionSchema = z.object({
   subscription: z.object({
     endpoint: z.url().max(1000),
@@ -101,8 +104,9 @@ export async function registerRoutes(app: FastifyInstance) {
   });
   app.get('/api/lists/:id/watchlist', async (req) => {
     const { id } = idParam.parse(req.params);
-    const { force } = forceQuery.parse(req.query);
-    return (await req.services.watchlist.view(id, { force: !!force })) ?? Promise.reject(notFound('Lista'));
+    const { force, live } = forceQuery.parse(req.query);
+    const view = await req.services.watchlist.view(id, { force: !!force, maxAgeMs: live ? LIVE_MAX_AGE_MS : undefined });
+    return view ?? Promise.reject(notFound('Lista'));
   });
 
   /**
@@ -164,8 +168,8 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Cartera real: registro de operaciones
   app.get('/api/portfolio', async (req) => {
-    const { force } = forceQuery.parse(req.query);
-    return req.services.portfolio.view({ force: !!force });
+    const { force, live } = forceQuery.parse(req.query);
+    return req.services.portfolio.view({ force: !!force, maxAgeMs: live ? LIVE_MAX_AGE_MS : undefined });
   });
   /** Qué llevan dentro los fondos y ETF de la cartera (sus mayores posiciones). */
   app.get('/api/portfolio/composition', async (req) => req.services.portfolio.composition());
@@ -305,7 +309,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get('/api/market/live/:symbol', async (req) => {
     const { symbol } = z.object({ symbol: z.string().min(1).max(32) }).parse(req.params);
     const sym = symbol.toUpperCase();
-    const quote = (await req.services.market.getQuotes([sym], { maxAgeMs: 1_500 })).get(sym);
+    const quote = (await req.services.market.getQuotes([sym], { maxAgeMs: LIVE_MAX_AGE_MS })).get(sym);
     if (!quote) throw new HttpError(404, `Símbolo ${sym} no encontrado en ${req.services.market.providerId}`);
     return quote;
   });
@@ -316,6 +320,14 @@ export async function registerRoutes(app: FastifyInstance) {
     const quote = (await req.services.market.getQuotes([sym])).get(sym);
     if (!quote) throw new HttpError(404, `Símbolo ${sym} no encontrado en ${req.services.market.providerId}`);
     return quote;
+  });
+  /** Consenso de analistas de un valor que aún no está en ninguna lista (buscador de la cabecera). */
+  app.get('/api/market/targets/:symbol', async (req) => {
+    const { symbol } = z.object({ symbol: z.string().min(1).max(32) }).parse(req.params);
+    const sym = symbol.toUpperCase();
+    const quote = (await req.services.market.getQuotes([sym])).get(sym);
+    if (!quote || NO_ANALYST_COVERAGE.has(quote.quoteType ?? '')) return { targets: null };
+    return { targets: (await req.services.market.getTargets([sym])).get(sym) ?? null };
   });
   /** Varias cotizaciones de una vez (los símbolos que no existen no vienen en la respuesta). */
   app.get('/api/market/quotes', async (req) => {
@@ -342,9 +354,52 @@ export async function registerRoutes(app: FastifyInstance) {
   // Velas del gráfico de la ficha: diarias (cinco años, con la sesión de hoy en directo) o intradía.
   app.get('/api/market/candles/:symbol', async (req) => {
     const { symbol } = z.object({ symbol: z.string().min(1).max(32) }).parse(req.params);
-    const { interval } = z.object({ interval: z.enum(['1d', ...INTRADAY_INTERVALS]).default('1d') }).parse(req.query);
+    const { interval, range } = z
+      .object({ interval: z.enum(['1d', ...INTRADAY_INTERVALS]).default('1d'), range: z.enum(['5y', 'max']).default('5y') })
+      .parse(req.query);
+    // Toda la historia (solo diaria) se pide aparte, cuando el gráfico se aleja más allá de los cinco años.
+    if (interval === '1d' && range === 'max') return req.services.market.getAllCandles(symbol.toUpperCase());
     return req.services.market.getCandles(symbol.toUpperCase(), interval);
   });
+  // «Visitados»: lo abierto desde el buscador de la cabecera, el último primero. De momento no caduca.
+  const VISITED_KEY = 'visited-symbols';
+  const VISITED_MAX = 200;
+  const visitedSchema = z.object({
+    symbol: z.string().min(1).max(32),
+    name: z.string().max(200).catch(''),
+    exchange: z.string().max(80).nullable().catch(null),
+    type: z.string().max(40).nullable().catch(null),
+    isin: z.string().max(12).nullable().optional(),
+    visitedAt: z.string().catch(() => new Date().toISOString()),
+  });
+  const readVisited = async (req: { services: { state: { get<T>(k: string, f: T): Promise<T> } } }) => {
+    const stored = await req.services.state.get<unknown>(VISITED_KEY, []);
+    return Array.isArray(stored) ? stored.flatMap((v) => { const p = visitedSchema.safeParse(v); return p.success ? [p.data] : []; }) : [];
+  };
+  app.get('/api/visited', async (req) => readVisited(req));
+  app.post('/api/visited', async (req) => {
+    const entry = visitedSchema.omit({ visitedAt: true }).parse(req.body);
+    const sym = entry.symbol.toUpperCase();
+    const prev = await readVisited(req);
+    const old = prev.find((v) => v.symbol === sym);
+    const next = [
+      { ...old, ...entry, symbol: sym, isin: entry.isin ?? old?.isin ?? null, visitedAt: new Date().toISOString() },
+      ...prev.filter((v) => v.symbol !== sym),
+    ].slice(0, VISITED_MAX);
+    await req.services.state.set(VISITED_KEY, next);
+    return next;
+  });
+  app.delete('/api/visited/:symbol', async (req) => {
+    const { symbol } = z.object({ symbol: z.string().min(1).max(32) }).parse(req.params);
+    const next = (await readVisited(req)).filter((v) => v.symbol !== symbol.toUpperCase());
+    await req.services.state.set(VISITED_KEY, next);
+    return next;
+  });
+  app.get('/api/visited/watchlist', async (req) => {
+    const { force, live } = forceQuery.parse(req.query);
+    return req.services.watchlist.visited(await readVisited(req), { force: !!force, maxAgeMs: live ? LIVE_MAX_AGE_MS : undefined });
+  });
+
   // Dibujos del gráfico de velas de cada valor (soportes, resistencias, tendencias, canales).
   app.get('/api/drawings/:symbol', async (req) => {
     const { symbol } = z.object({ symbol: z.string().min(1).max(32) }).parse(req.params);

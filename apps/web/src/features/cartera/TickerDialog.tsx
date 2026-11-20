@@ -1,20 +1,14 @@
-import { OPERATION_LABELS, averageNativePrice, sortOperations, type HistoryRange, type Operation, type Quote } from '@watchlist/shared';
+import { type HistoryRange, type Operation } from '@watchlist/shared';
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useState, type FormEvent } from 'react';
 import { api } from '../../api/client.ts';
-import { useOperationMutations, usePortfolioComposition } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
-import { money, qty, pct, price, share, shortDate } from '../../lib/format.ts';
+import { money, qty, pct, price } from '../../lib/format.ts';
 import { HistoryChart, type RefLine } from '../detail/HistoryChart.tsx';
 import { signed, type CarteraModel } from './model.ts';
-import { DataBar } from './SortTable.tsx';
-import { QuoteSymbolField } from './QuoteSymbolField.tsx';
+import { FundHoldings, InstrumentForm, LotsTable, OperationActions, OperationsTable, compositionSource, useTicker } from './TickerParts.tsx';
 import type { OperationDraft } from './OperationDialog.tsx';
 
-/** Ficha de un valor de la cartera: datos editables, lotes FIFO abiertos, ventas, cobros y gráfico. */
-/** Posiciones del fondo que se ven sin desplegar la lista entera. */
-const HOLDINGS_SHOWN = 25;
-
+/** Ficha de un valor de la cartera en un diálogo (desde Exposición): datos, lotes, operaciones y gráfico. */
 export function TickerDialog({
   model,
   ticker,
@@ -28,21 +22,7 @@ export function TickerDialog({
   onEditOperation: (op: Operation) => void;
   onAddOperation: (draft: OperationDraft) => void;
 }) {
-  const t = model.ledger.byTicker.get(ticker);
-  const row = [...model.valuation.open, ...model.valuation.closed].find((r) => r.ticker === ticker);
-  const inst = model.view.instruments.find((i) => i.ticker === ticker);
-  const { updateInstrument } = useOperationMutations();
-  const [name, setName] = useState(inst?.name ?? '');
-  const [symbol, setSymbol] = useState(inst?.symbol ?? '');
-  const [sector, setSector] = useState(inst?.sector ?? '');
-  const [currency, setCurrency] = useState(inst?.currency ?? 'EUR');
-  const [notes, setNotes] = useState(inst?.notes ?? '');
-  const [msg, setMsg] = useState<string | null>(null);
-  const acceptQuote = useCallback((quote: Quote | null) => {
-    if (!quote) return;
-    setName((current) => current || quote.name || '');
-    if (quote.currency) setCurrency(quote.currency);
-  }, []);
+  const { t, row, inst, composition, ops, cur, fxRate, lastBroker, valueEur, avgNative } = useTicker(model, ticker);
   const range: HistoryRange = '5y';
   const sym = inst?.symbol;
   const history = useQuery({
@@ -52,39 +32,8 @@ export function TickerDialog({
     staleTime: 10 * 60_000,
   });
 
-  const composition = usePortfolioComposition(t ? t.shares > 0 : false).data?.[ticker];
-  const [allHoldings, setAllHoldings] = useState(false);
-  const valueEur = row && 'valueEur' in row ? row.valueEur : null;
-
   if (!t) return null;
-  const ops = sortOperations(model.view.operations.filter((o) => o.ticker === ticker)).reverse();
-  const lastBroker = ops.find((o) => o.broker)?.broker ?? null;
-  const cur = row?.currency ?? inst?.currency ?? 'EUR';
-  const known = composition?.holdings.reduce((s, h) => s + h.weight, 0) ?? 0;
-  // Con el cambio de cada compra: con el de hoy, el precio medio en dólares cambiaría cada día con el euro.
-  const avgNative = averageNativePrice(t, cur, row?.fxRate ?? null);
   const refs: RefLine[] = avgNative ? [{ label: 'Coste medio', value: avgNative, kind: 'price' }] : [];
-  const sectors = [...new Set(model.view.instruments.map((i) => i.sector).filter((s): s is string => !!s))].sort();
-
-  const save = async (e: FormEvent) => {
-    e.preventDefault();
-    setMsg(null);
-    try {
-      await updateInstrument.mutateAsync({
-        ticker,
-        patch: {
-          name: name.trim() || null,
-          symbol: symbol.trim() || null,
-          sector: sector.trim() || null,
-          currency: currency.trim().toUpperCase() || 'EUR',
-          notes: notes.trim() || null,
-        },
-      });
-      setMsg('Guardado.');
-    } catch (err) {
-      setMsg((err as Error).message);
-    }
-  };
 
   return (
     <Dialog title={`${row?.name ?? ticker} · ${ticker}`} onClose={onClose} wide className="dialog--xl">
@@ -95,7 +44,7 @@ export function TickerDialog({
         </div>
         <div className="hl-cell">
           <p className="hl-label">Coste medio</p>
-          <p className="hl-figure num">{avgNative ? price(avgNative, row?.currency ?? inst?.currency ?? 'EUR') : '–'}</p>
+          <p className="hl-figure num">{avgNative ? price(avgNative, cur) : '–'}</p>
         </div>
         {row && 'valueEur' in row && (
           <div className="hl-cell">
@@ -123,89 +72,16 @@ export function TickerDialog({
         <>
           <h3 className="renta__h">
             Qué lleva dentro · {composition.holdings.length} posiciones
-            <span className="sub">
-              {' '}
-              {composition.source}
-              {composition.asOf ? ` · ${shortDate(composition.asOf)}` : ''}
-            </span>
+            <span className="sub"> {compositionSource(composition)}</span>
           </h3>
-          <div className="table-wrap">
-            <table className="wl-table cartera-table fund-holdings">
-              <thead>
-                <tr>
-                  <th>Empresa</th>
-                  <th className="al-right">Peso</th>
-                  <th className="al-right" title="Lo que te toca de esa empresa por tener este fondo">
-                    Tu parte
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {(allHoldings ? composition.holdings : composition.holdings.slice(0, HOLDINGS_SHOWN)).map((h) => (
-                  <tr key={h.isin ?? h.name}>
-                    <td>
-                      {h.name}
-                      {(h.ticker ?? h.isin) && <span className="sub"> {h.ticker ?? h.isin}</span>}
-                    </td>
-                    <td className="al-right">
-                      <DataBar value={h.weight} max={composition.holdings[0]!.weight}>
-                        <span className="num">{share(h.weight, 2)}</span>
-                      </DataBar>
-                    </td>
-                    <td className="al-right num">{valueEur != null ? money(valueEur * h.weight, 'EUR', 2) : '–'}</td>
-                  </tr>
-                ))}
-                {!allHoldings && composition.holdings.length > HOLDINGS_SHOWN && (
-                  <tr>
-                    <td colSpan={3}>
-                      <button type="button" className="link-btn" onClick={() => setAllHoldings(true)}>
-                        Ver las {composition.holdings.length} posiciones
-                      </button>
-                    </td>
-                  </tr>
-                )}
-                <tr className="fund-holdings__rest">
-                  <td className="muted">Resto sin desglosar</td>
-                  <td className="al-right num">{share(Math.max(0, 1 - known), 2)}</td>
-                  <td className="al-right num">{valueEur != null ? money(valueEur * Math.max(0, 1 - known), 'EUR', 2) : '–'}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <FundHoldings composition={composition} valueEur={valueEur} />
         </>
       )}
 
       {t.openLots.length > 0 && (
         <>
           <h3 className="renta__h">Lotes en cartera (FIFO: se venden primero los más antiguos)</h3>
-          <div className="table-wrap">
-            <table className="wl-table cartera-table">
-              <thead>
-                <tr>
-                  <th>Compra</th>
-                  <th>Bróker</th>
-                  <th className="al-right">Acciones</th>
-                  <th className="al-right">Coste</th>
-                  <th className="al-right">Coste fiscal</th>
-                  <th className="al-right">Precio medio</th>
-                </tr>
-              </thead>
-              <tbody>
-                {t.openLots.map((l) => (
-                  <tr key={l.id}>
-                    <td className="num">{shortDate(l.date)}</td>
-                    <td>{l.broker ?? '–'}</td>
-                    <td className="al-right num">{qty(l.shares)}</td>
-                    <td className="al-right num">{money(l.costEur, 'EUR', 2)}</td>
-                    <td className="al-right num" title={l.deferredLossEur ? `Incluye ${money(l.deferredLossEur, 'EUR', 2)} de pérdida aplazada` : undefined}>
-                      {money(l.taxCostEur, 'EUR', 2)}
-                    </td>
-                    <td className="al-right num">{price(averageNativePrice({ openLots: [l] }, cur, row?.fxRate ?? null), cur)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <LotsTable t={t} cur={cur} fxRate={fxRate} />
         </>
       )}
 
@@ -214,106 +90,11 @@ export function TickerDialog({
           Operaciones ({ops.length})
         </h3>
         <span className="spacer" />
-        {t.shares > 0 && (
-          <>
-            <button type="button" className="btn btn--small" onClick={() => onAddOperation({ ticker, type: 'buy', broker: lastBroker })}>
-              Comprar más
-            </button>
-            <button type="button" className="btn btn--small" onClick={() => onAddOperation({ ticker, type: 'sell', shares: t.shares, broker: lastBroker })}>
-              Vender
-            </button>
-          </>
-        )}
-        <button type="button" className="btn btn--small" onClick={() => onAddOperation({ ticker, broker: lastBroker })}>
-          Otra operación
-        </button>
+        <OperationActions ticker={ticker} t={t} lastBroker={lastBroker} onAdd={onAddOperation} />
       </div>
-      <div className="table-wrap ticker-ops">
-        <table className="wl-table cartera-table">
-          <thead>
-            <tr>
-              <th>Fecha</th>
-              <th>Tipo</th>
-              <th className="al-right">Acciones</th>
-              <th className="al-right">Precio</th>
-              <th className="al-right">Importe €</th>
-              <th className="al-right" title="Ganancia o pérdida de la venta">
-                Resultado
-              </th>
-              <th>Bróker</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ops.map((o) => {
-              const sale = t.sales.find((s) => s.id === o.id);
-              return (
-                <tr key={o.id} className="row row--click" onClick={() => onEditOperation(o)}>
-                  <td className="num">
-                    <button
-                      type="button"
-                      className="cell-link"
-                      aria-label={`Editar ${OPERATION_LABELS[o.type]} del ${shortDate(o.date)}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEditOperation(o);
-                      }}
-                    >
-                      {shortDate(o.date)}
-                    </button>
-                    {o.dayOrder != null && <span className="sub" title="Orden en el día"> ·{o.dayOrder}</span>}
-                  </td>
-                  <td>{OPERATION_LABELS[o.type]}</td>
-                  <td className="al-right num">{o.shares ? qty(o.shares) : ''}</td>
-                  <td className="al-right num">{o.price ? price(o.price, row?.currency ?? inst?.currency ?? 'EUR') : ''}</td>
-                  <td className="al-right num">{o.amountEur ? money(o.amountEur, 'EUR', 2) : ''}</td>
-                  <td className={`al-right num delta ${signed(sale?.gainEur)}`}>{sale ? money(sale.gainEur, 'EUR', 2) : ''}</td>
-                  <td>{o.broker ?? ''}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <OperationsTable ops={ops} t={t} cur={cur} onEdit={onEditOperation} />
 
-      <form className="form" onSubmit={save} style={{ marginTop: 10 }}>
-        <fieldset className="form__section">
-          <legend>Datos del valor</legend>
-          <div className="grid-3">
-            <div className="field">
-              <label htmlFor="tk-name">Nombre</label>
-              <input id="tk-name" value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div className="field">
-              <QuoteSymbolField inputId="tk-symbol" value={symbol} onChange={setSymbol} onPick={(r) => { if (!name) setName(r.name); }} onQuote={acceptQuote} />
-            </div>
-            <div className="field">
-              <label htmlFor="tk-sector">Sector</label>
-              <input id="tk-sector" list="tk-sectors" value={sector} onChange={(e) => setSector(e.target.value)} />
-              <datalist id="tk-sectors">
-                {sectors.map((s) => (
-                  <option key={s} value={s} />
-                ))}
-              </datalist>
-            </div>
-          </div>
-          <div className="grid-3">
-            <div className="field">
-              <label htmlFor="tk-cur">Divisa</label>
-              <input id="tk-cur" value={currency} maxLength={3} onChange={(e) => setCurrency(e.target.value)} />
-            </div>
-            <div className="field" style={{ gridColumn: 'span 2' }}>
-              <label htmlFor="tk-notes">Notas</label>
-              <input id="tk-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
-            </div>
-          </div>
-          <div className="row-actions" style={{ justifyContent: 'flex-start' }}>
-            <button type="submit" className="btn btn--primary" disabled={updateInstrument.isPending}>
-              Guardar datos
-            </button>
-            {msg && <span className="muted small">{msg}</span>}
-          </div>
-        </fieldset>
-      </form>
+      <InstrumentForm model={model} ticker={ticker} />
     </Dialog>
   );
 }

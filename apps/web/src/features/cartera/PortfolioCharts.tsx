@@ -3,18 +3,23 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../../api/client.ts';
 import { Donut, type Slice } from './Donut.tsx';
+import { Icon } from '../../components/Icon.tsx';
 import { HISTORY_PERIODS, periodStart, type HistoryPeriod } from './historyRange.ts';
 import type { CarteraModel } from './model.ts';
+import { ChartSkeleton } from '../../components/Skeleton.tsx';
 import { PortfolioHistoryChart, type HistoryMode } from './PortfolioHistoryChart.tsx';
 
-const VIEWS = [
-  { label: 'Resultado', title: 'Resultado del periodo' },
-  { label: 'Valor', title: 'Capital en acciones' },
-  { label: 'Divisas', title: 'Valor y efecto divisa' },
-  { label: 'Valores', title: 'Por valor' },
-  { label: 'Sectores', title: 'Por sector' },
-  { label: 'Brókeres', title: 'Por bróker' },
+const VIEWS: { label: string; title: string; mode: HistoryMode }[] = [
+  { label: 'Resultado', title: 'Resultado del periodo', mode: 'result' },
+  { label: 'Valor', title: 'Capital en acciones', mode: 'value' },
+  { label: 'Divisas', title: 'Valor y efecto divisa', mode: 'fx' },
 ];
+const MIXES = [
+  { id: 'valor', title: 'Por valor' },
+  { id: 'sector', title: 'Por sector' },
+  { id: 'broker', title: 'Por bróker' },
+] as const;
+const MIX_KEY = 'watchlist.cartera.reparto';
 
 interface HistorySelection {
   period: HistoryPeriod | 'custom';
@@ -54,7 +59,7 @@ function History({ first, mode, selection, onSelection, liveValue }: {
       <label>Hasta <input type="date" className="input" value={to} min={from || first} max={today} onChange={(e) => setDate('to', e.target.value)} /></label>
     </div>
     {!valid ? <p role="alert" className="error-box">Elige un periodo entre tu primera operación y hoy, con la fecha inicial anterior o igual a la final.</p>
-      : history.isPending ? <p className="chart-empty muted" role="status">Cargando precios y cambios históricos…</p>
+      : history.isPending ? <ChartSkeleton height={280} label="Cargando precios y cambios históricos…" />
       : history.isError ? <div className="error-box" role="alert">No se pudo cargar el histórico. <button className="btn" onClick={() => void history.refetch()}>Reintentar</button></div>
       : <>
         {history.data.available && <p className="small" role="status">
@@ -74,33 +79,54 @@ function History({ first, mode, selection, onSelection, liveValue }: {
   </>;
 }
 
-export function PortfolioCharts({ model, byBroker }: { model: CarteraModel; byBroker: Slice[] }) {
+/** Evolución de la cartera en el tiempo: resultado, valor y efecto divisa del periodo elegido. */
+export function PortfolioCharts({ model }: { model: CarteraModel }) {
   const [view, setView] = useState(0);
   const first = model.view.operations.reduce((d, o) => o.date < d ? o.date : d, localToday());
   const [selection, setSelection] = useState<HistorySelection>(() => ({
     period: '1y', custom: { from: periodStart('1y', localToday(), first), to: localToday() },
   }));
-  const slices = view === 3 ? model.valuation.open.map((r) => ({ label: r.name, value: r.valueEur ?? 0 }))
-    : view === 4 ? model.valuation.bySector.map((s) => ({ label: s.sector, value: s.valueEur })) : byBroker;
-  return <section className="portfolio-charts" aria-label="Gráficos de la cartera">
-    <div className="portfolio-charts__heading">
-      <h2 id="portfolio-chart-title">{VIEWS[view]!.title}</h2>
-      <div className="portfolio-charts__arrows">
-        <span className="small muted" aria-live="polite">{view + 1} / {VIEWS.length}</span>
-        <button type="button" className="btn" aria-label="Gráfica anterior" onClick={() => setView((view + VIEWS.length - 1) % VIEWS.length)}>←</button>
-        <button type="button" className="btn" aria-label="Gráfica siguiente" onClick={() => setView((view + 1) % VIEWS.length)}>→</button>
-      </div>
+  return <section className="pcard portfolio-charts" aria-labelledby="portfolio-chart-title">
+    <div className="pcard__head">
+      <h2 id="portfolio-chart-title">Evolución <span className="pcard__sub">· {VIEWS[view]!.title.toLowerCase()}</span></h2>
     </div>
     <div className="portfolio-chart-tabs" role="group" aria-label="Elegir gráfica">
       {VIEWS.map(({ label, title }, i) => <button type="button" key={label} title={title} aria-pressed={view === i} onClick={() => setView(i)}>{label}</button>)}
     </div>
-    <div role="region" aria-labelledby="portfolio-chart-title">
-      {view < 3 ? <History first={first} mode={view === 0 ? 'result' : view === 1 ? 'value' : 'fx'} selection={selection} onSelection={setSelection}
-        liveValue={model.valuation.summary.missing.length ? null : model.valuation.summary.valueEur} /> : <>
-        <p className="small muted">Distribución del valor actual de la cartera.</p>
-        <Donut title={VIEWS[view]!.title} slices={slices} showValues />
-        {model.valuation.summary.missing.length > 0 && <p className="small muted">Reparto parcial: faltan precios de {model.valuation.summary.missing.join(', ')}.</p>}
-      </>}
+    <History first={first} mode={VIEWS[view]!.mode} selection={selection} onSelection={setSelection}
+      liveValue={model.valuation.summary.missing.length ? null : model.valuation.summary.valueEur} />
+  </section>;
+}
+
+/** Reparto del valor actual: un solo gráfico que cambia entre valor, sector y bróker con las flechas. */
+export function PortfolioMix({ model, byBroker }: { model: CarteraModel; byBroker: Slice[] }) {
+  const [i, setI] = useState(() => Math.max(0, MIXES.findIndex((m) => m.id === localStorage.getItem(MIX_KEY))));
+  const go = (step: number) => {
+    const next = (i + step + MIXES.length) % MIXES.length;
+    setI(next);
+    localStorage.setItem(MIX_KEY, MIXES[next]!.id);
+  };
+  const mix = MIXES[i]!;
+  const prev = MIXES[(i + MIXES.length - 1) % MIXES.length]!;
+  const next = MIXES[(i + 1) % MIXES.length]!;
+  const slices = mix.id === 'valor' ? model.valuation.open.map((r) => ({ label: r.name, value: r.valueEur ?? 0 }))
+    : mix.id === 'sector' ? model.valuation.bySector.map((s) => ({ label: s.sector, value: s.valueEur })) : byBroker;
+  return <section className="pcard portfolio-mix" aria-labelledby="portfolio-mix-title">
+    <div className="pcard__head">
+      <h2 id="portfolio-mix-title">Reparto <span className="pcard__sub">· {mix.title.toLowerCase()}</span></h2>
+      <div className="mix-nav" role="group" aria-label="Cambiar reparto">
+        <button type="button" className="icon-btn" onClick={() => go(-1)} aria-label={`Ver reparto ${prev.title.toLowerCase()}`} title={prev.title}>
+          <Icon name="chevron" />
+        </button>
+        <span className="mix-nav__dots" aria-hidden>
+          {MIXES.map((m, k) => <i key={m.id} className={k === i ? 'on' : undefined} />)}
+        </span>
+        <button type="button" className="icon-btn" onClick={() => go(1)} aria-label={`Ver reparto ${next.title.toLowerCase()}`} title={next.title}>
+          <Icon name="chevron" />
+        </button>
+      </div>
     </div>
+    <Donut title={`Reparto ${mix.title.toLowerCase()}`} slices={slices} />
+    {model.valuation.summary.missing.length > 0 && <p className="pcard__note">Reparto parcial: faltan precios de {model.valuation.summary.missing.join(', ')}.</p>}
   </section>;
 }

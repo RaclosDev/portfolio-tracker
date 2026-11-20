@@ -1,9 +1,10 @@
-import { DEFAULT_STATUS_NAMES, tradingViewSymbol, type WatchlistRow } from '@watchlist/shared';
-import { useId, useState } from 'react';
+import { DEFAULT_STATUS_NAMES, displayTicker, tradingViewSymbol, type WatchlistRow } from '@watchlist/shared';
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useSettings } from '../../api/hooks.ts';
+import { Icon } from '../../components/Icon.tsx';
 import { pct, price } from '../../lib/format.ts';
 import { tabListKeys } from '../../lib/tabs.ts';
-import { CandleChart } from './CandleChart.tsx';
+import { CandleChart, watchlistLines } from './CandleChart.tsx';
 import { HistoryView } from './HistoryView.tsx';
 import { PriceMapLarge } from './PriceMapLarge.tsx';
 import { QuoteSheet } from './QuoteSheet.tsx';
@@ -17,47 +18,79 @@ interface Props {
   base: string;
   /** Ancho visible de la tabla, para que el detalle no se salga de la pantalla al deslizarla. */
   width?: number;
-  onEdit: () => void;
+  /** Sin él la ficha no se edita (valor abierto desde el buscador, que aún no está en la lista). */
+  onEdit?: () => void;
+  /** Botones de la cabecera junto a cerrar (p. ej. «Añadir a Vigilar»). */
+  actions?: ReactNode;
   onClose: () => void;
+  /** Vuelve a colocar el detalle bajo la cabecera, como al abrirlo. */
+  onRecenter?: () => void;
+  /** Carril con los demás valores de la lista, a la izquierda (solo en escritorio). */
+  rail?: ReactNode;
+  /** Es el detalle que protagoniza la transición al saltar de un valor a otro. */
+  active?: boolean;
+}
+
+/**
+ * Alto del detalle en escritorio: lo que queda de pantalla bajo la cabecera y la fila abierta, que
+ * es donde la deja el scroll automático. Así se ve solo ese valor, sin asomar la fila siguiente.
+ */
+function useFillScreen(box: React.RefObject<HTMLDivElement | null>) {
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const fit = () => {
+      const header = document.querySelector('.topbar')?.getBoundingClientRect().height ?? 0;
+      const row = el.closest('tr')?.previousElementSibling?.getBoundingClientRect().height ?? 0;
+      el.style.setProperty('--xp-fill', `${Math.round(window.innerHeight - header - row)}px`);
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [box]);
 }
 
 /**
  * Detalle de un valor bajo su fila. A la izquierda, a elegir, el mapa de precios o el gráfico
  * histórico; a la derecha, la ficha con todos sus datos.
  */
-export function ValueExpanded({ row, base, width, onEdit, onClose }: Props) {
-  const names = useSettings().data?.statusNames ?? DEFAULT_STATUS_NAMES;
+export function ValueExpanded({ row, base, width, onEdit, onClose, onRecenter, rail, active, actions }: Props) {
+  const settings = useSettings().data;
+  const names = settings?.statusNames ?? DEFAULT_STATUS_NAMES;
+  /** La ficha de la derecha en edición: todo (lápiz) o el campo pulsado (clic para editar). */
+  const [editing, setEditing] = useState<{ field: string; inline: boolean } | null>(null);
   const [chosen, setView] = useState<View>(() => {
     const stored = localStorage.getItem(VIEW_KEY);
     // La antigua pestaña de TradingView pasa a ser la de velas.
     return stored === 'tradingview' ? 'velas' : (stored as View) || 'mapa';
   });
   const id = useId();
+  const box = useRef<HTMLDivElement>(null);
+  useFillScreen(box);
   const { item, quote, metrics } = row;
   // Los fondos sin cotización en bolsa no están en TradingView: sin enlace para abrirlo allí.
   const tvSymbol = tradingViewSymbol(item.symbol, quote?.quoteType);
   const view = VIEWS.some(([v]) => v === chosen) ? chosen : 'mapa';
-  const idx = metrics.levels.findIndex((l) => metrics.status === 'reached'
-    ? l.status === 'reached'
-    : l.distancePct != null && l.distancePct === metrics.nearestDistancePct);
-  const lvl = metrics.levels[idx];
   const choose = (v: View) => {
     setView(v);
     localStorage.setItem(VIEW_KEY, v);
   };
 
-  let headline = metrics.levels.length ? 'Distancia pendiente de cotización' : 'Sin niveles de compra';
-  if (lvl && metrics.nearestDistancePct != null) {
-    const distance = metrics.status === 'reached'
-      ? 'precio en zona'
-      : `falta un ${pct(Math.abs(metrics.nearestDistancePct)).replace('+', '')}`;
-    headline = `Nivel ${idx + 1} · ${price(lvl.price, quote?.currency)} · ${distance}`;
-  }
-
   return (
-    <div className="xp" style={width ? { width } : undefined} role="region" aria-labelledby={`${id}-title`}>
+    <div ref={box} className={`xp${rail ? ' xp--rail' : ''}${active ? ' xp--active' : ''}`} style={width ? { width } : undefined} role="region" aria-labelledby={`${id}-title`}>
       <h2 id={`${id}-title`} className="sr-only">Detalle de {item.name ?? item.symbol}</h2>
+      {rail}
+      <div className="xp__main">
       <header className="xp__head">
+        {/* En escritorio la fila del valor se oculta al abrirlo: su nombre pasa aquí. */}
+        <div className="xp__id" aria-hidden>
+          <span className="xp__name" title={item.name ?? item.symbol}>{item.name ?? item.symbol}</span>
+          <span className="sub">
+            <span className="ticker">{displayTicker(item)}</span>
+            {quote?.exchange && <> · {quote.exchange}</>}
+            {quote?.currency && <> · {quote.currency}</>}
+          </span>
+        </div>
         <div className="xp__quote">
           <span className="xp__price num">{price(quote?.price, quote?.currency)}</span>
           {quote?.changePct != null && (
@@ -67,12 +100,9 @@ export function ValueExpanded({ row, base, width, onEdit, onClose }: Props) {
         <p className="xp__status">
           {metrics.status !== 'unknown' && <span className={`pill pill--${metrics.status}`}>{names[metrics.status]}</span>}
           {item.orderActive && <span className="pill watchlist-order-pill">Con orden</span>}
-          <span>{headline}</span>
         </p>
         <div className="xp__tools">
-          <button type="button" className="btn btn--small" onClick={onEdit}>
-            Editar
-          </button>
+          {actions}
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Cerrar el detalle" title="Cerrar">
             ×
           </button>
@@ -81,6 +111,7 @@ export function ValueExpanded({ row, base, width, onEdit, onClose }: Props) {
 
       <div className="xp__body">
         <section className="xp__panel xp__visual">
+          <div className="xp__tabbar">
           <div className="xp__tabs" role="tablist" aria-label="Vista" onKeyDown={tabListKeys}>
             {VIEWS.map(([v, label]) => (
               <button
@@ -98,6 +129,12 @@ export function ValueExpanded({ row, base, width, onEdit, onClose }: Props) {
               </button>
             ))}
           </div>
+          {onRecenter && (
+            <button type="button" className="icon-btn xp__recenter" onClick={onRecenter} aria-label="Centrar el detalle en pantalla" title="Centrar">
+              <Icon name="locate" />
+            </button>
+          )}
+          </div>
           <div className="xp__view" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${view}`}>
           {view === 'mapa' ? (
             <>
@@ -112,15 +149,30 @@ export function ValueExpanded({ row, base, width, onEdit, onClose }: Props) {
               </ul>
             </>
           ) : view === 'velas' ? (
-            <CandleChart key={item.symbol} row={row} tvSymbol={tvSymbol} />
+            <CandleChart key={item.symbol} symbol={item.symbol} name={item.name ?? item.symbol} price={quote?.price} lines={watchlistLines(row)} tvSymbol={tvSymbol} />
           ) : (
             <HistoryView row={row} />
           )}
           </div>
         </section>
         <section className="xp__panel xp__data" aria-label="Datos">
-          <QuoteSheet row={row} base={base} />
+          <QuoteSheet
+            key={editing ? `edit-${item.id}` : item.id}
+            row={row}
+            base={base}
+            editing={!!editing}
+            inline={editing?.inline}
+            focus={editing?.field}
+            onEditField={onEdit && ((field) => setEditing({ field, inline: true }))}
+            onEdit={onEdit && (() => setEditing({ field: 'l0', inline: false }))}
+            onDone={() => setEditing(null)}
+            onMore={onEdit && (() => {
+              setEditing(null);
+              onEdit();
+            })}
+          />
         </section>
+      </div>
       </div>
     </div>
   );

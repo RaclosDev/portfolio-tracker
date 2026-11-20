@@ -20,6 +20,8 @@ import { NoteCell } from './NoteCell.tsx';
 import { PriceMap } from './PriceMap.tsx';
 import { Sparkline } from './Sparkline.tsx';
 import { ValueExpanded } from './ValueExpanded.tsx';
+import { TickerRail, type RailItem } from './TickerRail.tsx';
+import { flushSync } from 'react-dom';
 import { useWidth } from '../../lib/useWidth.ts';
 
 type SortDir = 'asc' | 'desc';
@@ -147,11 +149,53 @@ function Upside({ value }: { value: number | null }) {
   return <span className={`delta ${value > 0 ? 'up' : value < 0 ? 'down' : ''}`}>{pct(value, 0)}</span>;
 }
 
+/** Fase del mercado que se marca junto al precio. Cerrado (o desconocido) no lleva marca: así no añade ruido. */
+const MARKET_MARK: Record<string, { cls: string; label: string }> = {
+  REGULAR: { cls: 'mkt--open', label: 'Mercado abierto' },
+  PRE: { cls: 'mkt--ext', label: 'Preapertura' },
+  POST: { cls: 'mkt--ext', label: 'Después del cierre' },
+};
+
+/**
+ * Al desplegar un valor, su fila sube hasta quedar justo debajo de la cabecera fija, con el gráfico a la vista.
+ * Espera a que se pinte el despliegue para medir bien.
+ */
+/** La fila del valor o, si está oculta (escritorio con el detalle abierto), el propio detalle. */
+function anchorOf(id: number) {
+  const row = document.getElementById(`fila-${id}`);
+  return row?.getClientRects().length ? row : document.getElementById(`detalle-${id}`);
+}
+
+/** Igual que `scrollToRow`, pero al momento y sin animar: para colocar la página dentro de una transición. */
+function snapToRow(id: number) {
+  const row = anchorOf(id);
+  if (!row) return;
+  const header = document.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 0;
+  window.scrollBy({ top: row.getBoundingClientRect().top - Math.max(0, header), behavior: 'instant' });
+}
+
+function scrollToRow(id: number) {
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      const row = anchorOf(id);
+      if (!row) return;
+      const header = document.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 0;
+      // Pegada a la cabecera, sin hueco: si no, asoma el borde de la fila anterior y se ve una doble línea.
+      const delta = row.getBoundingClientRect().top - Math.max(0, header);
+      if (Math.abs(delta) < 2) return;
+      const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      window.scrollBy({ top: delta, behavior: smooth ? 'smooth' : 'auto' });
+    }),
+  );
+}
+
 function PriceCell({ row }: { row: WatchlistRow }) {
   const { quote } = row;
+  const mkt = quote && !quote.stale && quote.marketState ? MARKET_MARK[quote.marketState] : undefined;
   return (
     <div className="stack stack--right">
       <span className="num strong">
+        {mkt && <span className={`mkt ${mkt.cls}`} role="img" aria-label={mkt.label} title={`${mkt.label}${quote?.exchange ? ` · ${quote.exchange}` : ''}`} />}
         {price(quote?.price, quote?.currency)}
         {quote?.stale && (
           <span className="stale" title={`Sin conexión: dato guardado del ${new Date(quote.fetchedAt).toLocaleString('es-ES')}`}>
@@ -505,13 +549,64 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
 
   // Valores desplegados (vista ampliada bajo su fila). Un clic en la fila la abre o la cierra.
   const [open, setOpen] = useState<Set<number>>(() => new Set());
-  const onToggle = (r: WatchlistRow) =>
-    setOpen((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(r.item.id)) next.add(r.item.id);
-      return next;
-    });
+  // El último valor abierto: es el que muestra el carril y el que se transforma al saltar a otro.
+  const [activeId, setActiveId] = useState<number | null>(null);
+  const onToggle = (r: WatchlistRow) => {
+    const opening = !open.has(r.item.id);
+    // Solo un valor abierto a la vez: abrir otro recoge el anterior para no ir dejando detalles por la lista.
+    setOpen(opening ? new Set([r.item.id]) : new Set());
+    if (opening) {
+      setActiveId(r.item.id);
+      scrollToRow(r.item.id);
+    }
+  };
   const isOpen = (r: WatchlistRow) => open.has(r.item.id);
+  useEffect(() => {
+    const last = [...open].pop();
+    if (activeId == null || !open.has(activeId)) setActiveId(last ?? null);
+  }, [open, activeId]);
+
+  /**
+   * Salto desde el carril: el valor abierto vuelve a su fila y se abre el elegido en su sitio. La página
+   * se recoloca al instante para que el detalle no se mueva, y la transición solo cuenta el cambio: el
+   * marcador baja o sube por el carril y el contenido entra desde ese lado.
+   */
+  const switchTo = (from: WatchlistRow, to: WatchlistRow) => {
+    flushSync(() => setActiveId(from.item.id));
+    const apply = () => {
+      flushSync(() => {
+        setOpen((prev) => {
+          const next = new Set(prev);
+          next.delete(from.item.id);
+          next.add(to.item.id);
+          return next;
+        });
+        setActiveId(to.item.id);
+      });
+      snapToRow(to.item.id);
+    };
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!document.startViewTransition || reduce) {
+      apply();
+      return;
+    }
+    const root = document.documentElement;
+    root.dataset.xpSwitch = sorted.indexOf(to) > sorted.indexOf(from) ? 'down' : 'up';
+    document.startViewTransition(apply).finished.finally(() => delete root.dataset.xpSwitch);
+  };
+  const railItems = useMemo<RailItem[]>(
+    () =>
+      sorted.map((r) => ({
+        id: r.item.id,
+        ticker: displayTicker(r.item),
+        name: r.item.name,
+        price: r.quote?.price ?? null,
+        currency: r.quote?.currency ?? null,
+        changePct: r.quote?.changePct ?? null,
+        signal: r.metrics.status === 'reached' || r.metrics.status === 'near' ? r.metrics.status : null,
+      })),
+    [sorted],
+  );
   const onRowClick = (r: WatchlistRow) => (e: MouseEvent<HTMLTableRowElement>) => {
     // Los botones, campos y etiquetas de la fila hacen lo suyo; el segundo clic de un doble clic, tampoco.
     if (e.detail > 1 || (e.target as HTMLElement).closest('button, a, input, select, textarea, label')) return;
@@ -624,6 +719,18 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
                     width={wrapWidth || undefined}
                     onEdit={() => onEdit(r)}
                     onClose={() => onToggle(r)}
+                    onRecenter={() => scrollToRow(r.item.id)}
+                    active={r.item.id === activeId}
+                    rail={r.item.id === activeId && sorted.length > 1 ? (
+                      <TickerRail
+                        items={railItems}
+                        currentId={r.item.id}
+                        onPick={(id) => {
+                          const to = sorted.find((x) => x.item.id === id);
+                          if (to) switchTo(r, to);
+                        }}
+                      />
+                    ) : undefined}
                   />
                 </td>
               </tr>

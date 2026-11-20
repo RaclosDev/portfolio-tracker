@@ -1,4 +1,4 @@
-import { computeMetrics, localToday, type WatchlistView } from '@watchlist/shared';
+import { computeMetrics, itemInputSchema, localToday, VISITED_LIST_ID, VISITED_LIST_NAME, type Item, type VisitedSymbol, type WatchList, type WatchlistView } from '@watchlist/shared';
 import type { ItemsRepository } from '../items/items.repository.ts';
 import type { ListsRepository } from '../lists/lists.repository.ts';
 import type { MarketService } from '../market/market.service.ts';
@@ -14,14 +14,29 @@ export class WatchlistService {
     private market: MarketService,
   ) {}
 
-  async view(listId: number, { force = false } = {}): Promise<WatchlistView | undefined> {
+  /** `maxAgeMs`: antigüedad máxima de los precios (más corta con la lista en pantalla, ver `MarketService.getQuotes`). */
+  async view(listId: number, { force = false, maxAgeMs }: { force?: boolean; maxAgeMs?: number } = {}): Promise<WatchlistView | undefined> {
     const list = await this.lists.byId(listId);
     if (!list) return undefined;
+    return this.build(list, await this.items.byList(listId), { force, maxAgeMs });
+  }
+
+  /** La lista «Visitados»: filas sin precios de compra montadas con lo abierto desde el buscador. */
+  async visited(entries: VisitedSymbol[], opts: { force?: boolean; maxAgeMs?: number } = {}): Promise<WatchlistView> {
+    // Un símbolo que ya no pase la validación se salta en vez de tumbar toda la vista.
+    const items: Item[] = entries.flatMap((e, i) => {
+      const base = itemInputSchema.safeParse({ listId: 1, symbol: e.symbol });
+      if (!base.success) return [];
+      return [{ ...base.data, listId: VISITED_LIST_ID, name: e.name || null, isin: e.isin ?? null, id: -(i + 1), createdAt: e.visitedAt, updatedAt: e.visitedAt }];
+    });
+    return this.build({ id: VISITED_LIST_ID, name: VISITED_LIST_NAME, itemCount: items.length }, items, opts);
+  }
+
+  private async build(list: WatchList, items: Item[], { force = false, maxAgeMs }: { force?: boolean; maxAgeMs?: number }): Promise<WatchlistView> {
     const settings = await this.settings.get();
-    const items = await this.items.byList(listId);
     const symbols = items.map((i) => i.symbol);
 
-    const quotes = await this.market.getQuotes(symbols, { force });
+    const quotes = await this.market.getQuotes(symbols, { force, maxAgeMs });
     const equitySymbols = symbols.filter((s) => !NO_ANALYST_COVERAGE.has(quotes.get(s)?.quoteType ?? ''));
     const fxStale = new Set<string>();
     const [targets, fx] = await Promise.all([

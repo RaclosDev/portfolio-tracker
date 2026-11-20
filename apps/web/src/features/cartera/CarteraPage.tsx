@@ -1,17 +1,22 @@
-import { DEFAULT_TAG_NAMES, instrumentKind, type Operation } from '@watchlist/shared';
+import { DEFAULT_TAG_NAMES, instrumentKind, type CarteraRowBase, type Operation } from '@watchlist/shared';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { money, pct } from '../../lib/format.ts';
 import { anyQuoteToday } from '../../components/QuoteAge.tsx';
 import { tabListKeys } from '../../lib/tabs.ts';
-import { PortfolioCharts } from './PortfolioCharts.tsx';
+import { PortfolioCharts, PortfolioMix } from './PortfolioCharts.tsx';
 import { ExposureView } from './ExposureView.tsx';
-import { ClosedView, HoldingsView } from './HoldingsView.tsx';
+import { ClosedView, HoldingsView, type CarteraTag } from './HoldingsView.tsx';
 import { buildModel, signed, type CarteraModel } from './model.ts';
 import { TagFilters, type TypeFilter } from '../watchlist/TagFilters.tsx';
 import { OperationDialog, type OperationDraft } from './OperationDialog.tsx';
 import { RegistroView } from './RegistroView.tsx';
 import { RentaView } from './RentaView.tsx';
 import { TickerDialog } from './TickerDialog.tsx';
+import { HoldingExpanded } from './HoldingExpanded.tsx';
+import { TickerRail } from '../watchlist/TickerRail.tsx';
+import { PortfolioSkeleton } from '../../components/Skeleton.tsx';
+import { SelectMenu } from '../../components/SelectMenu.tsx';
 
 const CarteraImportDialog = lazy(() => import('./CarteraImportDialog.tsx').then((m) => ({ default: m.CarteraImportDialog })));
 
@@ -41,7 +46,7 @@ function Totals({ model }: { model: CarteraModel }) {
   const s = model.valuation.summary;
   const complete = s.missing.length === 0;
   return (
-    <div className="portfolio-summary">
+    <div className="pcard portfolio-summary">
     <section className="highlights cartera-totals" aria-label="Resumen de la cartera">
       <Figure
         label="Ganancia total · desde el inicio"
@@ -114,9 +119,11 @@ function ResumenView({ model }: { model: CarteraModel }) {
     <div className="portfolio-overview">
       <div className="portfolio-ledger">
         <Totals model={model} />
-        <section className="portfolio-annual" aria-labelledby="annual-results-title">
-          <h2 id="annual-results-title" className="renta__h">Ventas y cobros por año</h2>
-          <p className="small muted">Ganancias realizadas y cobros. No incluye la variación del latente.</p>
+        <section className="pcard portfolio-annual" aria-labelledby="annual-results-title">
+          <div className="pcard__head">
+            <h2 id="annual-results-title">Ventas y cobros por año</h2>
+          </div>
+          <p className="pcard__note">Lo ya realizado: ganancias en ventas y cobros. No incluye la variación del latente.</p>
           <div className="table-wrap" role="region" aria-label="Detalle anual de ventas y cobros" tabIndex={0}>
             <table className="wl-table cartera-table">
               <thead>
@@ -164,9 +171,12 @@ function ResumenView({ model }: { model: CarteraModel }) {
         </section>
       </div>
       <div className="portfolio-analytics">
-        <PortfolioCharts model={model} byBroker={byBroker} />
-        <section className="portfolio-lifetime" aria-label="Desde el principio">
-          <h2 className="renta__h">Desde el principio</h2>
+        <PortfolioCharts model={model} />
+        <PortfolioMix model={model} byBroker={byBroker} />
+        <section className="pcard portfolio-lifetime" aria-labelledby="lifetime-title">
+          <div className="pcard__head">
+            <h2 id="lifetime-title">Desde el principio</h2>
+          </div>
           <table className="renta-summary">
             <tbody>
               <tr>
@@ -214,8 +224,16 @@ interface Props {
 }
 
 const FILTERS_KEY = 'cartera.filtros';
+/** Sin tildes ni mayúsculas, para buscar «telefonica» y encontrar «Telefónica». */
+const norm = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 
 /** Cartera real a partir del registro de operaciones (FIFO), con resumen, cerradas, registro y Renta. */
+
+const SEARCH_HINT: Partial<Record<string, string>> = {
+  exposicion: 'Buscar empresa, ticker o ISIN',
+  registro: 'Buscar ticker, nombre o nota',
+};
+
 export function CarteraPage({ model: full, isPending, error, onRetry, draft, onDraftUsed }: Props) {
   // Filtros de tipo y divisa: valen para todas las pestañas menos Renta (se declara todo) y se recuerdan.
   const [filters, setFilters] = useState<{ type: TypeFilter; currency: string }>(() => {
@@ -227,28 +245,40 @@ export function CarteraPage({ model: full, isPending, error, onRetry, draft, onD
     }
   });
   useEffect(() => localStorage.setItem(FILTERS_KEY, JSON.stringify(filters)), [filters]);
+  // Pulsar la etiqueta de divisa o tipo de una fila filtra por ella; pulsarla otra vez quita el filtro.
+  const onTag = (tag: CarteraTag) => setFilters((f) => ({ ...f, [tag.kind]: f[tag.kind] === tag.value ? 'all' : tag.value }));
   const tagged = useMemo(() => {
     const used = new Set(full?.view.operations.map((o) => o.ticker));
     return (full?.view.instruments ?? []).filter((i) => used.has(i.ticker)).map((i) => {
       const quote = i.symbol ? full!.view.quotes[i.symbol] : undefined;
-      return { ticker: i.ticker, kind: instrumentKind(i, quote?.quoteType), currency: quote?.currency ?? i.currency };
+      const text = norm([i.name, i.ticker, i.symbol, i.isin].filter(Boolean).join(' '));
+      return { ticker: i.ticker, kind: instrumentKind(i, quote?.quoteType), currency: quote?.currency ?? i.currency, text };
     });
   }, [full]);
   const currencies = useMemo(() => [...new Set(tagged.map((t) => t.currency))].sort(), [tagged]);
   const filtered = filters.type !== 'all' || filters.currency !== 'all';
+  const [tab, setTab] = useState<Tab>(() => TABS.find((item) => item.id === localStorage.getItem(TAB_KEY))?.id ?? 'resumen');
+  useEffect(() => localStorage.setItem(TAB_KEY, tab), [tab]);
+  /** Buscador común a todas las pestañas, siempre en el mismo sitio. En «En cartera» y «Cerradas» filtra los valores; Exposición y Registro lo aplican a sus filas. */
+  const [search, setSearch] = useState('');
+  /** Hueco al final de la barra de filtros donde cada pestaña pone los suyos. */
+  const [filterSlot, setFilterSlot] = useState<HTMLElement | null>(null);
+  const searchable = tab === 'abiertas' || tab === 'cerradas';
+  const q = searchable ? norm(search.trim()) : '';
   const model = useMemo(() => {
-    if (!full || !filtered) return full;
+    if (!full || (!filtered && !q)) return full;
     const keep = new Set(
       tagged
         .filter((t) => (filters.type === 'all' || t.kind === filters.type) && (filters.currency === 'all' || t.currency === filters.currency))
+        .filter((t) => !q || t.text.includes(q))
         .map((t) => t.ticker),
     );
     return buildModel({ ...full.view, operations: full.view.operations.filter((o) => keep.has(o.ticker)) });
-  }, [full, filtered, filters, tagged]);
-
-  const [tab, setTab] = useState<Tab>(() => TABS.find((item) => item.id === localStorage.getItem(TAB_KEY))?.id ?? 'resumen');
-  useEffect(() => localStorage.setItem(TAB_KEY, tab), [tab]);
+  }, [full, filtered, filters, tagged, q]);
   const [ticker, setTicker] = useState<string | null>(null);
+  /** Valor desplegado bajo su fila en «En cartera» y «Cerradas», como en Vigilar. */
+  const [openTicker, setOpenTicker] = useState<string | null>(null);
+  const toggleOpen = (t: string) => setOpenTicker((cur) => (cur === t ? null : t));
   const [editing, setEditing] = useState<{ op: Operation | null; draft?: OperationDraft } | null>(null);
   const [importing, setImporting] = useState(false);
 
@@ -266,9 +296,55 @@ export function CarteraPage({ model: full, isPending, error, onRetry, draft, onD
         {onRetry && <button type="button" className="btn" onClick={onRetry}>Reintentar</button>}
       </div>
     );
-  if (isPending || !model || !full) return <p className="muted center">Cargando la cartera…</p>;
+  if (isPending || !model || !full) return <PortfolioSkeleton />;
   const empty = full.view.operations.length === 0;
   const reviewCount = model.view.operations.filter((o) => o.needsReview).length;
+  /**
+   * Salto desde el carril, igual que en Vigilar: el detalle pasa a la fila elegida, la página se recoloca
+   * al momento para que el detalle no se mueva y la transición solo cuenta el cambio.
+   */
+  const switchTo = (rows: CarteraRowBase[], from: string, to: string) => {
+    const apply = () => {
+      flushSync(() => setOpenTicker(to));
+      const tr = document.querySelector('.xp--cartera')?.closest('tr')?.previousElementSibling;
+      if (!tr) return;
+      const header = document.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 0;
+      window.scrollBy({ top: tr.getBoundingClientRect().top - Math.max(0, header), behavior: 'instant' });
+    };
+    if (!document.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      apply();
+      return;
+    }
+    const root = document.documentElement;
+    const at = (t: string) => rows.findIndex((r) => r.ticker === t);
+    root.dataset.xpSwitch = at(to) > at(from) ? 'down' : 'up';
+    document.startViewTransition(apply).finished.finally(() => delete root.dataset.xpSwitch);
+  };
+  const expand = (t: string, rows: CarteraRowBase[]) =>
+    t === openTicker ? (
+      <HoldingExpanded
+        model={full}
+        ticker={t}
+        rail={rows.length > 1 ? (
+          <TickerRail
+            label="Otros valores de la tabla"
+            items={rows.map((r) => ({
+              id: r.ticker,
+              ticker: r.ticker,
+              name: r.name,
+              price: r.price ?? r.quote?.price ?? null,
+              currency: r.currency,
+              changePct: r.changePct ?? r.quote?.changePct ?? null,
+            }))}
+            currentId={t}
+            onPick={(id) => switchTo(rows, t, String(id))}
+          />
+        ) : undefined}
+        onClose={() => setOpenTicker(null)}
+        onEditOperation={(op) => setEditing({ op })}
+        onAddOperation={(draft) => setEditing({ op: null, draft })}
+      />
+    ) : null;
 
   return (
     <div className="cartera">
@@ -297,12 +373,13 @@ export function CarteraPage({ model: full, isPending, error, onRetry, draft, onD
             </button>
           ))}
         </div>
-        <select className="select cartera-tab-select" aria-label="Sección de Cartera" value={tab} onChange={(e) => {
-          const next = TABS.find((item) => item.id === e.target.value);
-          if (next) setTab(next.id);
-        }}>
-          {TABS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-        </select>
+        <SelectMenu
+          className="cartera-tab-select"
+          label="Sección de Cartera"
+          value={tab}
+          onChange={setTab}
+          options={TABS.map((item) => ({ value: item.id, label: item.label }))}
+        />
         <span className="spacer" />
         {!empty && tab !== 'renta' && (
           <button type="button" className="btn btn--primary" data-tour="operation" onClick={() => setEditing({ op: null })}>
@@ -313,6 +390,16 @@ export function CarteraPage({ model: full, isPending, error, onRetry, draft, onD
 
       {!empty && tab !== 'renta' && (
         <div className="cartera-filters no-print">
+          {tab !== 'resumen' && (
+            <input
+              type="search"
+              className="search"
+              placeholder={SEARCH_HINT[tab] ?? 'Buscar valor, ticker o ISIN'}
+              aria-label="Buscar"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          )}
           <TagFilters
             type={filters.type}
             onType={(type) => setFilters((f) => ({ ...f, type }))}
@@ -326,6 +413,7 @@ export function CarteraPage({ model: full, isPending, error, onRetry, draft, onD
               Quitar filtros
             </button>
           )}
+          <div className="cartera-filters__extra" ref={setFilterSlot} />
         </div>
       )}
       {full.ledger.issues.length > 0 && (
@@ -354,15 +442,15 @@ export function CarteraPage({ model: full, isPending, error, onRetry, draft, onD
             </button>
           </div>
         </div>
-      ) : filtered && tab !== 'renta' && model.view.operations.length === 0 ? (
-        <p className="muted center">Ningún valor de la cartera encaja con estos filtros.</p>
+      ) : (filtered || q) && tab !== 'renta' && model.view.operations.length === 0 ? (
+        <p className="muted center">{q ? `Ningún valor de la cartera encaja con «${search.trim()}».` : 'Ningún valor de la cartera encaja con estos filtros.'}</p>
       ) : (
         <>
           {tab === 'resumen' && <ResumenView model={model} />}
-          {tab === 'abiertas' && <HoldingsView model={model} onOpen={setTicker} />}
-          {tab === 'exposicion' && <ExposureView model={model} onOpen={setTicker} />}
-          {tab === 'cerradas' && <ClosedView model={model} onOpen={setTicker} />}
-          {tab === 'registro' && <RegistroView model={model} onImport={() => setImporting(true)} onEdit={(op) => setEditing({ op })} />}
+          {tab === 'abiertas' && <HoldingsView model={model} onOpen={toggleOpen} onTag={onTag} expanded={expand} />}
+          {tab === 'exposicion' && <ExposureView model={model} onOpen={setTicker} search={search} filterSlot={filterSlot} />}
+          {tab === 'cerradas' && <ClosedView model={model} onOpen={toggleOpen} onTag={onTag} expanded={expand} />}
+          {tab === 'registro' && <RegistroView model={model} search={search} filterSlot={filterSlot} onImport={() => setImporting(true)} onEdit={(op) => setEditing({ op })} />}
           {tab === 'renta' && <RentaView model={full} />}
         </>
       )}
@@ -384,6 +472,7 @@ export function CarteraPage({ model: full, isPending, error, onRetry, draft, onD
           // Un valor sin operaciones (se borraron) no manda: su símbolo guardado puede ser de otra cosa.
           instruments={full.view.instruments.filter((i) => full.view.operations.some((o) => o.ticker === i.ticker))}
           brokers={full.brokers}
+          holdings={full.valuation.open.map((r) => ({ ticker: r.ticker, members: r.ledger.members, name: r.name, shares: r.ledger.shares, price: r.price, currency: r.currency }))}
           onClose={() => setEditing(null)}
         />
       )}

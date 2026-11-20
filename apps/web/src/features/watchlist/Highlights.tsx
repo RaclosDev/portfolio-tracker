@@ -32,19 +32,27 @@ function RowLink({ row, children, full, onLocate }: { row: WatchlistRow; childre
   );
 }
 
-function Cell({ label, children, wide }: { label: ReactNode; children: ReactNode; wide?: boolean }) {
+/** Grupo de la franja: rótulo y valores en línea, con «y N más» si no caben. */
+function Group({ label, tone, items, max = 4 }: { label: ReactNode; tone?: string; items: ReactNode[]; max?: number }) {
+  if (!items.length) return null;
   return (
-    <div className={`hl-cell${wide ? ' hl-cell--main' : ''}`}>
-      <p className="hl-label">{label}</p>
-      {children}
+    <div className={`hl-group${tone ? ` hl-group--${tone}` : ''}`}>
+      <span className="hl-group__label">{label}</span>
+      <ul className="hl-items">
+        {items.slice(0, max)}
+        {items.length > max && <li className="hl-items__more">y {items.length - max} más</li>}
+      </ul>
     </div>
   );
 }
 
+/** Órdenes que se avisan en el resumen: caducadas o que caducan en estos días (el resto se ve en la tabla). */
+const ORDER_WARN_DAYS = 3;
+
 /**
- * Resumen encima de la tabla. El primer bloque responde a la pregunta de la app: ¿qué está ya en mi
- * precio o, si nada, qué es lo que más cerca está? Al lado, las órdenes puestas y los resultados de
- * la semana (días en que el precio suele moverse mucho).
+ * Franja de avisos encima de la tabla: solo lo que pide hacer algo. Valores en zona de compra o muy cerca
+ * (según las bandas del usuario), órdenes a punto de caducar y resultados de la semana (días en que el
+ * precio suele moverse mucho). Si no hay nada, no ocupa sitio: lo demás ya está en la tabla.
  */
 export function Highlights({ rows, base, onLocate, quoteInfo }: {
   rows: WatchlistRow[];
@@ -57,6 +65,9 @@ export function Highlights({ rows, base, onLocate, quoteInfo }: {
   const reached = rows.filter((r) => r.metrics.status === 'reached');
   const orders = rows.filter((r) => r.item.orderActive);
   const committed = orders.reduce((s, r) => s + (r.metrics.netBase ?? 0), 0);
+  const urgentOrders = orders
+    .filter((r) => r.metrics.orderDaysLeft != null && r.metrics.orderDaysLeft <= ORDER_WARN_DAYS)
+    .sort((a, b) => a.metrics.orderDaysLeft! - b.metrics.orderDaysLeft!);
   const earnings = rows
     .map((r) => ({ r, d: upcoming(r).find((k) => k.kind === 'earnings' && k.days <= 7) }))
     .filter((x) => x.d)
@@ -64,72 +75,55 @@ export function Highlights({ rows, base, onLocate, quoteInfo }: {
 
   // Distancia hasta un precio, como en la tabla: −0,6 % = le falta bajar un 0,6 %.
   const dist = (v: number) => pct(Math.abs(v)).replace('+', '−');
-  const near = rows
-    .filter((r) => r.metrics.status !== 'reached' && r.metrics.nearestDistancePct != null)
-    .sort((a, b) => b.metrics.nearestDistancePct! - a.metrics.nearestDistancePct!)
-    .slice(0, 4);
+  const nearest = (r: WatchlistRow) => r.metrics.levels.findIndex((l) => l.distancePct === r.metrics.nearestDistancePct);
+  const veryNear = rows
+    .filter((r) => r.metrics.status !== 'reached' && r.metrics.nearestDistancePct != null && r.metrics.levels[nearest(r)]?.status === 'veryNear')
+    .sort((a, b) => b.metrics.nearestDistancePct! - a.metrics.nearestDistancePct!);
 
-  let main: ReactNode;
-  if (reached.length) {
-    main = (
-      <Cell wide label={<span className="hl-label--reached">En zona de compra · {reached.length}</span>}>
-        <ul className="hl-rows">
-          {reached.slice(0, 4).map((r) => {
-            const lvlIndex = r.metrics.levels.findIndex((l) => l.status === 'reached');
-            const lvl = r.metrics.levels[lvlIndex];
-            return (
-              <li key={r.item.id}>
-                <RowLink row={r} onLocate={onLocate}>{shortName(r)}</RowLink>
-                <span className="hl-rows__detail">{lvl && <>compra {lvlIndex + 1} · <span className="num">{price(lvl.price, r.quote?.currency)}</span></>}</span>
-                <span className="hl-rows__fig num hl-dist--reached">{price(r.quote?.price, r.quote?.currency)}</span>
-              </li>
-            );
-          })}
-          {reached.length > 4 && <li className="hl-rows__more">y {reached.length - 4} más</li>}
-        </ul>
-      </Cell>
+  const reachedItems = reached.map((r) => {
+    const i = r.metrics.levels.findIndex((l) => l.status === 'reached');
+    const lvl = r.metrics.levels[i];
+    return (
+      <li key={r.item.id} title={lvl ? `Compra ${i + 1} · ${price(lvl.price, r.quote?.currency)}` : undefined}>
+        <RowLink row={r} onLocate={onLocate}>{shortName(r)}</RowLink>
+        <span className="hl-items__fig num hl-dist--reached">{price(r.quote?.price, r.quote?.currency)}</span>
+      </li>
     );
-  } else if (near.length) {
-    main = (
-      <Cell wide label="Lo más cerca de tus precios de compra">
-        <ul className="hl-rows hl-rows--ranked">
-          {near.map((r) => {
-            const lvlIndex = r.metrics.levels.findIndex((l) => l.distancePct === r.metrics.nearestDistancePct);
-            const lvl = r.metrics.levels[lvlIndex];
-            return (
-              <li key={r.item.id}>
-                <RowLink row={r} onLocate={onLocate}>{shortName(r)}</RowLink>
-                <span className="hl-rows__detail">{lvl && <>compra {lvlIndex + 1} · <span className="num">{price(lvl.price, r.quote?.currency)}</span></>}</span>
-                <span className={`hl-rows__fig num hl-dist--${lvl?.status ?? 'unknown'}`} title={`Le falta bajar un ${dist(r.metrics.nearestDistancePct!).slice(1)}`}>
-                  {dist(r.metrics.nearestDistancePct!)}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      </Cell>
+  });
+  const nearItems = veryNear.map((r) => {
+    const i = nearest(r);
+    const lvl = r.metrics.levels[i];
+    const d = dist(r.metrics.nearestDistancePct!);
+    return (
+      <li key={r.item.id} title={lvl ? `Compra ${i + 1} · ${price(lvl.price, r.quote?.currency)} · le falta bajar un ${d.slice(1)}` : undefined}>
+        <RowLink row={r} onLocate={onLocate}>{shortName(r)}</RowLink>
+        <span className="hl-items__fig num hl-dist--veryNear">{d}</span>
+      </li>
     );
-  } else {
-    main = (
-      <Cell wide label="Precios de compra">
-        <p className="hl-value">Abre un valor para añadir sus precios de compra.</p>
-      </Cell>
+  });
+  const orderItems = urgentOrders.map((r) => {
+    const d = r.metrics.orderDaysLeft!;
+    const text = d < 0 ? 'caducada' : d === 0 ? 'caduca hoy' : d === 1 ? 'caduca mañana' : `caduca en ${d} d`;
+    return (
+      <li key={r.item.id} title={r.item.orderPrice != null ? `Orden a ${price(r.item.orderPrice, r.quote?.currency)}` : undefined}>
+        <RowLink row={r} onLocate={onLocate}>{shortName(r)}</RowLink>
+        <span className={`hl-chip${d <= 1 ? ' hl-chip--warn' : ''}`}>{text}</span>
+      </li>
     );
-  }
+  });
+  const earningItems = earnings.map(({ r, d }) => (
+    <li key={r.item.id}>
+      <RowLink row={r} onLocate={onLocate}>{shortName(r)}</RowLink>
+      <span className={`hl-chip${d!.days <= 1 ? ' hl-chip--info' : ''}`}>{when(d!.days)}</span>
+    </li>
+  ));
+  const empty = !reachedItems.length && !nearItems.length && !orderItems.length && !earningItems.length;
 
-  const expiry = (r: WatchlistRow) => {
-    const d = r.metrics.orderDaysLeft;
-    if (d == null) return <span className="hl-chip">sin fecha</span>;
-    const text = d < 0 ? 'caducada' : d === 0 ? 'caduca hoy' : d === 1 ? 'caduca mañana' : `${d} d`;
-    return <span className={`hl-chip${d <= 1 ? ' hl-chip--warn' : ''}`}>{text}</span>;
-  };
-  const ordersSorted = [...orders].sort((a, b) => (a.metrics.orderDaysLeft ?? 1e9) - (b.metrics.orderDaysLeft ?? 1e9));
-
-  const summary = reached.length
-    ? `${reached.length} en zona de compra`
-    : near[0]
-      ? `${dist(near[0].metrics.nearestDistancePct!)} hasta comprar`
-      : 'Sin precios de compra';
+  const summary = [
+    reached.length ? `${reached.length} en zona de compra` : nearItems.length ? `${nearItems.length} muy cerca` : null,
+    orderItems.length ? `${orderItems.length} ${orderItems.length === 1 ? 'orden caduca' : 'órdenes caducan'} pronto` : null,
+    earningItems.length ? `${earningItems.length} con resultados` : null,
+  ].filter(Boolean).join(' · ') || 'Nada que vigilar ahora';
 
   return (
     <>
@@ -140,47 +134,19 @@ export function Highlights({ rows, base, onLocate, quoteInfo }: {
         aria-controls="watchlist-highlights"
         onClick={() => setExpanded((open) => !open)}
       >
-        <span><strong>Resumen</strong>{orders.length > 0 && ` · ${orders.length} ${orders.length === 1 ? 'orden' : 'órdenes'}`} · {summary}</span>
+        <span><strong>Resumen</strong> · {summary}</span>
         <span aria-hidden="true">{expanded ? '▲' : '▼'}</span>
       </button>
-      <section id="watchlist-highlights" className={`highlights${expanded ? ' highlights--open' : ''}`} aria-label="Resumen">
-        {main}
-        {orders.length > 0 && (
-          <Cell
-            label={
-              <>
-                Órdenes activas · {orders.length} <span className="hl-label__aside num">{money(committed, base)}</span>
-              </>
-            }
-          >
-            {/* Se nombran todas: así se ve cuál es aunque la tabla esté filtrada y no la muestre. Primero las que caducan antes. */}
-            <ul className="hl-rows">
-              {ordersSorted.slice(0, 4).map((r) => (
-                <li key={r.item.id}>
-                  <RowLink row={r} onLocate={onLocate}>{shortName(r)}</RowLink>
-                  <span className="hl-rows__detail num">{r.item.orderPrice != null && price(r.item.orderPrice, r.quote?.currency)}</span>
-                  {expiry(r)}
-                </li>
-              ))}
-              {orders.length > 4 && <li className="hl-rows__more">y {orders.length - 4} más</li>}
-            </ul>
-          </Cell>
-        )}
-        {earnings.length > 0 && (
-          <Cell label="Resultados esta semana">
-            <ul className="hl-rows hl-rows--two">
-              {earnings.slice(0, 4).map(({ r, d }) => (
-                <li key={r.item.id}>
-                  <RowLink row={r} onLocate={onLocate}>{shortName(r)}</RowLink>
-                  <span className={`hl-chip${d!.days <= 1 ? ' hl-chip--info' : ''}`}>{when(d!.days)}</span>
-                </li>
-              ))}
-              {earnings.length > 4 && <li className="hl-rows__more">y {earnings.length - 4} más</li>}
-            </ul>
-          </Cell>
-        )}
-        <div className="highlights-quotes hl-cell hl-cell--full">
-          <p className="hl-label">Cotizaciones</p>
+      <section id="watchlist-highlights" className={`hl-strip${expanded ? ' highlights--open' : ''}${empty ? ' hl-strip--empty' : ''}`} aria-label="Resumen">
+        <Group label={`En zona de compra · ${reached.length}`} tone="reached" items={reachedItems} />
+        <Group label="Muy cerca" items={nearItems} />
+        <Group
+          label={<>Órdenes <span className="num" title={`${orders.length} activas · ${money(committed, base)}`}>({orders.length})</span></>}
+          items={orderItems}
+        />
+        <Group label="Resultados" items={earningItems} />
+        <div className="highlights-quotes hl-group hl-group--full">
+          <span className="hl-group__label">Cotizaciones</span>
           <div className="highlights-quotes__data">{quoteInfo}</div>
         </div>
       </section>

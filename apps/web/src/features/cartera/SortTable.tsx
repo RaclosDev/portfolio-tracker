@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 type SortDir = 'asc' | 'desc';
 
@@ -40,6 +40,7 @@ export function SortTable<T>({
   rowClass,
   className = '',
   totalLabel,
+  expanded,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -50,6 +51,8 @@ export function SortTable<T>({
   rowClass?: (r: T) => string;
   className?: string;
   totalLabel?: string;
+  /** Detalle desplegado bajo una fila (o null si está cerrada). */
+  expanded?: (r: T, sorted: T[]) => ReactNode | null;
 }) {
   const [sort, setSort] = useState(() => load(storageKey, defaultSort));
   const toggle = (id: string, numeric: boolean) => {
@@ -62,10 +65,25 @@ export function SortTable<T>({
     return col?.sort ? [...rows].sort((a, b) => compare(col.sort!(a), col.sort!(b), sort.dir)) : rows;
   }, [rows, columns, sort]);
   const hasTotal = columns.some((c) => c.total !== undefined);
+  const table = useRef<HTMLTableElement>(null);
+  // En móvil la tabla oculta columnas: el detalle desplegado abarca solo las que se ven, o la tabla
+  // crearía columnas vacías para él y estrecharía las demás.
+  const [span, setSpan] = useState(columns.length);
+  const anyOpen = !!expanded && sorted.some((r) => expanded(r, sorted) != null);
+  useLayoutEffect(() => {
+    if (!anyOpen) return;
+    const count = () => {
+      const ths = table.current?.querySelectorAll<HTMLElement>('thead th') ?? [];
+      setSpan([...ths].filter((th) => getComputedStyle(th).display !== 'none').length || columns.length);
+    };
+    count();
+    window.addEventListener('resize', count);
+    return () => window.removeEventListener('resize', count);
+  }, [anyOpen, columns.length]);
 
   return (
     <div className="table-wrap">
-      <table className={`wl-table cartera-table ${className}`}>
+      <table ref={table} className={`wl-table cartera-table ${className}`}>
         <thead>
           <tr>
             {columns.map((c) => (
@@ -89,19 +107,29 @@ export function SortTable<T>({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((r) => (
-            <tr
-              key={rowKey(r)}
-              className={`row${onRowClick ? ' row--click' : ''} ${rowClass?.(r) ?? ''}`}
-              onClick={onRowClick ? () => onRowClick(r) : undefined}
-            >
-              {columns.map((c) => (
-                <td key={c.id} className={`${c.align ? `al-${c.align}` : ''} col-${c.id}`} data-label={c.label}>
-                  {c.cell(r)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {sorted.map((r) => {
+            const open = expanded?.(r, sorted) ?? null;
+            return (
+              <Fragment key={rowKey(r)}>
+                <tr
+                  className={`row${onRowClick ? ' row--click' : ''}${open ? ' row--open' : ''} ${rowClass?.(r) ?? ''}`}
+                  onClick={onRowClick ? () => onRowClick(r) : undefined}
+                  aria-expanded={expanded ? !!open : undefined}
+                >
+                  {columns.map((c) => (
+                    <td key={c.id} className={`${c.align ? `al-${c.align}` : ''} col-${c.id}`} data-label={c.label}>
+                      {c.cell(r)}
+                    </td>
+                  ))}
+                </tr>
+                {open && (
+                  <tr className="row-expand">
+                    <td colSpan={span}>{open}</td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
         {hasTotal && (
           <tfoot>

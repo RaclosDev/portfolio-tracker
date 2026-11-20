@@ -12,7 +12,7 @@ function nf(key: string, opts: Intl.NumberFormatOptions) {
 const DASH = '–';
 
 /** Decimales que trae un número (máx. 6): 20.345 → 3. */
-const decimals = (v: number) => {
+export const decimals = (v: number) => {
   const s = String(Number(v.toFixed(6)));
   const i = s.indexOf('.');
   return i < 0 ? 0 : s.length - i - 1;
@@ -36,13 +36,15 @@ export function price(v: number | null | undefined, currency?: string | null) {
   }
 }
 
-export function money(v: number | null | undefined, currency = 'EUR', digits = 0) {
+/** Importe redondeado. `narrow` usa el símbolo corto ($ en vez de US$), como en los precios. */
+export function money(v: number | null | undefined, currency = 'EUR', digits = 0, narrow = false) {
   if (v == null) return DASH;
   const cur = currency === 'GBp' ? 'GBP' : currency;
   try {
-    return nf(`m${cur}${digits}`, {
+    return nf(`m${cur}${digits}${narrow ? 'n' : ''}`, {
       style: 'currency',
       currency: cur,
+      currencyDisplay: narrow ? 'narrowSymbol' : 'symbol',
       minimumFractionDigits: digits,
       maximumFractionDigits: digits,
     }).format(currency === 'GBp' ? v / 100 : v);
