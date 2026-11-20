@@ -394,7 +394,6 @@ p, li { text-wrap: pretty; }
 .swatch--veryFar { background: var(--veryFar-fg); }
 .swatch--order { background: var(--order-fg); }
 .segmented button.on .swatch { outline: 1.5px solid var(--accent-text); }
-.content > .legend { margin-top: 10px; }
 .icon { display: block; }
 .stale { display: inline-flex; vertical-align: -2px; margin-left: 4px; color: var(--down); cursor: help; }
 ::placeholder { color: var(--text-2); opacity: 1; }
@@ -402,8 +401,6 @@ p, li { text-wrap: pretty; }
   width: 260px; height: 34px; padding: 0 12px;
   border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
 }
-.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: var(--fs-xs); color: var(--text-2); }
-.legend span { display: inline-flex; align-items: center; gap: 6px; }
 .lg { display: inline-block; flex: none; }
 .lg-price { width: 3px; height: 14px; border-radius: 2px; background: var(--pm-price); }
 .lg-zone { width: 16px; height: 10px; border-radius: 2px; background: var(--reached-bg); }

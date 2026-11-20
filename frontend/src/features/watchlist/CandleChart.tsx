@@ -405,8 +405,8 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Pr
     const colors = themeColors();
     const chart = createChart(box, {
       autoSize: true,
-      // Sin el logo de TradingView dentro del gráfico; la atribución que pide la licencia va en la nota al pie.
-      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: colors.text, fontFamily: 'inherit', attributionLogo: false },
+      // El logo de TradingView dentro del gráfico es la atribución que pide su licencia.
+      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: colors.text, fontFamily: 'inherit', attributionLogo: true },
       grid: { vertLines: { color: colors.grid }, horzLines: { color: colors.grid } },
       rightPriceScale: { borderColor: colors.grid },
       timeScale: { borderColor: colors.grid, rightOffset: RIGHT_OFFSET, minBarSpacing: 0.05 },

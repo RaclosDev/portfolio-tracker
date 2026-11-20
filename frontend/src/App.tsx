@@ -2,10 +2,10 @@ import { DEFAULT_SETTINGS, displayTicker, VISITED_LIST_ID, VISITED_LIST_NAME, ty
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { api, DEMO } from './api/client.ts';
+import { EMBED } from './demo/embed.ts';
 import { keys, useForceRefresh, useListMutations, useLists, usePortfolio, useSaveItem, useSettings, useWatchlist } from './api/hooks.ts';
 import type { OperationDraft } from './features/cartera/OperationDialog.tsx';
 import { useCarteraModel } from './features/cartera/model.ts';
-import { PriceMapLegend } from './features/watchlist/PriceMap.tsx';
 import { Highlights, goToRow } from './features/watchlist/Highlights.tsx';
 import { Dialog } from './components/Dialog.tsx';
 import { toastError } from './components/feedback.tsx';
@@ -359,7 +359,7 @@ export function App() {
 
   return (
     <div className="app">
-      {DEMO && (
+      {DEMO && !EMBED && (
         <p className="demo-banner" role="status">
           <strong>Modo demo.</strong> Datos ficticios: los cambios se pierden al recargar.
           <a href="/">Salir y crear una cuenta</a>
@@ -485,7 +485,7 @@ export function App() {
 
       <main className="content" id="contenido" tabIndex={-1}>
         <UpdateBanner />
-        <PushBanner />
+        {!EMBED && <PushBanner />}
         {listError && <p className="error-box" role="alert">{listError}</p>}
         {throttleMin != null && (
           <p className="notice" role="status">
@@ -598,14 +598,8 @@ export function App() {
                 )}
               </>
             )}
-            {view && view.rows.length > 0 && <PriceMapLegend />}
           </>
         )}
-        <p className="footnote">
-          Cotizaciones y composición de fondos: Financial Hub; de respaldo, Yahoo Finance, Borsa Italiana / FIDA, Quefondos / VDOS, onvista, justETF y FT Markets. Consenso: Yahoo Finance. Gráficos:{' '}
-          <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">TradingView Lightweight Charts</a>. Los datos pueden tener retraso.
-          {!onPortfolio && <span className="watchlist-desktop-hint"> Doble clic en una fila para editarla.</span>}
-        </p>
       </main>
 
       {promptEl}

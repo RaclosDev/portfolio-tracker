@@ -93,15 +93,3 @@ export function PriceMap({ row }: { row: WatchlistRow }) {
   );
 }
 
-export function PriceMapLegend() {
-  return (
-    <div className="legend" aria-label="Leyenda del mapa de precios">
-      <span><i className="lg lg-price" /> Precio</span>
-      <span><i className="lg lg-zone" /> Zona de compra</span>
-      <span><i className="lg lg-level" /> Niveles 1·2·3</span>
-      <span><i className="lg lg-track" /> Rango 52 sem.</span>
-      <span><i className="lg lg-broker" /> Obj. bróker</span>
-      <span><i className="lg lg-consensus" /> Consenso</span>
-    </div>
-  );
-}
