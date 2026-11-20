@@ -2,6 +2,7 @@ package com.cartera.service.portfolio;
 
 import com.cartera.dto.market.CompanyProfile;
 import com.cartera.dto.market.DailyHistoryResult;
+import com.cartera.dto.market.FundComposition;
 import com.cartera.dto.market.PricePoint;
 import com.cartera.dto.market.Quote;
 import com.cartera.dto.portfolio.InstrumentResponse;
@@ -20,6 +21,9 @@ import com.cartera.repository.OperationRepository;
 import com.cartera.service.market.MarketService;
 import com.cartera.service.market.MarketService.MinorUnit;
 import com.cartera.service.market.YahooProvider;
+import com.cartera.service.market.composition.CompositionService;
+import com.cartera.service.market.composition.CompositionSource;
+import com.cartera.util.MarketSymbols;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -59,6 +63,7 @@ public class PortfolioService {
     private final OperationRepository operations;
     private final InstrumentRepository instruments;
     private final MarketService market;
+    private final CompositionService compositions;
 
     private final Set<UUID> profilesRunning = ConcurrentHashMap.newKeySet();
     /** Cuándo se pidió la ficha de cada valor: los que Yahoo no completa no bloquean a los siguientes. */
@@ -187,6 +192,45 @@ public class PortfolioService {
         if (!issues.isEmpty()) {
             throw ApiException.badRequest(String.join(" ", issues.stream().map(Ledger.Issue::message).toList()));
         }
+    }
+
+    /** Composición de cada fondo o ETF que sigue en cartera, por ticker (null: ninguna fuente la tiene). */
+    public Map<String, FundComposition> composition(UUID userId) {
+        List<Operation> ops = operations.findAllOrdered(userId);
+        List<Instrument> all = instruments.findByUserIdOrderByTicker(userId);
+        Set<String> open = new HashSet<>();
+        Ledger.compute(ops, all).positions().stream().filter(Ledger.Position::open).forEach(p -> open.add(p.ticker()));
+        List<Instrument> held = all.stream().filter(i -> open.contains(i.getTicker())).toList();
+        Map<String, Quote> quotes = market.getQuotes(held.stream().map(Instrument::getSymbol).filter(Objects::nonNull).toList());
+        record Fund(String ticker, CompositionSource.Ref ref) {
+        }
+        List<Fund> funds = new ArrayList<>();
+        for (Instrument i : held) {
+            Quote quote = i.getSymbol() != null ? quotes.get(i.getSymbol()) : null;
+            String isin = i.getIsin() != null ? i.getIsin() : quote != null && quote.isin() != null ? quote.isin()
+                    : MarketSymbols.isinInSymbol(i.getSymbol());
+            boolean candidate = quote != null && quote.quoteType() != null ? MarketSymbols.isFundType(quote.quoteType()) : isin != null;
+            if (candidate) {
+                funds.add(new Fund(i.getTicker(), new CompositionSource.Ref(
+                        isin != null ? isin.toUpperCase(java.util.Locale.ROOT) : null, i.getSymbol())));
+            }
+        }
+        Map<String, FundComposition> out = new ConcurrentHashMap<>();
+        Map<String, Boolean> none = new ConcurrentHashMap<>();
+        // De tres en tres: la primera vez cada fondo puede recorrer varias fuentes.
+        try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (int i = 0; i < funds.size(); i += 3) {
+                funds.subList(i, Math.min(i + 3, funds.size())).stream().map(f -> pool.submit(() -> {
+                    FundComposition c = compositions.getComposition(f.ref());
+                    if (c != null) out.put(f.ticker(), c);
+                    else none.put(f.ticker(), true);
+                })).toList().forEach(PortfolioService::await);
+            }
+        }
+        // El orden de la cartera y los fondos sin composición como null (el cliente distingue «no tiene» de «no es fondo»).
+        Map<String, FundComposition> ordered = new LinkedHashMap<>();
+        for (Fund f : funds) if (out.containsKey(f.ticker()) || none.containsKey(f.ticker())) ordered.put(f.ticker(), out.get(f.ticker()));
+        return ordered;
     }
 
     static Set<String> openTickers(Ledger ledger) {

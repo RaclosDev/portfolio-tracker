@@ -7,6 +7,7 @@ import com.cartera.exception.ApiException;
 import com.cartera.model.WatchItem;
 import com.cartera.model.WatchList;
 import com.cartera.repository.WatchItemRepository;
+import com.cartera.service.market.composition.IsinLookup;
 import com.cartera.util.JsonPatches;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -36,6 +37,7 @@ public class WatchItemService {
     private final WatchItemRepository items;
     private final WatchListService lists;
     private final JsonPatches patches;
+    private final IsinLookup isins;
 
     @Transactional
     public ItemResponse create(UUID userId, ItemRequest request) {
@@ -43,7 +45,7 @@ public class WatchItemService {
         WatchItem item = new WatchItem();
         item.setList(list);
         item.setPosition(items.maxPosition(list.getId()) + 1);
-        apply(item, request);
+        apply(item, withIsin(request));
         return save(item);
     }
 
@@ -61,9 +63,14 @@ public class WatchItemService {
             item.setList(lists.owned(userId, next.listId()));
             item.setPosition(items.maxPosition(next.listId()) + 1);
         }
-        apply(item, next);
+        apply(item, withIsin(next));
         item.setUpdatedAt(Instant.now());
         return save(item);
+    }
+
+    /** Sin ISIN, el de la cotización (o el de Financial Hub en fondos y ETF), si se sabe. */
+    private ItemRequest withIsin(ItemRequest request) {
+        return request.isin() != null ? request : request.withIsin(isins.isinOf(request.symbol()));
     }
 
     @Transactional

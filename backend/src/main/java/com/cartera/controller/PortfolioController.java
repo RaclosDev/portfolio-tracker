@@ -1,6 +1,7 @@
 package com.cartera.controller;
 
 import com.cartera.config.CurrentUser;
+import com.cartera.dto.market.FundComposition;
 import com.cartera.dto.portfolio.PortfolioDtos.CarteraView;
 import com.cartera.dto.portfolio.PortfolioDtos.ImportRequest;
 import com.cartera.dto.portfolio.PortfolioDtos.ImportResponse;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.Map;
 
 /** Cartera real: el registro con los precios de hoy, su valor día a día y la importación desde Excel. */
 @RestController
@@ -43,6 +45,12 @@ public class PortfolioController {
     public PortfolioHistory history(@AuthenticationPrincipal CurrentUser user, @RequestParam String from,
                                     @RequestParam String to) {
         return portfolio.history(user.id(), date("from", from), date("to", to));
+    }
+
+    /** Qué lleva dentro cada fondo o ETF en cartera, por ticker (null: ninguna fuente lo sabe). */
+    @GetMapping("/composition")
+    public Map<String, FundComposition> composition(@AuthenticationPrincipal CurrentUser user) {
+        return portfolio.composition(user.id());
     }
 
     /** Añade movimientos de un Excel; los repetidos solo entran si se pide expresamente. */

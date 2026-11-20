@@ -49,6 +49,25 @@ public class MarketCacheRepository {
         }
     }
 
+    /** Las filas guardadas de varios símbolos de una vez (los que no tienen fila no salen). */
+    public java.util.Map<String, Row> findAll(String kind, List<String> symbols) {
+        java.util.Map<String, Row> out = new java.util.HashMap<>();
+        if (symbols.isEmpty()) return out;
+        String marks = String.join(",", java.util.Collections.nCopies(symbols.size(), "?"));
+        Object[] args = new Object[symbols.size() + 1];
+        args[0] = kind;
+        for (int i = 0; i < symbols.size(); i++) args[i + 1] = symbols.get(i);
+        try {
+            jdbc.query("SELECT symbol, data::text, fetched_at FROM market_cache WHERE kind = ? AND symbol IN (" + marks + ")",
+                    rs -> {
+                        out.put(rs.getString(1), new Row(json.readTree(rs.getString(2)), toMillis(rs.getTimestamp(3))));
+                    }, args);
+        } catch (DataAccessException e) {
+            log.warn("No se pudo leer {}: {}", kind, e.getMessage());
+        }
+        return out;
+    }
+
     private static long toMillis(Timestamp t) {
         return t == null ? 0 : t.getTime();
     }
