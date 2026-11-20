@@ -42,7 +42,7 @@ Problemas del Excel que la app resuelve:
 - Web en internet (`cartera.raclos.es`), usable desde cualquier PC, móvil o tablet, protegida con contraseña.
 - Alojamiento gratuito: Render (servidor), Neon (PostgreSQL) y UptimeRobot (lo mantiene despierto).
 - Avisos de precio en el servidor, 24 h, enviados como notificaciones Web Push a los dispositivos activados.
-- Sin compilaciones nativas; en local no hace falta instalar PostgreSQL (se usa PGlite).
+- Una sola imagen Docker con la web y la API; en local, PostgreSQL en Docker (`docker compose up -d`).
 - Tolerante a fallos de la fuente de datos: si Yahoo no responde se muestra la última cotización guardada marcada como antigua.
 - Arquitectura modular para añadir proveedores, cartera real, alertas, gráficos…
 
@@ -50,18 +50,15 @@ Problemas del Excel que la app resuelve:
 
 | Capa | Elección | Por qué |
 |---|---|---|
-| Runtime | **Node.js 24 LTS** | Un solo runtime para front y back; instalador oficial en todos los SO |
-| Monorepo | **npm workspaces** | Viene con Node, sin herramientas extra |
-| Lenguaje | **TypeScript** | Tipos compartidos entre cliente y servidor |
-| Backend | **Fastify 5** | Rápido, validación por esquema, ecosistema de plugins |
-| Base de datos | **PostgreSQL** (Neon) con `pg`; **PGlite** en local y tests | Gratis en la nube; en local el mismo SQL sin instalar nada |
-| Notificaciones | **Web Push** (`web-push`, service worker) | Llegan al móvil y al PC sin instalar apps |
-| Alojamiento | **Render** (Node), dominio propio | Despliegue desde GitHub tras pasar los tests |
-| Validación | **Zod** (paquete `shared`) | Un único esquema valida formularios y API |
-| Datos de mercado | **yahoo-finance2** detrás de una interfaz `MarketDataProvider` | Gratis, sin API key, cubre acciones y ETF europeos/EE. UU., FX y consenso de analistas. Detrás, en orden: Borsa Italiana, Quefondos, onvista, justETF y FT Markets. La composición de fondos (`composition.ts`) sale de extraETF, onvista, FT Markets y Yahoo |
-| Frontend | **React 19 + Vite** | Estándar de la industria, arranque instantáneo |
+| Backend | **Java 21 + Spring Boot 4** (Web MVC, Security, Data JPA, Validation, Actuator) | Estándar en empresa; capas controller → service → repository |
+| Base de datos | **PostgreSQL** (Neon) con **Flyway** | Gratis en la nube; migraciones versionadas que se aplican al arrancar |
+| Autenticación | **JWT** de 15 min + refresco rotatorio en cookie `HttpOnly`; Google Identity Services | Sin estado en el servidor salvo los refrescos, revocables |
+| Notificaciones | **Web Push** (VAPID, service worker) | Llegan al móvil y al PC sin instalar apps |
+| Alojamiento | **Render** (Docker), dominio propio | Despliegue desde GitHub tras pasar la CI |
+| Datos de mercado | Yahoo Finance detrás de una interfaz `MarketDataProvider` | Gratis, sin API key, cubre acciones y ETF europeos/EE. UU., FX y consenso de analistas. Detrás, en orden: Borsa Italiana, Quefondos, onvista, justETF y FT Markets. La composición de fondos (`service/market/composition`) sale de Financial Hub, extraETF, onvista, FT Markets y Yahoo |
+| Frontend | **React 19 + Vite + TypeScript** | Estándar de la industria, arranque instantáneo |
 | Estado servidor | **TanStack Query** | Caché, refresco periódico y reintentos sin código propio |
-| Tests | **Vitest** | Misma config que Vite; los cálculos financieros están cubiertos |
+| Tests | **JUnit 5 + Testcontainers + JaCoCo** (API), **Vitest** (web) | La API se prueba contra PostgreSQL real |
 
 Sobre el consenso: Yahoo publica el consenso de analistas (fuente LSEG/Refinitiv), equivalente al de Bloomberg para uso particular. El consenso de Bloomberg requiere terminal de pago. Los objetivos de brókers concretos (Renta 4, etc.) no se publican en APIs gratuitas, por eso se mantienen como campo manual. Para otra fuente (FMP, EODHD, Alpha Vantage…) basta con implementar `MarketDataProvider`.
 
@@ -69,26 +66,31 @@ Sobre el consenso: Yahoo publica el consenso de analistas (fuente LSEG/Refinitiv
 
 ```
 watchlist/
-├─ packages/shared/        Tipos, esquemas Zod y cálculos puros (con tests)
-├─ apps/server/            API Fastify + PostgreSQL + proveedores de mercado
-│  ├─ src/db/              Conexión (Neon o PGlite) y migraciones SQL versionadas
-│  ├─ src/modules/         auth · lists · items · settings · market · watchlist · portfolio · alerts · backup
-│  ├─ seed/                Datos iniciales (importados del Excel)
-│  └─ data/                Base de datos local de desarrollo (ignorada en git)
-├─ apps/web/               React + Vite (PWA: manifest y service worker en public/)
+├─ backend/                API Spring Boot (Maven)
+│  ├─ src/main/java/com/cartera/
+│  │  ├─ controller/       Endpoints REST (/api/…)
+│  │  ├─ service/          auth · watchlist · portfolio · market · alerts · backup
+│  │  ├─ repository/       Acceso a datos (JPA y consultas SQL)
+│  │  ├─ model/ · dto/     Tablas y contratos de la API
+│  │  └─ config/           Seguridad, JWT, CORS, límites de peticiones y la web estática
+│  ├─ src/main/resources/db/migration/   Migraciones Flyway (V1 esquema, V2 datos de la versión anterior)
+│  └─ src/test/            Tests con PostgreSQL en Testcontainers
+├─ frontend/               React + Vite (PWA: manifest y service worker en public/)
 │  └─ src/features/        watchlist · portfolio · items · import · alerts · settings · auth
+├─ Dockerfile              Compila web y API y las sirve juntas (Java 21 JRE)
+├─ docker-compose.yml      PostgreSQL local (y la imagen con --profile app)
 └─ docs/
 ```
 
-Flujo: el navegador pide `GET /api/lists/:id/watchlist`; el servidor combina los valores guardados con cotizaciones (caché 60 s), consenso (caché 12 h) y tipos de cambio, aplica los cálculos de `shared` y devuelve filas listas para pintar.
+Flujo: el navegador pide `GET /api/lists/:id/watchlist`; el servidor combina los valores guardados con cotizaciones (caché 60 s), consenso (caché 12 h) y tipos de cambio, aplica los cálculos (`service/watchlist/Metrics`) y devuelve filas listas para pintar.
 
 ## 5. Avisos
 
-Las cuentas y los hashes de sesión viven en `watchlist_auth`. El propietario conserva sus datos en `public`; cada alta crea y migra un esquema `account_<uuid>`. El servidor resuelve el esquema a partir de la sesión, nunca de un parámetro del cliente. `schemaDatabase` fija `search_path` dentro de cada transacción, sin recurrir a `public`. Se comparten únicamente el proveedor y la caché de cotizaciones. Las migraciones de datos se aplican a todos los esquemas al arrancar.
+Todas las cuentas comparten tablas (esquema `cartera`) y cada fila lleva su `user_id`; el servidor lo toma del JWT, nunca de un parámetro del cliente, y un recurso de otra cuenta responde 404. Solo la caché de mercado (`market_cache`) es común. La migración V2 importó los datos de la versión anterior (un esquema por cuenta) y dejó esos esquemas como copia.
 
 El planificador recorre las cuentas y ejecuta avisos y copias con los servicios de cada una. Cada notificación lleva el identificador de cuenta; el service worker comprueba la sesión antes de mostrarla para evitar avisos de otra cuenta en un dispositivo compartido.
 
-El servidor ejecuta `AlertsService` cada minuto (o la frecuencia de Ajustes): calcula todas las listas (la
-cartera no genera avisos), compara con la memoria de avisos (`app_state`), guarda lo nuevo en `alert_history` y lo envía a cada
+El servidor ejecuta `AlertScheduler` cada minuto (solo con `ALERTS_SCHEDULER=true`) (o la frecuencia de Ajustes): calcula todas las listas (la
+cartera no genera avisos), compara con la memoria de avisos (`alert_state`), guarda lo nuevo en `alert_history` y lo envía a cada
 suscripción de `push_subscriptions`. Respeta fines de semana, horas de silencio y el resumen diario (hora de
 España, `TZ=Europe/Madrid`). También guarda una copia diaria en `snapshots`.

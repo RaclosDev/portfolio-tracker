@@ -1,43 +1,45 @@
 # Despliegue en Render (plan gratuito). Se crea con «New → Blueprint» apuntando a este repositorio.
-# No se despliega en cada push: lo hace la GitHub Action cuando los tests pasan (RENDER_DEPLOY_HOOK).
+# Render construye el Dockerfile de la raíz (web + API en una sola imagen). No se despliega en cada push:
+# lo hace la GitHub Action cuando los tests pasan (RENDER_DEPLOY_HOOK).
 services:
   - type: web
     name: cartera
-    runtime: node
+    runtime: docker
     plan: free
     region: frankfurt # misma región que la base de datos de Neon (eu-central-1)
     branch: main
     autoDeployTrigger: "off"
-    buildCommand: npm ci --include=dev && npm run build
-    startCommand: npm start
-    healthCheckPath: /api/health
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /actuator/health/liveness
     domains:
       - cartera.raclos.es
     envVars:
-      - key: NODE_VERSION
-        value: "24"
-      - key: NODE_ENV
-        value: production
-      # Horas de silencio, resumen diario y fechas de órdenes, en hora de España.
-      - key: TZ
-        value: Europe/Madrid
       - key: PUBLIC_URL
         value: https://cartera.raclos.es
-      # Cadena de conexión de Neon (con ?sslmode=require).
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://cartera.raclos.es
+      # Neon en formato JDBC, sin usuario ni contraseña:
+      # jdbc:postgresql://<host>.neon.tech/<base>?sslmode=require&channelBinding=require
       - key: DATABASE_URL
         sync: false
-      # Contraseña inicial de la cuenta propietaria.
-      - key: APP_PASSWORD
+      - key: PGUSER
         sync: false
+      - key: PGPASSWORD
+        sync: false
+      # Firma de los tokens de sesión (mínimo 32 bytes).
+      - key: JWT_SECRET
+        generateValue: true
+      # Cuenta propietaria y su contraseña inicial.
       - key: APP_OWNER_EMAIL
+        sync: false
+      - key: APP_PASSWORD
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
-      - key: GOOGLE_CLIENT_SECRET
-        sync: false
-      - key: SESSION_SECRET
-        generateValue: true
-      # Claves de las notificaciones: npm run claves-push
+      # Notificaciones push (Web Push). Solo una instancia debe enviar los avisos.
+      - key: ALERTS_SCHEDULER
+        value: "true"
       - key: VAPID_PUBLIC_KEY
         sync: false
       - key: VAPID_PRIVATE_KEY

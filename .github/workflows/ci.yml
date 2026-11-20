@@ -1,0 +1,111 @@
+# Comprueba cada cambio y, si todo está bien en main, despliega en Render.
+#  - frontend: lint, tipos, tests y compilación de la web (frontend/).
+#  - backend: tests de la API con PostgreSQL real (Testcontainers) y mínimo de cobertura (backend/).
+#  - docker-build: la misma imagen que construye Render, para que un Dockerfile roto no llegue a main.
+#  - desplegar: llama al «Deploy Hook» de Render (secreto RENDER_DEPLOY_HOOK) cuando lo anterior pasa en main.
+name: Cartera CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Semanal: pasa todo aunque nadie haya tocado el repo (dependencias, imágenes base).
+  schedule:
+    - cron: '41 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Dependencias con vulnerabilidades graves
+        run: npm audit --omit=dev --audit-level=high
+      - name: Lint
+        run: npm run lint
+      - name: Tests
+        run: npm test
+      - name: Tipos y compilación
+        run: npm run build
+
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up JDK 21
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+          cache-dependency-path: backend/pom.xml
+      - name: Docker para los tests con PostgreSQL
+        run: docker info > /dev/null
+      - name: Tests y cobertura
+        run: |
+          # La descarga de Maven falla a veces en el runner: se reintenta antes de usarlo.
+          for intento in 1 2 3; do ./mvnw -B -v > /dev/null && break; sleep 15; done
+          ./mvnw -B verify
+      - name: Informe de cobertura
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: backend-coverage
+          path: backend/target/site/jacoco
+          if-no-files-found: ignore
+          retention-days: 7
+
+  docker-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build image (no push)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  desplegar:
+    needs: [frontend, backend, docker-build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Desplegar en Render
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          HOOK="$(echo "$HOOK" | tr -d '[:space:]')"
+          if [ -z "$HOOK" ]; then echo "Sin RENDER_DEPLOY_HOOK: no se despliega."; exit 0; fi
+          case "$HOOK" in
+            https://api.render.com/deploy/*) ;;
+            *) echo "::error::RENDER_DEPLOY_HOOK no es una URL de Render válida (debe empezar por https://api.render.com/deploy/)."; exit 1 ;;
+          esac
+          curl -fsS --retry 3 -X POST "$HOOK" > /dev/null
+          echo "Despliegue solicitado."

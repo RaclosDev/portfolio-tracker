@@ -1,0 +1,36 @@
+# Control de versiones y herramientas
+.git
+.gitignore
+.gitattributes
+.github
+.husky
+.claude
+.agents
+.vscode
+.idea
+graphify-out
+.graphify*
+
+# Secretos
+**/.env*
+
+# Dependencias y builds locales (se regeneran dentro de la imagen)
+**/node_modules
+**/dist
+**/dev-dist
+**/coverage
+**/test-results
+**/playwright-report
+tmp
+**/*.tsbuildinfo
+backend/target
+frontend/node_modules
+backend/.mvn/wrapper/maven-wrapper.jar
+
+# Documentación y ficheros que no entran en la imagen
+docs
+*.md
+docker-compose.yml
+Dockerfile
+.dockerignore
+*.log
