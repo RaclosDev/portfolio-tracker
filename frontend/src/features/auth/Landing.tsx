@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import './landing.css';
 
 /*
@@ -15,15 +15,17 @@ const STEPS = 24;
 /** Recorrido de reserva (sin conexión): Iberdrola baja hasta su primer precio de compra; los otros dos oscilan. */
 const IBE = [14.21, 14.12, 14.18, 14.02, 13.91, 13.96, 13.8, 13.71, 13.62, 13.66, 13.55, 13.48, 13.46, 13.49, 13.47, 13.48];
 const wave = (base: number, amp: number, speed: number) => Array.from({ length: STEPS }, (_, s) => base + amp * Math.sin(s * speed));
+/** Iberdrola va la última: cuando llega a su compra 1 sube arriba, como en la lista de la aplicación. */
 const FALLBACK: Row[] = [
-  { name: 'Iberdrola', ticker: 'IBE.MC', unit: '€', min: 11.5, max: 14.6, levels: [13.5, 12.83, 12.15], path: Array.from({ length: STEPS }, (_, s) => IBE[Math.min(s, IBE.length - 1)]!) },
   { name: 'Microsoft', ticker: 'MSFT', unit: '$', min: 340, max: 445, levels: [410, 385.4, 362], path: wave(425.6, 3.2, 1.1) },
   { name: 'Vanguard FTSE All-World', ticker: 'VWCE.DE', unit: '€', min: 92, max: 132, levels: [116, 108, 100], path: wave(126.3, 0.9, 0.8) },
+  { name: 'Iberdrola', ticker: 'IBE.MC', unit: '€', min: 11.5, max: 14.6, levels: [13.5, 12.83, 12.15], path: Array.from({ length: STEPS }, (_, s) => IBE[Math.min(s, IBE.length - 1)]!) },
 ];
+const LEAD = 'IBE.MC';
 
 type Candle = { t: string; c: number };
 type Snapshot = { quotes: Record<string, { name?: string; currency?: string; price?: number }>; candles: Record<string, Candle[]> };
-const NAMES: Record<string, string> = { 'IBE.MC': 'Iberdrola', MSFT: 'Microsoft', 'VWCE.DE': 'Vanguard FTSE All-World' };
+const NAMES: Record<string, string> = { MSFT: 'Microsoft', 'VWCE.DE': 'Vanguard FTSE All-World', 'IBE.MC': 'Iberdrola' };
 const UNITS: Record<string, string> = { EUR: '€', USD: '$', GBP: '£' };
 /** Distancia del primer precio de compra a la cotización de hoy, para que se vean estados distintos. */
 const FIRST_LEVEL: Record<string, number> = { MSFT: 0.965, 'VWCE.DE': 0.915 };
@@ -52,17 +54,59 @@ function realRows(snap: Snapshot): Row[] | null {
   return rows.every(Boolean) ? (rows as Row[]) : null;
 }
 
+/** Las filas reales, y si ya se sabe qué enseñar: el mapa espera a los datos (o a 1,2 s) antes de dibujarse. */
 function useLandingRows() {
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [settled, setSettled] = useState(false);
   useEffect(() => {
     const ctrl = new AbortController();
+    const timer = window.setTimeout(() => setSettled(true), 1200);
     fetch('/api/public/market/landing', { signal: ctrl.signal })
       .then((r) => (r.ok ? (r.json() as Promise<Snapshot>) : null))
       .then((snap) => { if (snap) setRows(realRows(snap)); })
-      .catch(() => { /* sin conexión: el ejemplo de reserva */ });
-    return () => ctrl.abort();
+      .catch(() => { /* sin conexión: el ejemplo de reserva */ })
+      .finally(() => { if (!ctrl.signal.aborted) setSettled(true); });
+    return () => { ctrl.abort(); window.clearTimeout(timer); };
   }, []);
-  return rows;
+  return { rows, settled };
+}
+
+/** El número va de un precio al siguiente como una cotización que se mueve, no a saltos. */
+function useTweened(target: number, ms: number, off: boolean) {
+  const [value, setValue] = useState(target);
+  const current = useRef(target);
+  useEffect(() => {
+    if (off) { current.current = target; setValue(target); return; }
+    const from = current.current;
+    const start = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const k = Math.min(1, (now - start) / ms);
+      current.current = from + (target - from) * (1 - (1 - k) ** 4);
+      setValue(current.current);
+      if (k < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, ms, off]);
+  return value;
+}
+
+/** Solo corre mientras se ve: fuera de pantalla o con la pestaña oculta, el recorrido se para. */
+function useOnScreen(ref: RefObject<Element | null>) {
+  const [inView, setInView] = useState(true);
+  const [shown, setShown] = useState(() => document.visibilityState !== 'hidden');
+  useEffect(() => {
+    const el = ref.current;
+    const onVis = () => setShown(document.visibilityState !== 'hidden');
+    document.addEventListener('visibilitychange', onVis);
+    const io = el && 'IntersectionObserver' in window
+      ? new IntersectionObserver(([e]) => setInView(e!.isIntersecting), { threshold: 0.15 })
+      : null;
+    if (el) io?.observe(el);
+    return () => { document.removeEventListener('visibilitychange', onVis); io?.disconnect(); };
+  }, [ref]);
+  return inView && shown;
 }
 
 /** Las mismas bandas que trae la aplicación por defecto: 5, 10 y 20 %. */
@@ -97,53 +141,108 @@ function useDark() {
   return dark;
 }
 
+const RANK: Status[] = ['reached', 'veryNear', 'near', 'far', 'veryFar'];
+const EASE_OUT = 'cubic-bezier(0.16, 1, 0.3, 1)';
+
+function MapRow({ row, step, reduced, rowRef }: {
+  row: Row; step: number; reduced: boolean; rowRef: (el: HTMLLIElement | null) => void;
+}) {
+  const target = row.path[step]!;
+  const shown = useTweened(target, 900, reduced);
+  const prev = useRef(target);
+  const dir = target > prev.current ? 'up' : target < prev.current ? 'down' : 'flat';
+  useEffect(() => { prev.current = target; }, [target]);
+
+  const gap = gapTo(target, row.levels[0]!);
+  const status = statusOf(gap);
+  const at = (v: number) => `${((v - row.min) / (row.max - row.min)) * 100}%`;
+  return (
+    <li ref={rowRef} className={`lp-map__row lp-map__row--${status}`}>
+      <div className="lp-map__name">
+        <strong>{row.name}</strong>
+        <span className="ticker">{row.ticker}</span>
+      </div>
+      <div className="lp-map__price">
+        {/* La clave cambia en cada paso: el destello verde o rojo vuelve a empezar con cada cotización. */}
+        <strong key={step} className={`lp-map__quote lp-map__quote--${dir}`}>{eur.format(shown)} {row.unit}</strong>
+        <span className={`lp-map__status lp-map__status--${status}`}>{LABEL[status]}</span>
+      </div>
+      <div className="lp-map__track" aria-hidden="true">
+        <span className="lp-map__zone" style={{ width: at(row.levels[0]!) }} />
+        {row.levels.map((level, i) => (
+          <span
+            key={i} className={`lp-map__level lp-map__level--${statusOf(gapTo(target, level))}`}
+            style={{ left: at(level), '--i': i } as CSSProperties}
+          ><i>{i + 1}</i></span>
+        ))}
+        <span className="lp-map__marker" style={{ left: at(shown) }} />
+      </div>
+      <p className="lp-map__gap">
+        {gap <= 0
+          ? `Compra 1 alcanzada · ${eur.format(row.levels[0]!)} ${row.unit}`
+          : `A ${pct.format(gap)} % de la compra 1 · ${eur.format(row.levels[0]!)} ${row.unit}`}
+      </p>
+    </li>
+  );
+}
+
 function PriceMap() {
   const reduced = useReducedMotion();
-  const real = useLandingRows();
+  const { rows: real, settled } = useLandingRows();
   const rows = real ?? FALLBACK;
-  const [step, setStep] = useState(reduced ? STEPS - 1 : 0);
+  const figure = useRef<HTMLElement>(null);
+  // Mover una fila en el DOM reinicia sus animaciones CSS: la entrada se apaga en cuanto ha terminado.
+  const [drawn, setDrawn] = useState(false);
   useEffect(() => {
-    if (reduced) { setStep(STEPS - 1); return; }
-    setStep(0);
+    setDrawn(false);
+    if (!settled) return;
+    const id = window.setTimeout(() => setDrawn(true), 1400);
+    return () => window.clearTimeout(id);
+  }, [settled, real]);
+  const running = useOnScreen(figure) && drawn && !reduced;
+  const [step, setStep] = useState(reduced ? STEPS - 1 : 0);
+  useEffect(() => { setStep(reduced ? STEPS - 1 : 0); }, [reduced, real]);
+  useEffect(() => {
+    if (!running) return;
     const id = window.setInterval(() => setStep((s) => (s + 1) % STEPS), 1100);
     return () => window.clearInterval(id);
-  }, [reduced, real]);
+  }, [running]);
 
-  const lead = rows[0]!;
+  // Como en la lista: los valores en zona de compra suben arriba; a igual estado se respeta el orden.
+  const ordered = [...rows].sort((a, b) =>
+    RANK.indexOf(statusOf(gapTo(a.path[step]!, a.levels[0]!))) - RANK.indexOf(statusOf(gapTo(b.path[step]!, b.levels[0]!))));
+  const order = ordered.map((r) => r.ticker).join();
+
+  // FLIP: cada fila sale de donde estaba y se desliza a su nuevo sitio.
+  const els = useRef(new Map<string, HTMLLIElement>());
+  const tops = useRef(new Map<string, number>());
+  const source = useRef(real);
+  useLayoutEffect(() => {
+    // Al llegar los datos reales la lista se monta de nuevo: se anotan las posiciones sin animar.
+    const fresh = source.current !== real;
+    source.current = real;
+    els.current.forEach((el, ticker) => {
+      const top = el.offsetTop;
+      const before = tops.current.get(ticker);
+      tops.current.set(ticker, top);
+      if (fresh || reduced || before === undefined || before === top) return;
+      el.style.zIndex = before > top ? '2' : '1';
+      el.animate([{ transform: `translateY(${before - top}px)` }, { transform: 'none' }], { duration: 640, easing: EASE_OUT })
+        .finished.then(() => { el.style.zIndex = ''; }, () => {});
+    });
+  }, [order, reduced, real]);
+
+  const lead = rows.find((r) => r.ticker === LEAD)!;
   const alert = statusOf(gapTo(lead.path[step]!, lead.levels[0]!)) === 'reached';
   return (
-    <figure className="lp-map">
-      <ul className="lp-map__rows">
-        {rows.map((row) => {
-          const price = row.path[step]!;
-          const gap = gapTo(price, row.levels[0]!);
-          const status = statusOf(gap);
-          const at = (v: number) => `${((v - row.min) / (row.max - row.min)) * 100}%`;
-          return (
-            <li key={row.ticker} className={`lp-map__row lp-map__row--${status}`}>
-              <div className="lp-map__name">
-                <strong>{row.name}</strong>
-                <span className="ticker">{row.ticker}</span>
-              </div>
-              <div className="lp-map__price">
-                <strong>{eur.format(price)} {row.unit}</strong>
-                <span className={`lp-map__status lp-map__status--${status}`}>{LABEL[status]}</span>
-              </div>
-              <div className="lp-map__track" aria-hidden="true">
-                <span className="lp-map__zone" style={{ width: at(row.levels[0]!) }} />
-                {row.levels.map((level, i) => (
-                  <span key={i} className={`lp-map__level lp-map__level--${statusOf(gapTo(price, level))}`} style={{ left: at(level) }}><i>{i + 1}</i></span>
-                ))}
-                <span className="lp-map__marker" style={{ left: at(price) }} />
-              </div>
-              <p className="lp-map__gap">
-                {gap <= 0
-                  ? `Compra 1 alcanzada · ${eur.format(row.levels[0]!)} ${row.unit}`
-                  : `A ${pct.format(gap)} % de la compra 1 · ${eur.format(row.levels[0]!)} ${row.unit}`}
-              </p>
-            </li>
-          );
-        })}
+    <figure ref={figure} className={`lp-map${settled ? ' lp-map--ready' : ''}${drawn ? ' lp-map--drawn' : ''}`}>
+      <ul key={real ? 'real' : 'demo'} className="lp-map__rows">
+        {ordered.map((row) => (
+          <MapRow
+            key={row.ticker} row={row} step={step} reduced={reduced}
+            rowRef={(el) => { if (el) els.current.set(row.ticker, el); else els.current.delete(row.ticker); }}
+          />
+        ))}
       </ul>
       <p className={`lp-map__alert${alert ? ' lp-map__alert--on' : ''}`} aria-hidden={!alert}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -170,10 +269,29 @@ function Screens() {
   const dark = useDark();
   const [active, setActive] = useState(0);
   const screen = SCREENS[active]!;
+  // La pastilla de la pestaña activa se desliza hasta la elegida en lugar de saltar.
+  const tabs = useRef<HTMLDivElement>(null);
+  const [pill, setPill] = useState<{ x: number; w: number } | null>(null);
+  useLayoutEffect(() => {
+    const box = tabs.current;
+    if (!box) return;
+    const measure = () => {
+      const tab = box.querySelector<HTMLElement>('[aria-selected="true"]');
+      if (tab) setPill({ x: tab.offsetLeft, w: tab.offsetWidth });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [active]);
   return (
     <section className="lp-screens" aria-labelledby="lp-screens-title">
       <h2 id="lp-screens-title">De la lista de vigilancia al registro de operaciones</h2>
-      <div className="lp-tabs" role="tablist" aria-label="Pantallas de la aplicación">
+      <div
+        ref={tabs} className={`lp-tabs${pill ? ' lp-tabs--pill' : ''}`} role="tablist" aria-label="Pantallas de la aplicación"
+        style={pill ? ({ '--pill-x': `${pill.x}px`, '--pill-w': `${pill.w}px` } as CSSProperties) : undefined}
+      >
+        <span className="lp-tabs__pill" aria-hidden="true" />
         {SCREENS.map((s, i) => (
           <button
             key={s.id} type="button" role="tab" id={`lp-tab-${s.id}`} aria-selected={i === active} aria-controls="lp-screen"
@@ -190,7 +308,7 @@ function Screens() {
         ))}
       </div>
       <div id="lp-screen" role="tabpanel" aria-labelledby={`lp-tab-${screen.id}`} className="lp-screen">
-        <p className="lp-screen__text">{screen.text}</p>
+        <p key={screen.id} className="lp-screen__text">{screen.text}</p>
         <div className="lp-screen__frame">
           <img
             key={`${screen.id}-${dark}`} src={`/landing/${screen.id}-${dark ? 'dark' : 'light'}.webp`}

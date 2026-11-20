@@ -1,6 +1,9 @@
 /* Portada pública (sin sesión). Usa los mismos tokens que la aplicación: sigue el tema claro/oscuro y la skin. */
 .lp {
-  --lp-w: 1120px;
+  --lp-w: 1200px;
+  /* Ancho de la captura de la aplicación: es una tabla ancha y pide más sitio que el texto. */
+  --lp-wide: 1400px;
+  --lp-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --lp-pad: clamp(18px, 4vw, 40px);
   --lp-lift: 0 1px 2px rgb(0 0 0 / 6%), 0 22px 48px -18px rgb(0 0 0 / 28%);
   min-height: 100dvh; display: flex; flex-direction: column; background: var(--bg); color: var(--text);
@@ -43,6 +46,7 @@
 }
 .lp-map__row {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; padding: 16px 18px;
+  position: relative; background: var(--surface);
   border-inline-start: 4px solid transparent; transition: background-color 500ms ease, border-color 500ms ease;
 }
 .lp-map__row + .lp-map__row { border-top: 1px solid var(--border); }
@@ -87,40 +91,82 @@
 .lp-map__level--veryFar i { color: var(--veryFar-fg); }
 .lp-map__marker {
   position: absolute; top: -7px; width: 4px; height: 22px; margin-left: -2px; border-radius: 2px; background: var(--pm-price);
-  box-shadow: 0 0 0 2px var(--surface); transition: left 1200ms cubic-bezier(0.3, 0.7, 0.3, 1);
+  box-shadow: 0 0 0 2px var(--surface);
 }
+/* Al entrar en zona de compra, un aro sale del precio una sola vez: aquí es donde salta el aviso. */
+.lp-map__row--reached .lp-map__marker::after {
+  content: ''; position: absolute; inset: -6px -8px; border: 2px solid var(--reached-fg); border-radius: 6px;
+  opacity: 0; animation: lp-ping 1100ms var(--lp-ease);
+}
+@keyframes lp-ping { from { opacity: 0.9; transform: scale(0.5); } to { opacity: 0; transform: scale(1.7); } }
+/* Cada cotización nueva destella en verde si sube y en rojo si baja, como en la lista. */
+.lp-map__quote { font-variant-numeric: tabular-nums; }
+.lp-map__quote--up { animation: lp-up 1000ms ease-out; }
+.lp-map__quote--down { animation: lp-down 1000ms ease-out; }
+@keyframes lp-up { from { color: var(--up); } }
+@keyframes lp-down { from { color: var(--down); } }
+
+/* Entrada: la tarjeta se asienta y cada barra se dibuja hasta tu zona de compra; luego aparecen las marcas. */
+.lp-map:not(.lp-map--ready) .lp-map__rows { visibility: hidden; }
+.lp-map--ready .lp-map__rows { animation: lp-rise 700ms var(--lp-ease) both; }
+.lp-map--ready .lp-map__zone { transform-origin: left; animation: lp-draw 900ms var(--lp-ease) 150ms both; }
+.lp-map--ready .lp-map__level { animation: lp-fade 360ms ease-out calc(450ms + var(--i, 0) * 90ms) both; }
+.lp-map--ready .lp-map__marker { animation: lp-fade 360ms ease-out 700ms both; }
+.lp-map--drawn :is(.lp-map__rows, .lp-map__zone, .lp-map__level, .lp-map__marker) { animation: none; }
+@keyframes lp-rise { from { opacity: 0; transform: translateY(14px); } }
+@keyframes lp-draw { from { transform: scaleX(0); } }
+@keyframes lp-fade { from { opacity: 0; } }
 .lp-map__row--reached .lp-map__marker { box-shadow: 0 0 0 2px var(--reached-bg); }
 .lp-map__gap { grid-column: 1 / -1; font-size: var(--fs-sm); color: var(--text-2); font-variant-numeric: tabular-nums; }
 .lp-map__alert {
   display: flex; align-items: center; gap: 8px; width: fit-content; max-width: 100%; margin-top: 12px; padding: 8px 12px;
   border: 1px solid var(--border); border-radius: 8px; background: var(--surface); box-shadow: 0 6px 18px -10px rgb(0 0 0 / 35%);
-  font-size: var(--fs-sm); font-weight: 600; opacity: 0; transform: translateY(-6px);
-  transition: opacity 350ms ease, transform 350ms ease;
+  font-size: var(--fs-sm); font-weight: 600; opacity: 0; transform: translateY(-10px) scale(0.97); filter: blur(4px);
+  transition: opacity 200ms ease, transform 200ms ease, filter 200ms ease;
 }
-.lp-map__alert svg { color: var(--accent); flex-shrink: 0; }
-.lp-map__alert--on { opacity: 1; transform: none; }
+.lp-map__alert svg { color: var(--accent); flex-shrink: 0; transform-origin: 50% 10%; }
+/* Llega como una notificación: baja, se enfoca y la campana suena una vez. */
+.lp-map__alert--on {
+  opacity: 1; transform: none; filter: none;
+  transition: opacity 450ms var(--lp-ease), transform 450ms var(--lp-ease), filter 450ms var(--lp-ease);
+}
+.lp-map__alert--on svg { animation: lp-ring 700ms ease-in-out 250ms; }
+@keyframes lp-ring {
+  20% { transform: rotate(16deg); } 40% { transform: rotate(-12deg); } 60% { transform: rotate(8deg); } 80% { transform: rotate(-4deg); }
+}
 .lp-map figcaption { margin-top: 10px; font-size: var(--fs-sm); color: var(--text-2); }
 
 /* Pantallas */
 .lp-screens { padding-block: clamp(40px, 7vw, 88px); border-top: 1px solid var(--border); }
 .lp-tabs {
-  display: inline-flex; max-width: 100%; margin-top: 24px; padding: 4px; gap: 2px; overflow-x: auto;
+  position: relative; display: inline-flex; max-width: 100%; margin-top: 24px; padding: 4px; gap: 2px; overflow-x: auto;
   border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
 }
 .lp-tab {
-  height: 38px; padding: 0 16px; border: 0; border-radius: 7px; background: transparent; color: var(--text-2);
+  position: relative; z-index: 1; height: 38px; padding: 0 16px; border: 0; border-radius: 7px; background: transparent; color: var(--text-2);
   font: inherit; font-size: var(--fs-md); font-weight: 600; white-space: nowrap; cursor: pointer;
   transition: background-color 150ms ease, color 150ms ease;
 }
 .lp-tab:hover { color: var(--text); }
 .lp-tab--active { background: var(--accent); color: var(--accent-text); }
 .lp-tab--active:hover { color: var(--accent-text); }
-.lp-screen__text { margin-top: 18px; max-width: 68ch; min-height: 3.1em; color: var(--text-2); }
+/* Con la pastilla medida, es ella la que pinta la pestaña activa y se desliza a la nueva. */
+.lp-tabs__pill {
+  position: absolute; top: 4px; bottom: 4px; left: 0; width: var(--pill-w, 0); border-radius: 7px;
+  background: var(--accent); opacity: 0; transform: translateX(var(--pill-x, 0));
+  transition: transform 380ms var(--lp-ease), width 380ms var(--lp-ease);
+}
+.lp-tabs--pill .lp-tabs__pill { opacity: 1; }
+.lp-tabs--pill .lp-tab--active { background: transparent; transition: color 200ms ease 80ms; }
+.lp-screen__text { margin-top: 18px; max-width: 68ch; min-height: 3.1em; color: var(--text-2); animation: lp-fade 260ms ease-out; }
+/* La captura sale de la columna de texto y usa más ancho: así la tabla se lee. */
 .lp-screen__frame {
-  margin-top: 18px; overflow: hidden; border: 1px solid var(--border); border-radius: 12px;
+  width: min(var(--lp-wide), calc(100vw - 2 * var(--lp-pad))); margin-left: 50%; transform: translateX(-50%);
+  margin-top: 22px; overflow: hidden; border: 1px solid var(--border); border-radius: 12px;
   background: var(--surface); box-shadow: var(--lp-lift);
 }
-.lp-screen__frame img { display: block; width: 100%; height: auto; animation: lp-in 320ms ease both; }
+.lp-screen__frame img { display: block; width: 100%; height: auto; animation: lp-swap 420ms var(--lp-ease) both; }
+@keyframes lp-swap { from { opacity: 0; filter: blur(8px); transform: scale(1.01); } }
 @keyframes lp-in { from { opacity: 0; transform: scale(0.992); } }
 
 /* Detalles */
@@ -179,9 +225,13 @@
   .lp-tabs { display: flex; }
   .lp-tab { flex: 1 0 auto; padding: 0 12px; }
 }
+/* Movimiento reducido: sin desplazamientos ni recorrido; quedan los cambios de color y los fundidos cortos. */
 @media (prefers-reduced-motion: reduce) {
-  .lp-map__marker, .lp-map__row, .lp-map__alert, .lp-tab { transition: none; }
-  .lp-screen__frame img, .lp-auth .login__card { animation: none; }
+  .lp-map__alert, .lp-map__alert--on { transform: none; filter: none; transition: opacity 200ms ease; }
+  .lp-tabs__pill { transition: none; }
+  .lp-map--ready :is(.lp-map__rows, .lp-map__zone, .lp-map__level, .lp-map__marker),
+  .lp-map__row--reached .lp-map__marker::after, .lp-map__alert--on svg, .lp-auth .login__card { animation: none; }
+  .lp-screen__frame img { animation: lp-fade 200ms ease-out both; }
 }
 
 /* Skin «Papel»: la portada hereda sus hojas y su rotulador. */
