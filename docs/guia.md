@@ -61,8 +61,7 @@ Todo en planes gratuitos: **Neon** (base de datos), **Render** (servidor), **Upt
 1. **Neon** → crea un proyecto en la región *AWS Europe Central 1 (Frankfurt)* y copia la cadena de conexión (*Connection string*, con `?sslmode=require`).
 2. **Claves de las notificaciones**: `npx web-push generate-vapid-keys` y guarda las dos claves.
 3. **Render** → *New → Blueprint* con este repositorio (`render.yaml`). Rellena:
-   - `DATABASE_URL`: la cadena de Neon en formato JDBC, sin usuario ni contraseña: `jdbc:postgresql://<host>.neon.tech/<base>?sslmode=require`.
-   - `PGUSER` y `PGPASSWORD`: el usuario y la contraseña de esa cadena.
+   - `DATABASE_URL`: la cadena de conexión de Neon tal cual (`postgresql://usuario:clave@<host>.neon.tech/<base>?sslmode=require`). Si prefieres una URL `jdbc:postgresql://…` sin credenciales, añade `PGUSER` y `PGPASSWORD`.
    - `APP_PASSWORD`: la contraseña inicial de la cuenta propietaria (conserva la contraseña anterior al habilitar el registro).
    - `APP_OWNER_EMAIL`: el correo de la cuenta propietaria. Los datos existentes se conservan en la misma base de datos.
    - `VAPID_PUBLIC_KEY` y `VAPID_PRIVATE_KEY`: las del paso 2.
@@ -102,7 +101,7 @@ docker compose --profile app up --build  # la imagen de producción contra la ba
 
 Sin `APP_PASSWORD` la cuenta propietaria no tiene contraseña; sin claves VAPID no hay notificaciones. Los avisos programados solo se envían con `ALERTS_SCHEDULER=true` (en local, déjalo sin poner: la base de datos puede tener suscripciones reales).
 
-Variables de entorno: `DATABASE_URL` (JDBC), `PGUSER`, `PGPASSWORD`, `JWT_SECRET`, `APP_OWNER_EMAIL`, `APP_PASSWORD`, `REGISTRATION_ENABLED` (true), `GOOGLE_CLIENT_ID`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `ALERTS_SCHEDULER` (false), `PUBLIC_URL`, `CORS_ALLOWED_ORIGINS`, `PORT` (8080), `DB_POOL_SIZE` (5), `QUOTE_TTL_SECONDS`, `TARGETS_TTL_HOURS`.
+Variables de entorno: `DATABASE_URL` (la de Neon o JDBC), `PGUSER` y `PGPASSWORD` (solo con URL JDBC), `JWT_SECRET`, `APP_OWNER_EMAIL`, `APP_PASSWORD`, `REGISTRATION_ENABLED` (true), `GOOGLE_CLIENT_ID`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `ALERTS_SCHEDULER` (false), `PUBLIC_URL`, `CORS_ALLOWED_ORIGINS`, `PORT` (8080), `DB_POOL_SIZE` (5), `QUOTE_TTL_SECONDS`, `TARGETS_TTL_HOURS`.
 
 Estructura: `backend` (API Spring Boot, avisos y notificaciones), `frontend` (interfaz React, PWA). El `Dockerfile` de la raíz compila las dos y sirve la web desde la API. Arquitectura y decisiones: [Arquitectura](arquitectura.md).
 
