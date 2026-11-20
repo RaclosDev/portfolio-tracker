@@ -14,7 +14,8 @@ import './styles.css';
 import './skin-paper.css';
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { refetchOnWindowFocus: true, retry: 1 } },
+  // staleTime corto: lo que trae el arranque conjunto no se vuelve a pedir al montar (los intervalos siguen igual).
+  defaultOptions: { queries: { refetchOnWindowFocus: true, retry: 1, staleTime: 5_000 } },
 });
 
 if (!EMBED) registerServiceWorker();

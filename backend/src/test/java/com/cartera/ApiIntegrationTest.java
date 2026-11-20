@@ -113,6 +113,31 @@ class ApiIntegrationTest {
     }
 
     @Test
+    void bootstrapBringsTheFirstScreenInOneRequest() throws Exception {
+        String ana = register("boot-" + UUID.randomUUID() + "@test.invalid");
+        String luis = register("boot-" + UUID.randomUUID() + "@test.invalid");
+        long mine = body(mvc.perform(auth(post("/api/lists"), ana).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Bancos\"}")).andReturn().getResponse().getContentAsString()).get("id").asLong();
+
+        mvc.perform(auth(get("/api/bootstrap").param("list", String.valueOf(mine)).param("page", "lista"), ana))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.listId").value(mine))
+                .andExpect(jsonPath("$.settings").exists())
+                .andExpect(jsonPath("$.lists[?(@.id == " + mine + ")]").exists())
+                .andExpect(jsonPath("$.watchlist").exists())
+                .andExpect(jsonPath("$.portfolio").exists())
+                .andExpect(jsonPath("$.visited").isArray())
+                .andExpect(jsonPath("$.touchedOrders").isArray());
+        mvc.perform(auth(get("/api/bootstrap").param("list", "-1"), ana))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.listId").value(-1));
+        // Una lista ajena no se abre: se cae a la primera propia.
+        mvc.perform(auth(get("/api/bootstrap").param("list", String.valueOf(mine)), luis))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.listId").value(org.hamcrest.Matchers.not(mine)));
+        mvc.perform(auth(get("/api/bootstrap").param("page", "otra"), ana)).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/bootstrap")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void settingsArePatchedPartially() throws Exception {
         String token = register("ajustes-" + UUID.randomUUID() + "@test.invalid");
         mvc.perform(auth(patch("/api/settings"), token).contentType(MediaType.APPLICATION_JSON).content("{\"baseCurrency\":\"USD\"}"))

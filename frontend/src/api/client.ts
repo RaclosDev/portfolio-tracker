@@ -152,9 +152,22 @@ export interface AuthConfig { googleClientId: string | null; registrationEnabled
 export interface SessionUser { id: string; email: string; googleLinked: boolean }
 export interface Session extends AuthConfig { authenticated: boolean; user: SessionUser | null }
 
+export interface Bootstrap {
+  settings: Settings;
+  lists: WatchList[];
+  visited: VisitedSymbol[];
+  touchedOrders: TouchedOrder[];
+  listId: number | null;
+  watchlist: WatchlistView | null;
+  portfolio: CarteraView;
+}
+
 async function loadSession(): Promise<Session> {
-  const config = await request<AuthConfig>('GET', '/api/auth/config');
-  const signedIn = DEMO || !!accessToken || (!!localStorage.getItem(SESSION_HINT) && await refreshAccessToken());
+  // A la vez: la configuración no depende de la sesión.
+  const [config, signedIn] = await Promise.all([
+    request<AuthConfig>('GET', '/api/auth/config'),
+    DEMO || !!accessToken || (!!localStorage.getItem(SESSION_HINT) && refreshAccessToken()),
+  ]);
   const user = signedIn ? await request<SessionUser>('GET', '/api/users/me').catch((error: unknown) => {
     if (error instanceof ApiError && error.status === 401) return null;
     throw error;
@@ -168,6 +181,9 @@ async function startSession(url: string, body: unknown) {
 
 export const api = {
   health: () => request<{ ok: boolean; version: string }>('GET', '/api/health'),
+  /** La primera pantalla en una sola petición (ver `api/bootstrap.ts`). */
+  bootstrap: (list: number | null, page: 'lista' | 'cartera') =>
+    request<Bootstrap>('GET', `/api/bootstrap?page=${page}${list != null ? `&list=${list}` : ''}`),
   session: loadSession,
   login: (email: string, password: string) => startSession('/api/auth/password/login', { email, password }),
   register: (email: string, password: string) => startSession('/api/auth/password/register', { email, password }),

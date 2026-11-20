@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { api, DEMO } from './api/client.ts';
 import { EMBED } from './demo/embed.ts';
+import { LS_LIST, LS_PAGE } from './api/bootstrap.ts';
 import { keys, useForceRefresh, useListMutations, useLists, usePortfolio, useSaveItem, useSettings, useWatchlist } from './api/hooks.ts';
 import type { OperationDraft } from './features/cartera/OperationDialog.tsx';
 import { useCarteraModel } from './features/cartera/model.ts';
@@ -36,10 +37,8 @@ const AlertsDialog = lazy(() => import('./features/alerts/AlertsDialog.tsx').the
 const SymbolPreview = lazy(() => import('./features/search/SymbolPreview.tsx').then((m) => ({ default: m.SymbolPreview })));
 const AppTour = lazy(() => import('./features/tour/AppTour.tsx'));
 
-const LS_LIST = 'watchlist.listId';
 const LS_TOUR = 'watchlist.tourSeen';
 const LS_CARTERA_TOUR = 'watchlist.cartera.tourSeen';
-const LS_PAGE = 'watchlist.pagina';
 type Page = 'lista' | 'cartera';
 
 function useNow(ms: number) {

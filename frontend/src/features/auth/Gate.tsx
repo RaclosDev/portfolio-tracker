@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ApiError, AUTH_CHANGED, SESSION_LOST, api, reloadSession } from '../../api/client.ts';
+import { seedFirstScreen } from '../../api/bootstrap.ts';
+import { ApiError, AUTH_CHANGED, DEMO, SESSION_LOST, api, reloadSession } from '../../api/client.ts';
 import { GoogleSignInButton } from './GoogleSignInButton.tsx';
 import { AUTH_PATH, EnterSplash, Landing } from './Landing.tsx';
 
@@ -37,6 +38,16 @@ export function Gate({ children }: { children: ReactNode }) {
   }, [qc]);
 
   const authenticated = session.data?.authenticated === true;
+  // Con sesión, la primera pantalla llega en una sola petición y la app se monta con todo ya en la caché.
+  const firstScreen = useQuery({
+    queryKey: ['bootstrap', accountId],
+    queryFn: () => seedFirstScreen(qc),
+    enabled: authenticated && !DEMO,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
   useLayoutEffect(() => {
     if (!authenticated || sessionStorage.getItem(ENTERING) === null) return;
     sessionStorage.removeItem(ENTERING);
@@ -70,6 +81,7 @@ export function Gate({ children }: { children: ReactNode }) {
       />
     );
   }
+  if (!DEMO && firstScreen.isPending) return <EnterSplash label="Cargando…" instant />;
   if (window.location.pathname === AUTH_PATH) window.history.replaceState(null, '', '/');
   return <>{children}</>;
 }
