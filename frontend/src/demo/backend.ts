@@ -55,34 +55,34 @@ const security = (symbol: string, name: string, price: number, changePct: number
 
 // Empresas reales; sus precios de aquí solo se usan si no llegan los reales.
 const SPAIN = [
-  security('IBE.MC', 'Iberdrola', 16.42, 0.012, 'Energía', 'ES0000000011'),
-  security('SAN.MC', 'Banco Santander', 8.31, 0.008, 'Finanzas', 'ES0000000029'),
-  security('ITX.MC', 'Inditex', 49.6, 0.015, 'Consumo', 'ES0000000037'),
-  security('BBVA.MC', 'BBVA', 15.2, 0.009, 'Finanzas', 'ES0000000045'),
-  security('REP.MC', 'Repsol', 14.9, 0.003, 'Energía', 'ES0000000052'),
-  security('TEF.MC', 'Telefónica', 4.12, -0.006, 'Telecomunicaciones', 'ES0000000060'),
-  security('AENA.MC', 'Aena', 23.4, 0.004, 'Industria', 'ES0000000078'),
-  security('CABK.MC', 'CaixaBank', 8.9, -0.011, 'Finanzas', 'ES0000000086'),
-  security('FER.MC', 'Ferrovial', 52.1, 0.006, 'Industria', 'ES0000000094'),
-  security('AMS.MC', 'Amadeus IT Group', 66.3, -0.004, 'Tecnología', 'ES0000000102'),
+  security('IBE.MC', 'Iberdrola', 16.42, 0.012, 'Energía', 'ES0144580Y14'),
+  security('SAN.MC', 'Banco Santander', 8.31, 0.008, 'Finanzas', 'ES0113900J37'),
+  security('ITX.MC', 'Inditex', 49.6, 0.015, 'Consumo', 'ES0148396007'),
+  security('BBVA.MC', 'BBVA', 15.2, 0.009, 'Finanzas', 'ES0113211835'),
+  security('REP.MC', 'Repsol', 14.9, 0.003, 'Energía', 'ES0173516115'),
+  security('TEF.MC', 'Telefónica', 4.12, -0.006, 'Telecomunicaciones', 'ES0178430E18'),
+  security('AENA.MC', 'Aena', 23.4, 0.004, 'Industria', 'ES0105046017'),
+  security('CABK.MC', 'CaixaBank', 8.9, -0.011, 'Finanzas', 'ES0140609019'),
+  security('FER.MC', 'Ferrovial', 52.1, 0.006, 'Industria', 'NL0015001FS8'),
+  security('AMS.MC', 'Amadeus IT Group', 66.3, -0.004, 'Tecnología', 'ES0109067019'),
 ];
 const USA = [
-  security('AAPL', 'Apple', 228.4, 0.006, 'Tecnología', 'US0000000018'),
-  security('MSFT', 'Microsoft', 431.2, -0.007, 'Tecnología', 'US0000000026'),
-  security('NVDA', 'NVIDIA', 142.6, 0.021, 'Tecnología', 'US0000000034'),
-  security('GOOGL', 'Alphabet', 176.9, 0.011, 'Comunicación', 'US0000000042'),
-  security('AMZN', 'Amazon', 205.3, -0.003, 'Consumo', 'US0000000059'),
-  security('META', 'Meta Platforms', 588.1, 0.014, 'Comunicación', 'US0000000067'),
-  security('BRK-B', 'Berkshire Hathaway', 468.5, 0.002, 'Finanzas', 'US0000000075'),
-  security('JPM', 'JPMorgan Chase', 242.7, 0.005, 'Finanzas', 'US0000000083'),
-  security('LLY', 'Eli Lilly', 812.4, -0.018, 'Salud', 'US0000000091'),
-  security('AVGO', 'Broadcom', 181.3, 0.017, 'Tecnología', 'US0000000109'),
-  security('V', 'Visa', 309.8, 0.001, 'Finanzas', 'US0000000117'),
-  security('KO', 'Coca-Cola', 63.2, -0.002, 'Consumo', 'US0000000125'),
+  security('AAPL', 'Apple', 228.4, 0.006, 'Tecnología', 'US0378331005'),
+  security('MSFT', 'Microsoft', 431.2, -0.007, 'Tecnología', 'US5949181045'),
+  security('NVDA', 'NVIDIA', 142.6, 0.021, 'Tecnología', 'US67066G1040'),
+  security('GOOGL', 'Alphabet', 176.9, 0.011, 'Comunicación', 'US02079K3059'),
+  security('AMZN', 'Amazon', 205.3, -0.003, 'Consumo', 'US0231351067'),
+  security('META', 'Meta Platforms', 588.1, 0.014, 'Comunicación', 'US30303M1027'),
+  security('BRK-B', 'Berkshire Hathaway', 468.5, 0.002, 'Finanzas', 'US0846707026'),
+  security('JPM', 'JPMorgan Chase', 242.7, 0.005, 'Finanzas', 'US46625H1005'),
+  security('LLY', 'Eli Lilly', 812.4, -0.018, 'Salud', 'US5324571083'),
+  security('AVGO', 'Broadcom', 181.3, 0.017, 'Tecnología', 'US11135F1012'),
+  security('V', 'Visa', 309.8, 0.001, 'Finanzas', 'US92826C8394'),
+  security('KO', 'Coca-Cola', 63.2, -0.002, 'Consumo', 'US1912161007'),
 ];
 const FUNDS = [
-  security('VWCE.DE', 'Vanguard FTSE All-World', 128.4, 0.004, 'ETF global', 'IE0000000013', 'ETF'),
-  security('SXR8.DE', 'iShares Core S&P 500', 562.7, 0.005, 'ETF EE. UU.', 'IE0000000021', 'ETF'),
+  security('VWCE.DE', 'Vanguard FTSE All-World', 128.4, 0.004, 'ETF global', 'IE00BK5BQT80', 'ETF'),
+  security('SXR8.DE', 'iShares Core S&P 500', 562.7, 0.005, 'ETF EE. UU.', 'IE00B5BMR087', 'ETF'),
 ];
 const CATALOG = new Map([...SPAIN, ...USA, ...FUNDS].map((s) => [s.symbol, s]));
 const FX: Record<string, number> = { EUR: 1, USD: 1.09 };
