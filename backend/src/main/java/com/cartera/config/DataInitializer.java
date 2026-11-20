@@ -1,5 +1,6 @@
 package com.cartera.config;
 
+import com.cartera.event.UserCreatedEvent;
 import com.cartera.model.User;
 import com.cartera.repository.UserRepository;
 import com.cartera.service.auth.PasswordAuthService;
@@ -8,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +27,7 @@ public class DataInitializer implements ApplicationRunner {
 
     private final UserRepository users;
     private final PasswordEncoder passwordEncoder;
+    private final ApplicationEventPublisher events;
 
     @Value("${app.owner.email:}")
     private String ownerEmail;
@@ -45,7 +48,8 @@ public class DataInitializer implements ApplicationRunner {
             }
         }, () -> {
             if (users.count() > 0) return;
-            users.save(User.builder().id(UUID.randomUUID()).email(email).passwordHash(hash).build());
+            User owner = users.save(User.builder().id(UUID.randomUUID()).email(email).passwordHash(hash).build());
+            events.publishEvent(new UserCreatedEvent(owner.getId()));
             log.info("Creada la cuenta propietaria {}.", email);
         });
     }

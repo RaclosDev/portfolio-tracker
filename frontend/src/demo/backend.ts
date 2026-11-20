@@ -326,7 +326,7 @@ function handle(method: string, url: URL, body: unknown): unknown {
     case 'POST /api/auth/session/refresh': return { accessToken: 'demo' };
     case 'POST /api/auth/session/logout': return undefined;
     case 'GET /api/settings': return settings;
-    case 'PUT /api/settings': return (settings = settingsSchema.parse({ ...settings, ...settingsPatchSchema.parse(body) }));
+    case 'PATCH /api/settings': return (settings = settingsSchema.parse({ ...settings, ...settingsPatchSchema.parse(body) }));
     case 'GET /api/lists': return lists.map(listView);
     case 'POST /api/lists': {
       const { name } = listInputSchema.parse(body);

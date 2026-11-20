@@ -171,4 +171,9 @@ BEGIN
         SELECT kind, symbol, data, fetched_at FROM public.market_cache
         ON CONFLICT DO NOTHING;
     END IF;
+
+    -- Ajustes de antes de los cinco tramos: sus colores de estado ya no valen y entran los de serie.
+    UPDATE user_settings
+    SET data = jsonb_set(data, '{colors}', (data -> 'colors') - 'reached' - 'near' - 'far' - 'veryFar')
+    WHERE NOT data ? 'bands' AND jsonb_typeof(data -> 'colors') = 'object';
 END $$;

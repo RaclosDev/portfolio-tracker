@@ -4,7 +4,9 @@ import com.cartera.exception.ApiException;
 import com.cartera.model.User;
 import com.cartera.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
+import com.cartera.event.UserCreatedEvent;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -24,14 +26,16 @@ public class PasswordAuthService {
 
     private final UserRepository users;
     private final PasswordEncoder passwordEncoder;
+    private final ApplicationEventPublisher events;
     private final boolean registrationEnabled;
     /** Hash de coste idéntico: un correo que no existe no responde más rápido. */
     private final String dummyHash;
 
-    public PasswordAuthService(UserRepository users, PasswordEncoder passwordEncoder,
+    public PasswordAuthService(UserRepository users, PasswordEncoder passwordEncoder, ApplicationEventPublisher events,
                                @Value("${app.registration-enabled:true}") boolean registrationEnabled) {
         this.users = users;
         this.passwordEncoder = passwordEncoder;
+        this.events = events;
         this.registrationEnabled = registrationEnabled;
         byte[] random = new byte[32];
         new SecureRandom().nextBytes(random);
@@ -65,11 +69,13 @@ public class PasswordAuthService {
             throw ApiException.conflict("Ya existe una cuenta con ese correo. Inicia sesión.");
         }
         try {
-            return users.saveAndFlush(User.builder()
+            User user = users.saveAndFlush(User.builder()
                     .id(UUID.randomUUID())
                     .email(normalized)
                     .passwordHash(passwordEncoder.encode(password))
                     .build());
+            events.publishEvent(new UserCreatedEvent(user.getId()));
+            return user;
         } catch (DataIntegrityViolationException e) {
             throw ApiException.conflict("Ya existe una cuenta con ese correo. Inicia sesión.");
         }

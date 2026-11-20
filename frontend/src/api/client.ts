@@ -194,7 +194,7 @@ export const api = {
     request<{ lists: number; items: number; operations: number; savedTo: string | null }>('POST', `/api/snapshots/${id}/restore`, {}),
 
   settings: () => request<Settings>('GET', '/api/settings'),
-  updateSettings: (patch: Partial<Settings>) => request<Settings>('PUT', '/api/settings', patch),
+  updateSettings: (patch: Partial<Settings>) => request<Settings>('PATCH', '/api/settings', patch),
 
   lists: () => request<WatchList[]>('GET', '/api/lists'),
   createList: (name: string) => request<WatchList>('POST', '/api/lists', { name }),

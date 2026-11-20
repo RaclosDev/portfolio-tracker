@@ -5,7 +5,9 @@ import com.cartera.model.User;
 import com.cartera.repository.UserRepository;
 import com.cartera.service.auth.GoogleCredentialVerifier.GoogleIdentity;
 import lombok.RequiredArgsConstructor;
+import com.cartera.event.UserCreatedEvent;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +24,7 @@ public class GoogleAuthService {
     private final GoogleCredentialVerifier verifier;
     private final UserRepository users;
     private final PasswordAuthService passwordAuth;
+    private final ApplicationEventPublisher events;
 
     @Value("${app.owner.email:}")
     private String ownerEmail;
@@ -42,7 +45,9 @@ public class GoogleAuthService {
             throw ApiException.conflict("Ya existe una cuenta con ese correo. Entra con tu contraseña y vincula Google desde Ajustes.");
         }
         if (!passwordAuth.registrationEnabled()) throw ApiException.forbidden("El registro no está habilitado en este entorno.");
-        return users.save(User.builder().id(UUID.randomUUID()).email(email).googleSubject(identity.subject()).build());
+        User user = users.save(User.builder().id(UUID.randomUUID()).email(email).googleSubject(identity.subject()).build());
+        events.publishEvent(new UserCreatedEvent(user.getId()));
+        return user;
     }
 
     /** Vincula la cuenta de Google a la del usuario que tiene la sesión abierta. */
