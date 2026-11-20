@@ -56,5 +56,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
 
 USER appuser:appgroup
 
-# Plan gratuito de Render: 512 MB. Pila de hilo pequeña y el heap acotado a la memoria del contenedor.
-ENTRYPOINT ["java", "-Dfile.encoding=UTF-8", "-Dsun.jnu.encoding=UTF-8", "-Xss256k", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
+# Plan gratuito de Render: 512 MB y 0,1 CPU. Pila de hilo pequeña y el heap acotado a la memoria del contenedor.
+# Con tan poca CPU, el JIT completo (C2) y el GC concurrente se comen el procesador: la app deja de responder a la
+# comprobación de salud y Render la reinicia. Solo C1, un hilo de compilación y GC en serie.
+ENTRYPOINT ["java", "-Dfile.encoding=UTF-8", "-Dsun.jnu.encoding=UTF-8", "-Xss256k", "-XX:MaxRAMPercentage=75.0", "-XX:TieredStopAtLevel=1", "-XX:CICompilerCount=1", "-XX:+UseSerialGC", "-XX:ActiveProcessorCount=1", "-jar", "app.jar"]
