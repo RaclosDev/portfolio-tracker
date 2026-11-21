@@ -142,7 +142,7 @@ export function SettingsDialog({ settings, lists, onClose, onStartTour }: Props)
         notifications?.forEach((notification) => notification.close());
       } catch { /* La sesión ya está cerrada aunque el navegador no permita limpiar avisos. */ }
     },
-    onSuccess: reloadSession,
+    onSuccess: () => reloadSession(),
   });
   const health = useQuery({
     queryKey: ['health'],

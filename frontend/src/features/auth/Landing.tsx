@@ -1,9 +1,12 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { Link } from 'react-router';
+import { Brand } from './brand.tsx';
 import './landing.css';
 
 /*
  * Portada pública: lo que ve quien llega sin sesión. Explica el producto con la propia interfaz
- * (el mapa de precios, con la última sesión real, y capturas de la demo) y abre la entrada en su propia vista, /login.
+ * (el mapa de precios, con la última sesión real, y capturas de la demo) y enlaza al acceso, que tiene
+ * sus propias páginas (/login y /registro, en AuthPage).
  */
 
 const eur = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -396,51 +399,15 @@ function LiveDemo({ view, label, active, onReady }: { view: string; label: strin
   );
 }
 
-export const AUTH_PATH = '/login';
-const onAuthPath = () => window.location.pathname === AUTH_PATH;
-
-/** La entrada vive en su propia vista (/login): se abre sin bajar por la página y «atrás» vuelve a la portada. */
-function useAuthView(onEnter: (register: boolean) => void) {
-  const [open, setOpen] = useState(onAuthPath);
-  useEffect(() => {
-    const sync = () => setOpen(onAuthPath());
-    window.addEventListener('popstate', sync);
-    return () => window.removeEventListener('popstate', sync);
-  }, []);
-  useEffect(() => {
-    if (!open) return;
-    window.scrollTo(0, 0);
-    document.getElementById('login-email')?.focus({ preventScroll: true });
-  }, [open]);
-  const enter = (register: boolean) => {
-    onEnter(register);
-    if (!onAuthPath()) window.history.pushState({ lp: 'auth' }, '', AUTH_PATH);
-    setOpen(true);
-  };
-  const leave = () => {
-    if ((window.history.state as { lp?: string } | null)?.lp === 'auth') { window.history.back(); return; }
-    window.history.replaceState(null, '', '/');
-    setOpen(false);
-  };
-  return { open, enter, leave };
-}
-
-const Brand = ({ onClick }: { onClick?: () => void }) => (
-  <a className="brand lp-brand" href="/" onClick={onClick && ((e) => { e.preventDefault(); onClick(); })}>
-    <img src="/favicon.svg" alt="" width={28} height={28} />
-    <span className="lp-top__name">Portfolio Tracker</span>
-  </a>
-);
-
 /**
  * Lo marcado con data-reveal entra con un fundido al aparecer en pantalla, una sola vez. Solo se esconde si hay
  * con qué enseñarlo (IntersectionObserver y movimiento permitido): sin eso, todo está visible desde el principio.
  */
-function useReveal(root: RefObject<HTMLElement | null>, active: boolean) {
+function useReveal(root: RefObject<HTMLElement | null>) {
   const reduced = useReducedMotion();
   useLayoutEffect(() => {
     const el = root.current;
-    if (!el || !active || reduced || !('IntersectionObserver' in window)) return;
+    if (!el || reduced || !('IntersectionObserver' in window)) return;
     el.classList.add('lp--reveal');
     const io = new IntersectionObserver((entries) => {
       for (const e of entries) {
@@ -453,85 +420,16 @@ function useReveal(root: RefObject<HTMLElement | null>, active: boolean) {
     }, { rootMargin: '0px 0px -8% 0px', threshold: 0.1 });
     el.querySelectorAll('[data-reveal]').forEach((n) => io.observe(n));
     return () => { io.disconnect(); el.classList.remove('lp--reveal'); };
-  }, [root, active, reduced]);
+  }, [root, reduced]);
 }
 
 const HEADLINE = 'Ponle precio a tus próximas compras.';
 
-const icon = (d: ReactNode) => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
-);
-
-const PERKS = [
-  {
-    title: 'Precios de compra por niveles. ',
-    text: 'Ves de un vistazo qué valores se acercan a tu zona.',
-    icon: icon(<><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" /></>),
-  },
-  {
-    title: 'Avisos en el móvil. ',
-    text: 'Te llega uno cuando un valor entra en zona de compra.',
-    icon: icon(<><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></>),
-  },
-  {
-    title: 'Cartera y operaciones. ',
-    text: 'Posiciones, rentabilidad y el registro de cada compra y venta.',
-    icon: icon(<><path d="M3 3v18h18" /><path d="m7 14 4-4 3 3 5-6" /></>),
-  },
-];
-
-/** Pantalla de paso al entrar: el logo se queda solo y la app aparece detrás tras recargar (ver Gate). */
-export const EnterSplash = ({ label = 'Abriendo tu cartera…', instant = false }: { label?: string; instant?: boolean }) => (
-  <div className={`enter-splash${instant ? ' enter-splash--instant' : ''}`} role="status">
-    <img src="/favicon.svg" alt="" width={44} height={44} />
-    <span className="enter-splash__bar" aria-hidden="true" />
-    <span className="sr-only">{label}</span>
-  </div>
-);
-
-export function Landing({ canRegister, onEnter, leaving = false, children }: {
-  canRegister: boolean; onEnter: (register: boolean) => void; leaving?: boolean; children: ReactNode;
-}) {
-  const { open, enter, leave } = useAuthView(onEnter);
+/** Solo enlaza al acceso: «Entrar» lleva a /login y «Crear cuenta» a /registro, cada una con su página. */
+export function Landing({ canRegister }: { canRegister: boolean }) {
   const root = useRef<HTMLDivElement>(null);
-  useReveal(root, !open);
-
-  if (open) {
-    return (
-      <div className={`lp lp--auth${leaving ? ' lp--leaving' : ''}`}>
-        <header className="lp-top">
-          <Brand onClick={leave} />
-          <nav className="lp-top__nav" aria-label="Acceso">
-            <button type="button" className="btn btn--ghost" onClick={leave}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
-              Volver
-            </button>
-          </nav>
-        </header>
-        <main className="lp-auth" inert={leaving}>
-          <div className="lp-auth__copy">
-            <h1 className="lp-intro">Tu cartera, en una cuenta privada</h1>
-            <p className="lp-intro" style={{ '--d': '80ms' } as CSSProperties}>
-              Empiezas con una cuenta vacía: añade los valores que sigues y ponles precio.
-            </p>
-            <ul className="lp-auth__perks">
-              {PERKS.map((perk, i) => (
-                <li key={perk.title} className="lp-intro" style={{ '--d': `${180 + i * 90}ms` } as CSSProperties}>
-                  <span className="lp-auth__icon" aria-hidden="true">{perk.icon}</span>
-                  <span><strong>{perk.title}</strong>{perk.text}</span>
-                </li>
-              ))}
-            </ul>
-            <p className="lp-auth__demo lp-intro" style={{ '--d': '480ms' } as CSSProperties}>
-              ¿Prefieres verla antes con datos? <a href="/demo">Abre la demo</a>
-            </p>
-          </div>
-          {children}
-        </main>
-        {leaving && <EnterSplash />}
-      </div>
-    );
-  }
+  useReveal(root);
+  const signUp = canRegister ? '/registro' : '/login';
 
   return (
     <div className="lp" ref={root}>
@@ -543,7 +441,7 @@ export function Landing({ canRegister, onEnter, leaving = false, children }: {
             <a className="btn btn--ghost" href="#lp-details-title">Funciones</a>
           </div>
           <a className="btn btn--ghost" href="/demo">Demo</a>
-          <a className="btn" href={AUTH_PATH} onClick={(e) => { e.preventDefault(); enter(false); }}>Entrar</a>
+          <Link className="btn" to="/login">Entrar</Link>
         </nav>
       </header>
 
@@ -566,9 +464,7 @@ export function Landing({ canRegister, onEnter, leaving = false, children }: {
             </p>
             <div className="lp-hero__actions lp-intro" style={{ '--d': '480ms' } as CSSProperties}>
               <a className="btn btn--primary lp-btn" href="/demo">Ver la demo</a>
-              <button type="button" className="btn lp-btn" onClick={() => enter(canRegister)}>
-                {canRegister ? 'Crear cuenta' : 'Entrar'}
-              </button>
+              <Link className="btn lp-btn" to={signUp}>{canRegister ? 'Crear cuenta' : 'Entrar'}</Link>
             </div>
             <p className="lp-hero__note lp-intro" style={{ '--d': '560ms' } as CSSProperties}>La demo abre sin registro y con datos ficticios.</p>
           </div>
@@ -596,10 +492,8 @@ export function Landing({ canRegister, onEnter, leaving = false, children }: {
             <p>Empiezas con una cuenta vacía: añade los valores que sigues, ponles precio y deja que la lista te diga cuándo mirar.</p>
           </div>
           <div className="lp-hero__actions">
-            <button type="button" className="btn btn--primary lp-btn" onClick={() => enter(canRegister)}>
-              {canRegister ? 'Crear cuenta' : 'Entrar'}
-            </button>
-            {canRegister && <button type="button" className="btn lp-btn" onClick={() => enter(false)}>Ya tengo cuenta</button>}
+            <Link className="btn btn--primary lp-btn" to={signUp}>{canRegister ? 'Crear cuenta' : 'Entrar'}</Link>
+            {canRegister && <Link className="btn lp-btn" to="/login">Ya tengo cuenta</Link>}
           </div>
         </section>
       </main>

@@ -33,7 +33,7 @@ class SpaWebTest {
 
     @Test
     void spaRoutesServeIndexWithoutCache() throws Exception {
-        for (String path : new String[] {"/demo", "/cartera/SAN.MC"}) {
+        for (String path : new String[] {"/demo", "/login", "/registro", "/cartera/SAN.MC"}) {
             mvc.perform(get(path)).andExpect(status().isOk())
                     .andExpect(content().string(containsString("<title>Cartera</title>")))
                     .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-cache"));

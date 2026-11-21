@@ -2,6 +2,7 @@ import { EMBED } from './demo/embed.ts'; // antes que nada: cambia el almacenami
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router';
 import { App } from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { FeedbackHost } from './components/feedback.tsx';
@@ -33,9 +34,11 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <Gate>
-          <App />
-        </Gate>
+        <BrowserRouter>
+          <Gate>
+            <App />
+          </Gate>
+        </BrowserRouter>
         <FeedbackHost />
       </QueryClientProvider>
     </ErrorBoundary>
