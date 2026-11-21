@@ -37,4 +37,11 @@ class FinancialHubLogoTest {
         assertThat(FinancialHubProvider.logoPath(h, "US0000000001")).isNull();
         assertThat(FinancialHubProvider.logoPath(List.of(), "ES0113900J37")).isNull();
     }
+
+    @Test
+    void unLogoConocidoNoSePierdeSiLaBusquedaNoLoDevuelve() {
+        assertThat(FinancialHubProvider.keepKnownLogo(null, "https://x/logo.svg")).isEqualTo("https://x/logo.svg");
+        assertThat(FinancialHubProvider.keepKnownLogo("https://x/nuevo.svg", "https://x/logo.svg")).isEqualTo("https://x/nuevo.svg");
+        assertThat(FinancialHubProvider.keepKnownLogo(null, null)).isNull();
+    }
 }
