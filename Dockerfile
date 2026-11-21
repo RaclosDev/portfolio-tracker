@@ -13,7 +13,7 @@ RUN npm run build
 # El resultado queda en /app/frontend/dist
 
 # Etapa 2: el backend (Spring Boot con el Maven Wrapper, la misma versión de Maven que en local y en la CI)
-FROM eclipse-temurin:21-jdk-alpine@sha256:b78a1d385da875588e21207f07dddf9a1418849971ae857fb24c8f3a7d441a72 AS backend-build
+FROM eclipse-temurin:25-jdk-alpine@sha256:c7c3d0bdf7f2bbc5a05a6712ed334d198360105634ea9adf76fca94f381b1e3f AS backend-build
 WORKDIR /app
 
 COPY backend/mvnw backend/pom.xml ./
@@ -29,7 +29,7 @@ COPY --from=frontend-build /app/frontend/dist ./src/main/resources/static
 RUN sh ./mvnw clean package -DskipTests -B
 
 # Etapa 3: imagen de producción (JRE mínimo Alpine)
-FROM eclipse-temurin:21-jre-alpine@sha256:82cf3d9ccbe1ed46252008d51b2f2329e6b9e8a2f4394c4bebefc3ea7f4b1372
+FROM eclipse-temurin:25-jre-alpine@sha256:e1898fd6a11fc965a994d8ace186fd3585aeb636cf8f05f47a723fcfee0b0918
 WORKDIR /app
 
 # Usuario sin privilegios
