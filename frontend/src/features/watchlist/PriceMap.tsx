@@ -1,7 +1,17 @@
+import { useSyncExternalStore } from 'react';
 import type { WatchlistRow } from '@/shared';
 import { pct, price } from '../../lib/format.ts';
 
-const W = 240;
+/** Ancho del mapa: entero en pantallas anchas; más estrecho en las medianas para que la tabla quepa sin scroll lateral. */
+const WIDE = 240;
+const NARROW = 170;
+const NARROW_QUERY = '(max-width: 1599px)';
+const narrowMedia = typeof window !== 'undefined' ? window.matchMedia(NARROW_QUERY) : null;
+const subscribe = (cb: () => void) => {
+  narrowMedia?.addEventListener('change', cb);
+  return () => narrowMedia?.removeEventListener('change', cb);
+};
+const isNarrow = () => narrowMedia?.matches ?? false;
 const H = 46;
 const PAD = 10;
 const MID = 23; // eje horizontal de la barra
@@ -16,6 +26,7 @@ const MID = 23; // eje horizontal de la barra
  * Así se ve de un vistazo si el precio está dentro de la zona o cuánto le falta.
  */
 export function PriceMap({ row }: { row: WatchlistRow }) {
+  const W = useSyncExternalStore(subscribe, isNarrow) ? NARROW : WIDE;
   const { quote, targets, item, metrics } = row;
   const p = quote?.price;
   /** Precios con el símbolo de la moneda del valor. */
