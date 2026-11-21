@@ -437,6 +437,8 @@ p, li { text-wrap: pretty; }
 }
 
 .col-name { position: sticky; left: 0; z-index: 1; background: var(--surface); min-width: 210px; max-width: 260px; }
+/* Pantallas medianas: menos hueco entre el nombre y el precio para que la tabla quepa sin scroll lateral. */
+@media (max-width: 1599px) { .col-name { min-width: 160px; max-width: 220px; } }
 th.col-name { z-index: 2; background: var(--surface-2); }
 .row td.col-name { box-shadow: inset 4px 0 0 transparent; }
 .row--reached td.col-name { box-shadow: inset 4px 0 0 var(--reached-fg); }
