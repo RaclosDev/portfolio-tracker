@@ -38,9 +38,9 @@ export const AUTH_CHANGED = 'watchlist.auth-changed';
 /** Última primera pantalla recibida (ver `api/bootstrap.ts`); se borra al perder la sesión. */
 export const LS_SNAPSHOT = 'watchlist.primeraPantalla';
 
-export function reloadSession() {
+export function reloadSession(to = '/') {
   localStorage.setItem(AUTH_CHANGED, crypto.randomUUID());
-  window.location.replace('/');
+  window.location.replace(to);
 }
 
 export interface PushDevice {
