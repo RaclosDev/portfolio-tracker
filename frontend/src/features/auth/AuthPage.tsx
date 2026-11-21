@@ -196,7 +196,6 @@ function AuthForm({ mode, email, onEmail, onDone, googleClientId, registrationEn
           {registering ? 'Inicia sesión' : 'Crear cuenta'}
         </Link>
       </p>}
-      <p className="muted small">La sesión se recuerda en este dispositivo durante 6 meses.</p>
     </form>
   );
 }
