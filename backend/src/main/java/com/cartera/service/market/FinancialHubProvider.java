@@ -50,6 +50,7 @@ public class FinancialHubProvider implements MarketDataProvider {
     private static final long DAY_MS = 86_400_000L;
     private static final long REF_TTL_MS = 7 * DAY_MS;
     private static final long NO_REF_TTL_MS = DAY_MS;
+    private static final long RETRY_LOGO_MS = DAY_MS / 24;
     private static final long RANGE_TTL_MS = 12 * 3_600_000L;
     private static final int BATCH = 100;
     private static final int RESOLVE_PARALLEL = 4;
@@ -242,18 +243,30 @@ public class FinancialHubProvider implements MarketDataProvider {
             return cached.value();
         }
         MarketCacheRepository.Row row = store.find(LOGO_KIND, key);
-        if (row != null) {
-            String saved = str(row.data());
-            if (now - row.fetchedAtMillis() < (saved != null ? REF_TTL_MS : NO_REF_TTL_MS)) {
-                logos.put(key, new Cached<>(saved, row.fetchedAtMillis()));
-                return saved;
-            }
+        String saved = row != null ? str(row.data()) : null;
+        if (row != null && now - row.fetchedAtMillis() < (saved != null ? REF_TTL_MS : NO_REF_TTL_MS)) {
+            logos.put(key, new Cached<>(saved, row.fetchedAtMillis()));
+            return saved;
         }
-        String path = logoPath(lookup(key, null), key);
-        String url = path != null ? API + path : null;
+        String url;
+        try {
+            String path = logoPath(lookup(key, null), key);
+            url = path != null ? API + path : null;
+        } catch (RuntimeException e) {
+            // Límite de la API o red: el logo que ya teníamos sigue valiendo; se vuelve a buscar en una hora.
+            if (saved == null) throw e;
+            logos.put(key, new Cached<>(saved, now - REF_TTL_MS + RETRY_LOGO_MS));
+            return saved;
+        }
+        // Un logo que ya existía no se pierde porque una búsqueda no lo devuelva.
+        url = keepKnownLogo(url, saved);
         logos.put(key, new Cached<>(url, now));
         store.save(LOGO_KIND, key, url);
         return url;
+    }
+
+    static String keepKnownLogo(String found, String saved) {
+        return found != null ? found : saved;
     }
 
     /** El logo del resultado cuyo ISIN coincide (la clase buscada o la cotización principal). */

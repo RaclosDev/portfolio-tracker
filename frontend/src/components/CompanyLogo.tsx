@@ -1,10 +1,13 @@
 import { useState } from 'react';
 
-/** ISIN sin logo (o con el logo roto): no se vuelven a pedir al montar otra vez la fila o el detalle. */
-const missing = new Set<string>();
+/** ISIN sin logo (o con el logo roto) y hasta cuándo no se vuelven a pedir al montar otra vez la fila o el detalle. */
+const missing = new Map<string, number>();
 
 const ISIN = /^[A-Z]{2}[A-Z0-9]{9}\d$/;
-const RETRY_MS = 4_000;
+/** Esperas entre reintentos: un fallo suele ser pasajero (límite de la API al arrancar el servidor). */
+const RETRIES_MS = [4_000, 15_000, 60_000];
+/** Tras agotar los reintentos, iniciales durante este rato; luego se vuelve a probar. */
+const MISSING_MS = 10 * 60_000;
 
 /** Iniciales del nombre (o del ticker) para cuando no hay logo. */
 function initials(name: string) {
@@ -29,11 +32,12 @@ interface Props {
  */
 export function CompanyLogo({ isin, name, size = 28, className = '' }: Props) {
   const code = isin?.trim().toUpperCase();
-  // Un fallo puede ser pasajero (límite de la API al desplegar): se reintenta una vez antes de quedarse con iniciales.
-  const [retried, setRetried] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [, rerender] = useState(0);
   const style = { '--logo-size': `${size}px` } as React.CSSProperties;
-  if (!code || !ISIN.test(code) || missing.has(code)) {
+  const until = code ? missing.get(code) : undefined;
+  if (until !== undefined && until <= Date.now()) missing.delete(code!);
+  if (!code || !ISIN.test(code) || (until !== undefined && until > Date.now())) {
     return (
       <span className={`logo logo--initials ${className}`} style={style} aria-hidden>
         {initials(name)}
@@ -44,7 +48,7 @@ export function CompanyLogo({ isin, name, size = 28, className = '' }: Props) {
     <img
       className={`logo ${className}`}
       style={style}
-      src={`/api/public/logo/${code}${retried ? '?r=1' : ''}`}
+      src={`/api/public/logo/${code}${attempt ? `?r=${attempt}` : ''}`}
       alt=""
       aria-hidden
       width={size}
@@ -52,11 +56,12 @@ export function CompanyLogo({ isin, name, size = 28, className = '' }: Props) {
       loading="lazy"
       decoding="async"
       onError={() => {
-        if (!retried) {
-          window.setTimeout(() => setRetried(true), RETRY_MS);
+        const wait = RETRIES_MS[attempt];
+        if (wait !== undefined) {
+          window.setTimeout(() => setAttempt((n) => n + 1), wait);
           return;
         }
-        missing.add(code);
+        missing.set(code, Date.now() + MISSING_MS);
         rerender((n) => n + 1);
       }}
     />
