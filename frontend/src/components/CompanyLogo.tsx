@@ -9,6 +9,30 @@ const RETRIES_MS = [4_000, 15_000, 60_000];
 /** Tras agotar los reintentos, iniciales durante este rato; luego se vuelve a probar. */
 const MISSING_MS = 10 * 60_000;
 
+/** ISIN ya visto por símbolo: si la cotización llega de una fuente sin ISIN (Yahoo), el logo no se pierde. */
+const KNOWN_KEY = 'logo-isin';
+let known: Record<string, string> | null = null;
+function knownIsins(): Record<string, string> {
+  if (!known) {
+    try {
+      known = JSON.parse(localStorage.getItem(KNOWN_KEY) ?? '{}') as Record<string, string>;
+    } catch {
+      known = {};
+    }
+  }
+  return known;
+}
+function rememberIsin(symbol: string, isin: string) {
+  const map = knownIsins();
+  if (map[symbol] === isin) return;
+  map[symbol] = isin;
+  try {
+    localStorage.setItem(KNOWN_KEY, JSON.stringify(map));
+  } catch {
+    /* sin almacenamiento: solo se pierde el recuerdo */
+  }
+}
+
 /** Iniciales del nombre (o del ticker) para cuando no hay logo. */
 function initials(name: string) {
   const [a, b] = name.replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(Boolean);
@@ -18,6 +42,8 @@ function initials(name: string) {
 
 interface Props {
   isin?: string | null;
+  /** Símbolo de la cotización: con él se recuerda el ISIN para cuando la fuente no lo traiga. */
+  symbol?: string | null;
   /** Nombre o ticker: de aquí salen las iniciales si no hay logo. */
   name: string;
   /** Lado en píxeles. */
@@ -30,8 +56,11 @@ interface Props {
  * la misma fuente que los precios, en SVG; el servidor busca el ISIN y redirige al logo. Sin ISIN o sin logo,
  * iniciales. Decorativo: el nombre va siempre al lado.
  */
-export function CompanyLogo({ isin, name, size = 28, className = '' }: Props) {
-  const code = isin?.trim().toUpperCase();
+export function CompanyLogo({ isin, symbol, name, size = 28, className = '' }: Props) {
+  const given = isin?.trim().toUpperCase();
+  const sym = symbol?.trim().toUpperCase();
+  if (sym && given && ISIN.test(given)) rememberIsin(sym, given);
+  const code = given || (sym ? knownIsins()[sym] : undefined);
   const [attempt, setAttempt] = useState(0);
   const [, rerender] = useState(0);
   const style = { '--logo-size': `${size}px` } as React.CSSProperties;

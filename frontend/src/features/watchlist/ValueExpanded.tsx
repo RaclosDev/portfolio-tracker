@@ -91,7 +91,7 @@ export function ValueExpanded({ row, base, width, onEdit, onBought, onClose, onR
       <div className="xp__main">
       <header className="xp__head">
         {/* En escritorio la fila del valor se oculta al abrirlo: su nombre pasa aquí. */}
-        <CompanyLogo className="xp__logo" isin={item.isin ?? quote?.isin} name={item.name ?? displayTicker(item)} size={36} />
+        <CompanyLogo className="xp__logo" isin={item.isin ?? quote?.isin} symbol={item.symbol} name={item.name ?? displayTicker(item)} size={36} />
         <div className="xp__id" aria-hidden>
           <span className="xp__name" title={item.name ?? item.symbol}>{item.name ?? item.symbol}</span>
           <span className="sub">
