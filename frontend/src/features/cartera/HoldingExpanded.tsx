@@ -135,7 +135,7 @@ export function HoldingExpanded({ model, ticker, onClose, onEditOperation, onAdd
       {rail}
       <div className="xp__main">
         <header className="xp__head">
-          <CompanyLogo className="xp__logo" isin={inst?.isin ?? quote?.isin} name={name} size={36} />
+          <CompanyLogo className="xp__logo" isin={inst?.isin ?? quote?.isin} symbol={quote?.symbol} name={name} size={36} />
           <div className="xp__id" aria-hidden>
             <span className="xp__name" title={name}>{name}</span>
             <span className="sub">

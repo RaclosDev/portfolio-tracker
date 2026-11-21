@@ -15,6 +15,7 @@ import com.cartera.service.market.MarketService;
 import com.cartera.service.market.YahooProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -41,6 +42,7 @@ public class WatchlistViewService {
     private final VisitedService visited;
     private final SettingsService settings;
     private final MarketService market;
+    private final TransactionTemplate tx;
 
     /**
      * {@code maxAgeMs}: antigüedad máxima de los precios (más corta con la lista en pantalla), o null para la normal.
@@ -95,6 +97,12 @@ public class WatchlistViewService {
             AnalystTargets t = targets.get(item.symbol());
             Double fxRate = quote != null && quote.currency() != null ? fx.get(quote.currency()) : null;
             ItemResponse shown = item.name() != null || quote == null ? item : item.withName(quote.name());
+            // Sin ISIN guardado, el de la cotización se queda en el valor: así el logo no depende de qué fuente
+            // conteste la próxima vez (Yahoo no lo trae).
+            if (item.isin() == null && quote != null && quote.isin() != null) {
+                if (item.id() > 0) tx.executeWithoutResult(st -> items.fillIsin(item.id(), item.symbol(), quote.isin()));
+                shown = shown.withIsin(quote.isin());
+            }
             out.add(new WatchlistView.Row(shown, quote, t, Metrics.compute(item, quote, t, fxRate, s, today)));
         }
         return new WatchlistView(list, s, out, fx, List.copyOf(fxStale),

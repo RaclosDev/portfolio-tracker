@@ -223,7 +223,7 @@ const columns: Column[] = [
       const { item, quote } = r;
       return (
         <div className="with-logo">
-        <CompanyLogo isin={item.isin ?? quote?.isin} name={item.name ?? displayTicker(item)} />
+        <CompanyLogo isin={item.isin ?? quote?.isin} symbol={item.symbol} name={item.name ?? displayTicker(item)} />
         <div className="stack">
           <button
             type="button"
