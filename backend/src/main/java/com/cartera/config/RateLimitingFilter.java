@@ -1,5 +1,6 @@
 package com.cartera.config;
 
+import org.springframework.web.util.UrlPathHelper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import jakarta.servlet.FilterChain;
@@ -54,7 +55,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getRequestURI();
+        String path = UrlPathHelper.defaultInstance.getPathWithinApplication(request);
         return !enabled || !"POST".equalsIgnoreCase(request.getMethod()) || !path.startsWith(AUTH_PREFIX)
                 || path.startsWith("/api/auth/session/");
     }
@@ -63,7 +64,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         String ip = clientIp(request);
-        String path = request.getRequestURI();
+        String path = UrlPathHelper.defaultInstance.getPathWithinApplication(request);
         // El total es solo un techo de seguridad: alto para que un único atacante no deje fuera a todos.
         boolean allowed = take(burst, ip, 30) && take(burst, GLOBAL, 600);
         if (allowed && path.equals("/api/auth/password/login")) allowed = take(logins, ip, 10);
