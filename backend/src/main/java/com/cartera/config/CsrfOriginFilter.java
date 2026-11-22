@@ -1,5 +1,6 @@
 package com.cartera.config;
 
+import org.springframework.web.util.UrlPathHelper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -39,7 +40,7 @@ public class CsrfOriginFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !"POST".equalsIgnoreCase(request.getMethod()) || !request.getRequestURI().startsWith(PROTECTED_PREFIX);
+        return !"POST".equalsIgnoreCase(request.getMethod()) || !UrlPathHelper.defaultInstance.getPathWithinApplication(request).startsWith(PROTECTED_PREFIX);
     }
 
     @Override
