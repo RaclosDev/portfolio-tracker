@@ -1,6 +1,7 @@
 package com.cartera.service.market;
 
 import com.cartera.dto.market.AnalystTargets;
+import com.cartera.dto.market.Candle;
 import com.cartera.dto.market.DailyHistory;
 import com.cartera.dto.market.HistoryRange;
 import com.cartera.dto.market.PricePoint;
@@ -287,6 +288,53 @@ public class FtProvider implements MarketDataProvider {
             Double a = auction.get(p.t());
             return a != null && a > 0 && Math.abs(a / p.c() - 1) <= MAX_AUCTION_GAP ? new PricePoint(p.t(), a) : p;
         }).toList();
+    }
+
+    /**
+     * Velas diarias. FT solo da cierres, así que la apertura, el máximo y el mínimo salen del gráfico de Yahoo del
+     * mismo valor en la misma bolsa (RARE:MIL:EUR → RARE.MI), si sus cierres casan con los de FT. Si FT ya tiene
+     * una sesión posterior (la de hoy), se añade con su precio.
+     */
+    @Override
+    public List<Candle> getCandles(String symbol, LocalDate from) {
+        String ftSymbol = parseFtSymbol(symbol);
+        String ySymbol = ftSymbol != null ? yahooAuctionSymbol(ftSymbol) : null;
+        if (ySymbol == null) return List.of();
+        JsonNode s = series(ftSymbol, 15);
+        List<PricePoint> ft = s != null ? closes(s) : List.of();
+        if (ft.isEmpty()) return List.of();
+        try {
+            return withFtSession(yahoo.getCandles(ySymbol, from), ft);
+        } catch (RuntimeException e) {
+            return List.of(); // sin Yahoo no hay velas, el gráfico de línea sigue saliendo de FT
+        }
+    }
+
+    /**
+     * Las velas de Yahoo si son del mismo valor (cierres a menos del 3 % de los de FT en las fechas comunes y al
+     * día: como mucho una sesión de FT por detrás), con la sesión de FT que falte al final; si no, ninguna.
+     */
+    static List<Candle> withFtSession(List<Candle> yahoo, List<PricePoint> ft) {
+        if (yahoo.isEmpty() || ft.isEmpty()) return List.of();
+        Map<String, Double> ftByDay = new HashMap<>();
+        for (PricePoint p : ft) ftByDay.put(p.t(), p.c());
+        int common = 0;
+        for (Candle c : yahoo) {
+            Double f = ftByDay.get(c.t());
+            if (f == null) continue;
+            if (Math.abs(c.c() / f - 1) > MAX_AUCTION_GAP) return List.of();
+            common++;
+        }
+        String lastYahoo = yahoo.getLast().t();
+        List<PricePoint> after = ft.stream().filter(p -> p.t().compareTo(lastYahoo) > 0).toList();
+        if (common == 0 || after.size() > 1) return List.of();
+        List<Candle> out = new ArrayList<>(yahoo);
+        if (!after.isEmpty()) {
+            PricePoint today = after.getFirst();
+            double o = yahoo.getLast().c();
+            out.add(new Candle(today.t(), o, Math.max(o, today.c()), Math.min(o, today.c()), today.c()));
+        }
+        return out;
     }
 
     @Override
