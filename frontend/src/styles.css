@@ -1397,6 +1397,10 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
 .xp-tab__note { margin: 12px 0 10px; }
 .xp-tab__actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 10px; }
 .xp-tab__filter { margin: 0 0 8px; }
+.sheet__nav { display: flex; width: fit-content; max-width: 100%; overflow-x: auto; scrollbar-width: none; margin-top: 10px; }
+.xp--cartera .xp-tab--wide .sheet__nav { column-span: all; }
+/* El botón activo ya dice qué apartado es: sobra el título del primero. */
+.sheet__nav + .sheet__section > h3 { display: none; }
 /* Con sitio, el resumen del valor va a dos columnas. */
 .xp--cartera .xp-tab--wide .sheet { columns: 2 240px; }
 .xp--cartera .xp-tab--wide .sheet-kpis { column-span: all; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }

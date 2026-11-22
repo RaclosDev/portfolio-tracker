@@ -11,6 +11,8 @@ import type { OperationDraft } from './OperationDialog.tsx';
 
 type Tab = 'resumen' | 'lotes' | 'operaciones' | 'fondo' | 'datos';
 const TAB_KEY = 'watchlist.cartera.detalle.pestana';
+type Sub = 'posicion' | 'rentabilidad' | 'cobros' | 'historial' | 'valor';
+const SUB_KEY = 'watchlist.cartera.detalle.resumen';
 
 interface Props {
   model: CarteraModel;
@@ -153,6 +155,7 @@ export function HoldingExpanded({ model, ticker, onClose, onEditOperation, onAdd
   useScrollIntoPlace(box, ticker);
   const [chosen, setTab] = useState<Tab>(() => (localStorage.getItem(TAB_KEY) as Tab) || 'resumen');
   const [opFilter, setOpFilter] = useState<OpFilter>('all');
+  const [subChosen, setSub] = useState<Sub>(() => (localStorage.getItem(SUB_KEY) as Sub) || 'posicion');
 
   // Esc cierra, salvo que lo esté usando un campo o un diálogo abierto encima.
   useEffect(() => {
@@ -210,6 +213,19 @@ export function HoldingExpanded({ model, ticker, onClose, onEditOperation, onAdd
     ? ops
     : ops.filter((o) => (opFilter === 'buy' ? BUY_TYPES.has(o.type) : opFilter === 'sell' ? SELL_TYPES.has(o.type) : isIncome(o)));
   const marks = ops.filter((o) => o.type === 'buy' || o.type === 'sell').map((o) => ({ date: o.date, side: o.type === 'buy' ? ('buy' as const) : ('sell' as const) }));
+
+  const subs = ([
+    ['posicion', 'Posición', !!holding],
+    ['rentabilidad', 'Rentabilidad', true],
+    ['cobros', 'Cobros', t.income.length > 0],
+    ['historial', 'Historial', true],
+    ['valor', 'Valor', true],
+  ] as [Sub, string, boolean][]).filter(([, , ok]) => ok);
+  const sub = subs.some(([v]) => v === subChosen) ? subChosen : subs[0]![0];
+  const chooseSub = (v: Sub) => {
+    setSub(v);
+    localStorage.setItem(SUB_KEY, v);
+  };
 
   const tabs: [Tab, string][] = [
     ['resumen', 'Resumen'],
@@ -345,7 +361,15 @@ export function HoldingExpanded({ model, ticker, onClose, onEditOperation, onAdd
                     )}
                   </dl>
 
-                  {holding && (
+                  <div className="segmented segmented--small xp-tab__filter sheet__nav" role="group" aria-label="Apartado del resumen">
+                    {subs.map(([v, label]) => (
+                      <button key={v} type="button" className={sub === v ? 'on' : ''} aria-pressed={sub === v} onClick={() => chooseSub(v)}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {sub === 'posicion' && holding && (
                     <section className="sheet__section">
                       <h3>Posición</h3>
                       <dl>
@@ -377,39 +401,41 @@ export function HoldingExpanded({ model, ticker, onClose, onEditOperation, onAdd
                     </section>
                   )}
 
-                  <section className="sheet__section">
-                    <h3>Rentabilidad</h3>
-                    <dl>
-                      {holding && (
-                        <>
-                          <Row label="Latente" tone={signed(holding.unrealizedEur)}>
-                            {withPct(holding.unrealizedEur, holding.unrealizedPct)}
+                  {sub === 'rentabilidad' && (
+                    <section className="sheet__section">
+                      <h3>Rentabilidad</h3>
+                      <dl>
+                        {holding && (
+                          <>
+                            <Row label="Latente" tone={signed(holding.unrealizedEur)}>
+                              {withPct(holding.unrealizedEur, holding.unrealizedPct)}
+                            </Row>
+                            <Row label={dayLabel} tone={signed(holding.dayChangeEur)}>
+                              {withPct(holding.dayChangeEur, dayPct)}
+                            </Row>
+                          </>
+                        )}
+                        {(t.sales.length > 0 || t.realizedEur !== 0) && (
+                          <Row label="Ventas" tone={signed(t.realizedEur)}>
+                            {money(t.realizedEur, 'EUR', 2)}
                           </Row>
-                          <Row label={dayLabel} tone={signed(holding.dayChangeEur)}>
-                            {withPct(holding.dayChangeEur, dayPct)}
+                        )}
+                        <Row label="Dividendos">{money(t.dividendsEur, 'EUR', 2)}</Row>
+                        {t.otherIncomeEur !== 0 && <Row label="Otros cobros">{money(t.otherIncomeEur, 'EUR', 2)}</Row>}
+                        <Row label={holding ? 'Total histórico' : 'Total'} tone={signed(totalEur)}>
+                          {money(totalEur, 'EUR', 2)}
+                          {totalPct != null && <span className="sheet__sub">{pct(totalPct)} sobre {money(t.boughtEur, 'EUR', 0)} invertidos</span>}
+                        </Row>
+                        {st.tir != null && (
+                          <Row label={st.tirAnnual ? 'TIR anual' : 'TIR (sin anualizar)'} tone={signed(st.tir)}>
+                            {pct(st.tir, 2)}
                           </Row>
-                        </>
-                      )}
-                      {(t.sales.length > 0 || t.realizedEur !== 0) && (
-                        <Row label="Ventas" tone={signed(t.realizedEur)}>
-                          {money(t.realizedEur, 'EUR', 2)}
-                        </Row>
-                      )}
-                      <Row label="Dividendos">{money(t.dividendsEur, 'EUR', 2)}</Row>
-                      {t.otherIncomeEur !== 0 && <Row label="Otros cobros">{money(t.otherIncomeEur, 'EUR', 2)}</Row>}
-                      <Row label={holding ? 'Total histórico' : 'Total'} tone={signed(totalEur)}>
-                        {money(totalEur, 'EUR', 2)}
-                        {totalPct != null && <span className="sheet__sub">{pct(totalPct)} sobre {money(t.boughtEur, 'EUR', 0)} invertidos</span>}
-                      </Row>
-                      {st.tir != null && (
-                        <Row label={st.tirAnnual ? 'TIR anual' : 'TIR (sin anualizar)'} tone={signed(st.tir)}>
-                          {pct(st.tir, 2)}
-                        </Row>
-                      )}
-                    </dl>
-                  </section>
+                        )}
+                      </dl>
+                    </section>
+                  )}
 
-                  {t.income.length > 0 && (
+                  {sub === 'cobros' && t.income.length > 0 && (
                     <section className="sheet__section">
                       <h3>Cobros</h3>
                       <dl>
@@ -447,38 +473,40 @@ export function HoldingExpanded({ model, ticker, onClose, onEditOperation, onAdd
                     </section>
                   )}
 
-                  <section className="sheet__section">
-                    <h3>Historial</h3>
-                    <dl>
-                      <Row label="Primera compra">
-                        {shortDate(t.firstDate)}
-                        <span className="sheet__sub">hace {heldFor(t.firstDate)}</span>
-                      </Row>
-                      {holding && t.cycleStart && t.cycleStart !== t.firstDate && (
-                        <Row label="Posición actual desde">
-                          {shortDate(t.cycleStart)}
-                          <span className="sheet__sub">hace {heldFor(t.cycleStart)}</span>
+                  {sub === 'historial' && (
+                    <section className="sheet__section">
+                      <h3>Historial</h3>
+                      <dl>
+                        <Row label="Primera compra">
+                          {shortDate(t.firstDate)}
+                          <span className="sheet__sub">hace {heldFor(t.firstDate)}</span>
                         </Row>
-                      )}
-                      <Row label="Última operación">{shortDate(t.lastDate)}</Row>
-                      <Row label="Compras">
-                        {st.buys}
-                        <span className="sheet__sub">{money(t.boughtEur, 'EUR', 2)} invertidos</span>
-                      </Row>
-                      {st.sells > 0 && (
-                        <Row label="Ventas">
-                          {st.sells}
-                          <span className="sheet__sub">
-                            {qty(t.soldShares)} acciones · {money(st.proceedsEur, 'EUR', 2)}
-                          </span>
+                        {holding && t.cycleStart && t.cycleStart !== t.firstDate && (
+                          <Row label="Posición actual desde">
+                            {shortDate(t.cycleStart)}
+                            <span className="sheet__sub">hace {heldFor(t.cycleStart)}</span>
+                          </Row>
+                        )}
+                        <Row label="Última operación">{shortDate(t.lastDate)}</Row>
+                        <Row label="Compras">
+                          {st.buys}
+                          <span className="sheet__sub">{money(t.boughtEur, 'EUR', 2)} invertidos</span>
                         </Row>
-                      )}
-                      {st.feesEur > 0 && <Row label="Comisiones">{money(st.feesEur, 'EUR', 2)}</Row>}
-                      <Row label="Operaciones">{num(ops.length)}</Row>
-                    </dl>
-                  </section>
+                        {st.sells > 0 && (
+                          <Row label="Ventas">
+                            {st.sells}
+                            <span className="sheet__sub">
+                              {qty(t.soldShares)} acciones · {money(st.proceedsEur, 'EUR', 2)}
+                            </span>
+                          </Row>
+                        )}
+                        {st.feesEur > 0 && <Row label="Comisiones">{money(st.feesEur, 'EUR', 2)}</Row>}
+                        <Row label="Operaciones">{num(ops.length)}</Row>
+                      </dl>
+                    </section>
+                  )}
 
-                  {t.sales.length > 0 && (
+                  {sub === 'rentabilidad' && t.sales.length > 0 && (
                     <section className="sheet__section">
                       <h3>Fiscal</h3>
                       <dl>
@@ -498,19 +526,21 @@ export function HoldingExpanded({ model, ticker, onClose, onEditOperation, onAdd
                     </section>
                   )}
 
-                  <section className="sheet__section">
-                    <h3>Valor</h3>
-                    <dl>
-                      {(inst?.isin ?? t.isin) && <Row label="ISIN">{inst?.isin ?? t.isin}</Row>}
-                      {symbol && <Row label="Cotización">{symbol}{quote?.exchange && <span className="sheet__sub">{quote.exchange}</span>}</Row>}
-                      <Row label="Tipo">{kind === 'FUND' ? 'Fondo' : kind === 'ETF' ? 'ETF' : 'Acción'}</Row>
-                      <Row label="Divisa">{cur}</Row>
-                      {sector && <Row label="Sector">{sector}</Row>}
-                      {t.members.length > 1 && <Row label="Agrupa">{t.members.join(' · ')}</Row>}
-                    </dl>
-                  </section>
+                  {sub === 'valor' && (
+                    <section className="sheet__section">
+                      <h3>Valor</h3>
+                      <dl>
+                        {(inst?.isin ?? t.isin) && <Row label="ISIN">{inst?.isin ?? t.isin}</Row>}
+                        {symbol && <Row label="Cotización">{symbol}{quote?.exchange && <span className="sheet__sub">{quote.exchange}</span>}</Row>}
+                        <Row label="Tipo">{kind === 'FUND' ? 'Fondo' : kind === 'ETF' ? 'ETF' : 'Acción'}</Row>
+                        <Row label="Divisa">{cur}</Row>
+                        {sector && <Row label="Sector">{sector}</Row>}
+                        {t.members.length > 1 && <Row label="Agrupa">{t.members.join(' · ')}</Row>}
+                      </dl>
+                    </section>
+                  )}
 
-                  {inst?.notes && (
+                  {sub === 'valor' && inst?.notes && (
                     <section className="sheet__section sheet__notes">
                       <h3>Notas</h3>
                       <p>{inst.notes}</p>
