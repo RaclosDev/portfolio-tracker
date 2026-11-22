@@ -2,7 +2,7 @@ import { type HistoryRange, type Operation } from '@/shared';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client.ts';
 import { Dialog } from '../../components/Dialog.tsx';
-import { money, qty, pct, price } from '../../lib/format.ts';
+import { avgPrice, money, qty, pct } from '../../lib/format.ts';
 import { HistoryChart, type RefLine } from '../detail/HistoryChart.tsx';
 import { signed, type CarteraModel } from './model.ts';
 import { FundHoldings, InstrumentForm, LotsTable, OperationActions, OperationsTable, compositionSource, useTicker } from './TickerParts.tsx';
@@ -44,7 +44,7 @@ export function TickerDialog({
         </div>
         <div className="hl-cell">
           <p className="hl-label">Coste medio</p>
-          <p className="hl-figure num">{avgNative ? price(avgNative, cur) : '–'}</p>
+          <p className="hl-figure num">{avgNative ? avgPrice(avgNative, cur) : '–'}</p>
         </div>
         {row && 'valueEur' in row && (
           <div className="hl-cell">

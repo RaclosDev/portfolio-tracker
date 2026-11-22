@@ -23,6 +23,15 @@ export const decimals = (v: number) => {
  * añade su símbolo: 276,47 $, 2,485 €. Las libras en peniques (GBp) llevan «p».
  * Nunca redondea: si el precio trae más decimales (20,345 · 1,2345), se muestran todos (hasta 6, para no enseñar ruido de coma flotante).
  */
+/**
+ * Precio calculado (medio de compra, coste por lote): redondeado como una cotización, 3 decimales
+ * por debajo de 10 y 2 por encima. `price` enseñaría todos los decimales de la división (6,828444 €).
+ */
+export function avgPrice(v: number | null | undefined, currency?: string | null) {
+  if (v == null) return DASH;
+  return price(Number(v.toFixed(Math.abs(v) < 10 ? 3 : 2)), currency);
+}
+
 export function price(v: number | null | undefined, currency?: string | null) {
   if (v == null) return DASH;
   const digits = Math.max(Math.abs(v) < 10 ? 3 : 2, decimals(v));

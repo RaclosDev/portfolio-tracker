@@ -1,7 +1,7 @@
 import { OPERATION_LABELS, averageNativePrice, sortOperations, type Operation, type Quote, type TickerLedger } from '@/shared';
 import { useCallback, useState, type FormEvent } from 'react';
 import { useOperationMutations, usePortfolioComposition } from '../../api/hooks.ts';
-import { money, qty, price, share, shortDate } from '../../lib/format.ts';
+import { avgPrice, money, qty, price, share, shortDate } from '../../lib/format.ts';
 import { signed, type CarteraModel } from './model.ts';
 import { DataBar } from './SortTable.tsx';
 import { QuoteSymbolField } from './QuoteSymbolField.tsx';
@@ -117,14 +117,14 @@ export function LotsTable({ t, cur, fxRate, compact, tiny }: { t: TickerLedger; 
               <td className="al-right num">{qty(l.shares)}</td>
               <td className="al-right num" title={compact ? `Coste fiscal ${money(l.taxCostEur, 'EUR', 2)}` : undefined}>
                 {money(l.costEur, 'EUR', 2)}
-                {tiny && <span className="sub">a {price(averageNativePrice({ openLots: [l] }, cur, fxRate), cur)}</span>}
+                {tiny && <span className="sub">a {avgPrice(averageNativePrice({ openLots: [l] }, cur, fxRate), cur)}</span>}
               </td>
               {!compact && (
                 <td className="al-right num" title={l.deferredLossEur ? `Incluye ${money(l.deferredLossEur, 'EUR', 2)} de pérdida aplazada` : undefined}>
                   {money(l.taxCostEur, 'EUR', 2)}
                 </td>
               )}
-              {!tiny && <td className="al-right num">{price(averageNativePrice({ openLots: [l] }, cur, fxRate), cur)}</td>}
+              {!tiny && <td className="al-right num">{avgPrice(averageNativePrice({ openLots: [l] }, cur, fxRate), cur)}</td>}
             </tr>
           ))}
         </tbody>

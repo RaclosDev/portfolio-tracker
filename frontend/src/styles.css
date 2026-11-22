@@ -961,6 +961,7 @@ fieldset.form__section { min-inline-size: 0; }
 .spark--down path, .spark--down circle { stroke: var(--down); fill: none; }
 .spark circle { stroke-width: 1.6; }
 .spark__level { stroke: var(--reached-fg); stroke-width: 1; stroke-dasharray: 2 2; opacity: 0.8; }
+.spark__cost { stroke: var(--text-2); stroke-width: 1; stroke-dasharray: 3 2; opacity: 0.9; }
 
 /* ---------- Gráfico histórico ---------- */
 .chart { margin: 0 0 6px; }
@@ -1813,6 +1814,7 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
   .cartera-compact .col-name .sub > * { flex: none; }
   .cartera-compact .databar { min-width: 0; padding: 0; }
   .cartera-compact .databar__fill { display: none; }
+  .cartera-open .value-cost { display: none; }
   .cartera-compact > :is(thead, tbody, tfoot) > :is(tr, tr.row) > .col-name,
   .cartera-open > :is(thead, tbody, tfoot) > :is(tr, tr.row) > :is(.col-value, .col-unrealized),
   .cartera-closed > :is(thead, tbody, tfoot) > :is(tr, tr.row) > :is(.col-bought, .col-total),
