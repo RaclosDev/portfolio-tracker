@@ -7,6 +7,7 @@ import { App } from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { FeedbackHost } from './components/feedback.tsx';
 import { Gate } from './features/auth/Gate.tsx';
+import { installTooltips } from './components/tooltips.ts';
 import { registerServiceWorker } from './lib/push.ts';
 import '@fontsource-variable/inter';
 import '@fontsource/permanent-marker'; // solo se descargan si se elige la skin «Papel»
@@ -20,6 +21,7 @@ const queryClient = new QueryClient({
 });
 
 if (!EMBED) registerServiceWorker();
+installTooltips();
 
 // Tras una publicación los trozos de la versión anterior dejan de existir: si uno no carga, se
 // recarga para coger la nueva (una vez por minuto como mucho, para no entrar en bucle).

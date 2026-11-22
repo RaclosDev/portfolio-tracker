@@ -41,9 +41,8 @@ export function Donut({ title, slices }: { title: string; slices: Slice[] }) {
                 strokeDasharray={`${Math.max(0, len - 1.5)} ${C}`}
                 strokeDashoffset={-offset}
                 transform="rotate(-90 80 80)"
-              >
-                <title>{`${s.label}: ${money(s.value, 'EUR', 2)} (${share(s.value)})`}</title>
-              </circle>
+                data-tip={`${s.label}: ${money(s.value, 'EUR', 2)} (${share(s.value)})`}
+              />
             );
             offset += len;
             return el;

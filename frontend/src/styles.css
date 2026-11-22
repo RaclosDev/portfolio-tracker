@@ -489,8 +489,9 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .holding-pop__list dd { margin: 0; text-align: right; }
 .holding-pop__list .delta { font-size: inherit; }
 .holding-pop__sub { margin: 6px 0 0; color: var(--text-2); font-size: var(--fs-xs); }
-.note-pop { position: fixed; inset: auto; margin: 0; max-width: 320px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+.note-pop, .app-tip { position: fixed; inset: auto; margin: 0; max-width: 320px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface); color: var(--text); box-shadow: var(--shadow); font-size: var(--fs-sm); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; }
+.app-tip { max-width: 280px; padding: 6px 10px; pointer-events: none; }
 
 .delta { font-size: var(--fs-xs); }
 .delta.up { color: var(--up); }
