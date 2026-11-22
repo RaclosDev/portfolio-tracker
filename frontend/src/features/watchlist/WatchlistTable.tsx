@@ -16,6 +16,7 @@ import {
   shortDate,
 } from '../../lib/format.ts';
 import { KEY_DATE_LABEL, upcoming } from '../../lib/keyDates.ts';
+import { perTooltip } from '../../lib/per.ts';
 import { NoteCell } from './NoteCell.tsx';
 import { HoldingInfo, holdingFinder } from './HoldingInfo.tsx';
 import { PriceMap } from './PriceMap.tsx';
@@ -467,7 +468,14 @@ const columns: Column[] = [
     align: 'right',
     title: 'Precio / beneficio de los últimos 12 meses',
     sort: (r) => r.targets?.trailingPE ?? null,
-    cell: ({ targets }) => <span className="num">{num(targets?.trailingPE, 1)}</span>,
+    cell: ({ targets, quote, metrics }) => (
+      <span
+        className="num"
+        title={perTooltip(targets?.trailingPE, quote?.price, metrics.levels.map((l) => l.price), quote?.currency)}
+      >
+        {num(targets?.trailingPE, 1)}
+      </span>
+    ),
   },
   {
     id: 'yield',
