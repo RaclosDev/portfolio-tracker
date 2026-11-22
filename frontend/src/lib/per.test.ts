@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { num, price } from './format.ts';
-import { perAt, perTooltip } from './per.ts';
+import { perAt, perLevels } from './per.ts';
 
 describe('perAt', () => {
   it('escala el PER actual al precio dado', () => {
@@ -19,25 +18,18 @@ describe('perAt', () => {
   });
 });
 
-describe('perTooltip', () => {
-  it('muestra el PER actual y una línea por cada precio de compra', () => {
-    expect(perTooltip(20, 100, [90, 80], 'EUR')).toBe(
-      [
-        `PER actual: ${num(20, 1)}`,
-        `Compra 1 (${price(90, 'EUR')}): PER ${num(18, 1)}`,
-        `Compra 2 (${price(80, 'EUR')}): PER ${num(16, 1)}`,
-      ].join('\n'),
-    );
+describe('perLevels', () => {
+  it('da el PER a cada precio de compra, con su número de nivel', () => {
+    const r = perLevels(20, 100, [90, 0, 80]);
+    expect(r.map((l) => [l.n, l.price])).toEqual([[1, 90], [3, 80]]);
+    expect(r[0]?.per).toBeCloseTo(18);
+    expect(r[1]?.per).toBeCloseTo(16);
   });
 
-  it('respeta la divisa del valor (peniques incluidos)', () => {
-    expect(perTooltip(10, 500, [400], 'GBp')).toBe(`PER actual: ${num(10, 1)}\nCompra 1 (${price(400, 'GBp')}): PER ${num(8, 1)}`);
-  });
-
-  it('sin PER o sin niveles no hay hover', () => {
-    expect(perTooltip(null, 100, [90])).toBeUndefined();
-    expect(perTooltip(-3, 100, [90])).toBeUndefined();
-    expect(perTooltip(20, 100, [])).toBeUndefined();
-    expect(perTooltip(20, null, [90])).toBeUndefined();
+  it('sin PER o sin niveles no hay nada', () => {
+    expect(perLevels(null, 100, [90])).toEqual([]);
+    expect(perLevels(-3, 100, [90])).toEqual([]);
+    expect(perLevels(20, 100, [])).toEqual([]);
+    expect(perLevels(20, null, [90])).toEqual([]);
   });
 });

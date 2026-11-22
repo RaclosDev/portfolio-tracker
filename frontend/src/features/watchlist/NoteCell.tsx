@@ -18,8 +18,10 @@ export function NoteCell({ note }: { note: string }) {
  * Icono con un popover que sale al pasar el ratón o al pulsarlo (y se fija con el clic). `inline` es
  * lo que se ve en su lugar en la tarjeta del móvil, donde no hay ratón.
  */
-export function HoverInfo({ icon, label, inline, className, popClassName = '', children }: {
-  icon: IconName;
+export function HoverInfo({ icon, trigger, label, inline, className, popClassName = '', children }: {
+  icon?: IconName;
+  /** Lo que se pulsa en lugar del icono (p. ej. el propio número del PER). */
+  trigger?: ReactNode;
   label: string;
   inline: ReactNode;
   className: string;
@@ -78,7 +80,7 @@ export function HoverInfo({ icon, label, inline, className, popClassName = '', c
         }}
         onDoubleClick={stop}
       >
-        <Icon name={icon} />
+        {trigger ?? (icon && <Icon name={icon} />)}
       </button>
       <div
         ref={pop}
