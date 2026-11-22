@@ -62,8 +62,7 @@ export function PriceMap({ row }: { row: WatchlistRow }) {
   const showRangeLabels = lo != null && hi != null && x(hi) - x(lo) > 70;
 
   return (
-    <svg className={`price-map${inZone ? ' price-map--in-zone' : ''}`} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={summary.replace(/\n/g, '. ')}>
-      <title>{summary}</title>
+    <svg className={`price-map${inZone ? ' price-map--in-zone' : ''}`} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={summary.replace(/\n/g, '. ')} data-tip={summary}>
 
       {/* Zona de compra: desde la izquierda hasta tu compra más alta */}
       {zoneTop != null && <rect className="pm-zone" x={PAD} y={MID - 8} width={Math.max(0, x(zoneTop) - PAD)} height={16} rx={2} />}
