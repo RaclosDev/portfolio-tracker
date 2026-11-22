@@ -36,8 +36,7 @@ export function Sparkline({
   const label = `Últimos ${period}: ${pct(change)} (de ${price(first, currency)} a ${price(last, currency)})`
     + (cost != null ? `. Línea: tu precio medio, ${avgPrice(cost, currency)}` : '');
   return (
-    <svg className={`spark spark--${change >= 0 ? 'up' : 'down'}`} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
-      <title>{label}</title>
+    <svg className={`spark spark--${change >= 0 ? 'up' : 'down'}`} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} data-tip={label}>
       {cost != null && <line className="spark__cost" x1={0} x2={W} y1={y(cost)} y2={y(cost)} />}
       {showLevel && <line className="spark__level" x1={0} x2={W} y1={y(level!)} y2={y(level!)} />}
       <path d={d} />
