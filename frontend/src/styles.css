@@ -479,6 +479,15 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .note-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--text-2); cursor: pointer; }
 .note-btn:hover, .note-btn:focus-visible { color: var(--text); background: var(--surface-2); }
 .note-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.info-icons { display: inline-flex; gap: 2px; align-items: center; }
+.holding-btn { color: var(--accent); }
+.holding-pop { white-space: normal; min-width: 220px; }
+.holding-pop__title { display: block; margin-bottom: 6px; }
+.holding-pop__list { display: grid; grid-template-columns: auto auto; gap: 3px 16px; margin: 0; }
+.holding-pop__list dt { color: var(--text-2); }
+.holding-pop__list dd { margin: 0; text-align: right; }
+.holding-pop__list .delta { font-size: inherit; }
+.holding-pop__sub { margin: 6px 0 0; color: var(--text-2); font-size: var(--fs-xs); }
 .note-pop { position: fixed; inset: auto; margin: 0; max-width: 320px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface); color: var(--text); box-shadow: var(--shadow); font-size: var(--fs-sm); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; }
 
@@ -1034,6 +1043,7 @@ fieldset.form__section { min-inline-size: 0; }
   .wl-table td.col-notes .notes { white-space: normal; max-width: none; font-size: var(--fs-sm); }
   .wl-table td.col-notes .notes--inline { display: block; }
   .wl-table td.col-notes .note-btn { display: none; }
+  .wl-table td.col-notes .info-icons { display: block; }
 
   /* Fuera lo que no aporta en la tarjeta: celdas vacías ("–") y el botón "Añadir" (se añade desde Editar). */
   .wl-table tr.row td:has(> .muted:only-child),

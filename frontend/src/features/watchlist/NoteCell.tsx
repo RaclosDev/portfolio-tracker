@@ -1,5 +1,5 @@
-import { useId, useRef, type SyntheticEvent } from 'react';
-import { Icon } from '../../components/Icon.tsx';
+import { useId, useRef, type ReactNode, type SyntheticEvent } from 'react';
+import { Icon, type IconName } from '../../components/Icon.tsx';
 
 /*
  * Nota de un valor en la tabla. En el escritorio, un icono: la nota se ve al pasar el ratón o al
@@ -7,6 +7,25 @@ import { Icon } from '../../components/Icon.tsx';
  * entero, que allí sí cabe.
  */
 export function NoteCell({ note }: { note: string }) {
+  return (
+    <HoverInfo icon="note" label="Ver nota" inline={note} className="note-btn">
+      {note}
+    </HoverInfo>
+  );
+}
+
+/**
+ * Icono con un popover que sale al pasar el ratón o al pulsarlo (y se fija con el clic). `inline` es
+ * lo que se ve en su lugar en la tarjeta del móvil, donde no hay ratón.
+ */
+export function HoverInfo({ icon, label, inline, className, popClassName = '', children }: {
+  icon: IconName;
+  label: string;
+  inline: ReactNode;
+  className: string;
+  popClassName?: string;
+  children: ReactNode;
+}) {
   const id = useId();
   const pop = useRef<HTMLDivElement>(null);
   const btn = useRef<HTMLButtonElement>(null);
@@ -39,12 +58,12 @@ export function NoteCell({ note }: { note: string }) {
 
   return (
     <>
-      <span className="notes notes--inline">{note}</span>
+      <span className="notes notes--inline">{inline}</span>
       <button
         ref={btn}
         type="button"
-        className="note-btn"
-        aria-label="Ver nota"
+        className={className}
+        aria-label={label}
         aria-describedby={id}
         popoverTarget={id}
         onMouseEnter={show}
@@ -59,14 +78,14 @@ export function NoteCell({ note }: { note: string }) {
         }}
         onDoubleClick={stop}
       >
-        <Icon name="note" />
+        <Icon name={icon} />
       </button>
       <div
         ref={pop}
         id={id}
         role="tooltip"
         popover="auto"
-        className="note-pop"
+        className={`note-pop ${popClassName}`}
         onMouseEnter={show}
         onMouseLeave={hideSoon}
         onClick={stop}
@@ -76,7 +95,7 @@ export function NoteCell({ note }: { note: string }) {
           else pinned.current = false;
         }}
       >
-        {note}
+        {children}
       </div>
     </>
   );

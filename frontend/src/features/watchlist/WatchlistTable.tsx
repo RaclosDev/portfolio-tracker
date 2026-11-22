@@ -1,4 +1,4 @@
-import { DEFAULT_STATUS_NAMES, DEFAULT_TAG_NAMES, displayTicker, isMuted, localToday, MAX_BUY_LEVELS, type LevelView, type WatchlistRow } from '@/shared';
+import { DEFAULT_STATUS_NAMES, DEFAULT_TAG_NAMES, displayTicker, isMuted, localToday, MAX_BUY_LEVELS, type HoldingRow, type LevelView, type WatchlistRow } from '@/shared';
 import { useSettings } from '../../api/hooks.ts';
 import { Fragment, useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Icon } from '../../components/Icon.tsx';
@@ -17,6 +17,7 @@ import {
 } from '../../lib/format.ts';
 import { KEY_DATE_LABEL, upcoming } from '../../lib/keyDates.ts';
 import { NoteCell } from './NoteCell.tsx';
+import { HoldingInfo, holdingFinder } from './HoldingInfo.tsx';
 import { PriceMap } from './PriceMap.tsx';
 import { Sparkline } from './Sparkline.tsx';
 import { ValueExpanded } from './ValueExpanded.tsx';
@@ -36,6 +37,8 @@ interface CellCtx {
   onToggle: (row: WatchlistRow) => void;
   isOpen: (row: WatchlistRow) => boolean;
   onSaveLevel: (row: WatchlistRow, index: number, value: number | null) => void;
+  /** Posición en la cartera del valor, si la tiene (solo en las listas propias). */
+  holdingOf: (row: WatchlistRow) => HoldingRow | undefined;
 }
 
 interface Column {
@@ -444,8 +447,17 @@ const columns: Column[] = [
   {
     id: 'notes',
     label: 'Notas',
-    cell: ({ item }) =>
-      item.notes ? <NoteCell note={item.notes} /> : null,
+    title: 'Notas del valor y, si lo tienes en cartera, el resumen de la posición',
+    cell: (r, { holdingOf }) => {
+      const h = holdingOf(r);
+      if (!h && !r.item.notes) return null;
+      return (
+        <span className="info-icons">
+          {h && <HoldingInfo h={h} />}
+          {r.item.notes && <NoteCell note={r.item.notes} />}
+        </span>
+      );
+    },
   },
   {
     id: 'per',
@@ -495,6 +507,8 @@ interface Props {
   onBought?: (row: WatchlistRow) => void;
   onTag: (tag: Tag) => void;
   onSaveLevel: CellCtx['onSaveLevel'];
+  /** Valores en cartera, para marcarlos en la tabla. */
+  holdings?: HoldingRow[];
 }
 
 /** Columnas que se pueden ocultar desde Ajustes → Aspecto (todas menos "Valor"). */
@@ -508,7 +522,7 @@ export const isColumnVisible = (c: { id: string; optional?: boolean }, hidden: s
 
 const DEFAULT_SORT = { id: 'map', dir: 'desc' as SortDir }; // lo más cercano a un nivel de compra, arriba
 const sortKey = (listId: number) => `watchlist.orden.${listId}`;
-export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumns, extraColumns, sparks, onEdit, onBought, onTag, onSaveLevel }: Props) {
+export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumns, extraColumns, sparks, onEdit, onBought, onTag, onSaveLevel, holdings }: Props) {
   const [wrapRef, wrapWidth] = useWidth<HTMLDivElement>();
   const statusNames = useSettings().data?.statusNames ?? DEFAULT_STATUS_NAMES;
   const visible = useMemo(
@@ -620,7 +634,9 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
     onToggle(r);
   };
 
-  const ctx: CellCtx = { base: baseCurrency, onTag, sparks, onToggle, isOpen, onSaveLevel };
+  const findHolding = useMemo(() => holdingFinder(holdings ?? []), [holdings]);
+  const holdingOf = (r: WatchlistRow) => findHolding(r.item.symbol, r.item.isin ?? r.quote?.isin);
+  const ctx: CellCtx = { base: baseCurrency, onTag, sparks, onToggle, isOpen, onSaveLevel, holdingOf };
 
   return (
     <div className="table-wrap table-wrap--watchlist" ref={wrapRef}>

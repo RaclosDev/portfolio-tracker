@@ -579,6 +579,7 @@ export function App() {
                   }}
                   onTag={onTag}
                   onSaveLevel={isVisited ? peekRow : onSaveLevel}
+                  holdings={isVisited ? undefined : carteraModel?.valuation.open}
                 />
                 {rows.length === 0 && (
                   <div className="empty">
