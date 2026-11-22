@@ -1,7 +1,7 @@
 import { OPERATION_LABELS, averageNativePrice, sortOperations, type Operation, type Quote, type TickerLedger } from '@/shared';
 import { useCallback, useState, type FormEvent } from 'react';
 import { useOperationMutations, usePortfolioComposition } from '../../api/hooks.ts';
-import { avgPrice, money, qty, price, share, shortDate } from '../../lib/format.ts';
+import { avgPrice, money, pct, qty, price, share, shortDate } from '../../lib/format.ts';
 import { signed, type CarteraModel } from './model.ts';
 import { DataBar } from './SortTable.tsx';
 import { QuoteSymbolField } from './QuoteSymbolField.tsx';
@@ -91,8 +91,38 @@ export function compositionSource(c: Composition) {
 }
 
 /** Lotes FIFO que siguen en cartera. `compact` quita las columnas que no caben en el panel estrecho; `tiny` (móvil) pone el precio medio bajo el coste. */
-export function LotsTable({ t, cur, fxRate, compact, tiny }: { t: TickerLedger; cur: string; fxRate: number | null; compact?: boolean; tiny?: boolean }) {
+/** Tiempo desde una fecha AAAA-MM-DD: «2 a 3 m», «5 m», «12 d». */
+export function heldFor(date: string, now = new Date()) {
+  const d = new Date(`${date.slice(0, 10)}T00:00:00`);
+  let months = (now.getFullYear() - d.getFullYear()) * 12 + now.getMonth() - d.getMonth();
+  if (now.getDate() < d.getDate()) months--;
+  if (months < 1) return `${Math.max(0, Math.round((now.getTime() - d.getTime()) / 86_400_000))} d`;
+  const y = Math.floor(months / 12);
+  const m = months % 12;
+  return y ? `${y} a${m ? ` ${m} m` : ''}` : `${m} m`;
+}
+
+/**
+ * Lotes abiertos (FIFO) con lo que gana cada uno hoy. `valueEur` es el valor de la posición: cada lote
+ * vale su parte (mismas acciones, mismo precio).
+ */
+export function LotsTable({ t, cur, fxRate, valueEur, compact, tiny }: { t: TickerLedger; cur: string; fxRate: number | null; valueEur?: number | null; compact?: boolean; tiny?: boolean }) {
   compact ||= tiny;
+  const lotValue = (shares: number) => (valueEur != null && t.shares > 0 ? (valueEur * shares) / t.shares : null);
+  const latent = (shares: number, cost: number) => {
+    const v = lotValue(shares);
+    return v == null ? null : v - cost;
+  };
+  const latentCell = (shares: number, cost: number) => {
+    const l = latent(shares, cost);
+    return (
+      <td className={`al-right num delta ${signed(l)}`}>
+        {money(l, 'EUR', 2)}
+        {l != null && cost > 0 && <span className="sub num">{pct(l / cost)}</span>}
+      </td>
+    );
+  };
+  const hasValue = valueEur != null;
   return (
     <div className="table-wrap">
       <table className="wl-table cartera-table ticker-lots">
@@ -104,6 +134,11 @@ export function LotsTable({ t, cur, fxRate, compact, tiny }: { t: TickerLedger; 
             <th className="al-right">Coste</th>
             {!compact && <th className="al-right">Coste fiscal</th>}
             {!tiny && <th className="al-right">Precio medio</th>}
+            {hasValue && (
+              <th className="al-right" title="Lo que gana o pierde el lote si lo vendieras hoy">
+                Latente
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -111,7 +146,10 @@ export function LotsTable({ t, cur, fxRate, compact, tiny }: { t: TickerLedger; 
             <tr key={l.id}>
               <td className="num">
                 {shortDate(l.date)}
-                {compact && l.broker && <span className="sub"> {l.broker}</span>}
+                <span className="sub" title={`Comprado hace ${heldFor(l.date)}`}>
+                  {heldFor(l.date)}
+                  {compact && l.broker && ` · ${l.broker}`}
+                </span>
               </td>
               {!compact && <td>{l.broker ?? '–'}</td>}
               <td className="al-right num">{qty(l.shares)}</td>
@@ -125,9 +163,23 @@ export function LotsTable({ t, cur, fxRate, compact, tiny }: { t: TickerLedger; 
                 </td>
               )}
               {!tiny && <td className="al-right num">{avgPrice(averageNativePrice({ openLots: [l] }, cur, fxRate), cur)}</td>}
+              {hasValue && latentCell(l.shares, l.costEur)}
             </tr>
           ))}
         </tbody>
+        {t.openLots.length > 1 && (
+          <tfoot>
+            <tr className="pf-total">
+              <td>Total</td>
+              {!compact && <td />}
+              <td className="al-right num">{qty(t.shares)}</td>
+              <td className="al-right num">{money(t.costEur, 'EUR', 2)}</td>
+              {!compact && <td className="al-right num">{money(t.taxCostEur, 'EUR', 2)}</td>}
+              {!tiny && <td className="al-right num">{avgPrice(averageNativePrice(t, cur, fxRate), cur)}</td>}
+              {hasValue && latentCell(t.shares, t.costEur)}
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   );

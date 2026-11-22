@@ -1396,6 +1396,10 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
 .xp--cartera .xp__tabs button { flex: none; white-space: nowrap; }
 .xp-tab__note { margin: 12px 0 10px; }
 .xp-tab__actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 10px; }
+.xp-tab__filter { margin: 0 0 8px; }
+/* Con sitio, el resumen del valor va a dos columnas. */
+.xp--cartera .xp-tab--wide .sheet { columns: 2 240px; }
+.xp--cartera .xp-tab--wide .sheet-kpis { column-span: all; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
 .xp-tab .table-wrap { border: 0; background: none; overflow-x: auto; }
 .xp-tab .cartera-table th, .xp-tab .cartera-table td { padding: 9px 10px; }
 .xp-tab--wide .cartera-table th, .xp-tab--wide .cartera-table td { padding: 11px 12px; }
@@ -1531,6 +1535,8 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
 .sheet-kpi { padding: 8px 10px; border-radius: 8px; background: var(--surface-2); min-width: 0; }
 .sheet-kpi dt { font-size: var(--fs-2xs); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sheet-kpi dd { margin: 2px 0 0; font-size: 1rem; font-weight: 600; white-space: nowrap; }
+.sheet-kpi__sub { display: block; margin-top: 1px; font-size: var(--fs-2xs); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.sheet-kpi__sub:not(.delta) { color: var(--text-2); }
 
 .sheet__notes p {
   margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--surface-2);

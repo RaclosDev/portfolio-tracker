@@ -10,6 +10,12 @@ export interface ChartLine {
   status?: LevelStatus | 'order' | 'broker' | 'consensus';
 }
 
+/** Operación propia marcada en el gráfico. `date` en AAAA-MM-DD. */
+export interface ChartMark {
+  date: string;
+  side: 'buy' | 'sell';
+}
+
 /** Líneas de un valor de la lista: sus compras, la orden activa y los objetivos del bróker y del consenso. */
 export const watchlistLines = ({ item, metrics, targets }: WatchlistRow): ChartLine[] => [
   ...metrics.levels.map((l, i) => ({ price: l.price, title: `Compra ${i + 1}`, status: l.status })),
