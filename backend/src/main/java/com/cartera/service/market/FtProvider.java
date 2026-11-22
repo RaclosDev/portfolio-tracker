@@ -14,6 +14,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -59,12 +60,24 @@ public class FtProvider implements MarketDataProvider {
     private record Cached(Quote value, long expires) {
     }
 
+    /**
+     * Bolsas con subasta de cierre y su sufijo en Yahoo. FT da como cierre la última operación antes de la subasta
+     * (RARE en Milán el 20/11/2026: 34,165 a las 17:29 frente a 34,045 de la subasta). El cierre oficial, el que dan
+     * el banco y Yahoo, es el de la subasta, así que se toma del gráfico de Yahoo del mismo valor en la misma bolsa.
+     */
+    private static final Map<String, String> AUCTION_VENUES = Map.of(
+            "MIL", "MI", "PAR", "PA", "AEX", "AS", "BRU", "BR", "LIS", "LS", "MCE", "MC");
+    /** Diferencia máxima para dar por buena la corrección: más es otro valor o un dato malo, y se deja el de FT. */
+    private static final double MAX_AUCTION_GAP = 0.03;
+
     private final MarketHttp http;
+    private final YahooProvider yahoo;
     private final BoundedCache<Known> xids = new BoundedCache<>(2048);
     private final BoundedCache<Cached> quotes = new BoundedCache<>(512);
 
-    public FtProvider(MarketHttp http) {
+    public FtProvider(MarketHttp http, YahooProvider yahoo) {
         this.http = http;
+        this.yahoo = yahoo;
     }
 
     @Override
@@ -114,8 +127,11 @@ public class FtProvider implements MarketDataProvider {
     }
 
     static Quote toQuote(JsonNode series, String symbol, String type) {
+        return toQuote(series, closes(series), symbol, type);
+    }
+
+    static Quote toQuote(JsonNode series, List<PricePoint> points, String symbol, String type) {
         JsonNode element = element(series);
-        List<PricePoint> points = closes(series);
         String currency = text(element, "Currency");
         if (element == null || points.isEmpty() || currency == null || !CURRENCY.matcher(currency).matches()) return null;
         PricePoint last = points.getLast();
@@ -165,7 +181,12 @@ public class FtProvider implements MarketDataProvider {
         if (hit != null && hit.expires() > System.currentTimeMillis()) return hit.value();
         JsonNode s = series(ftSymbol, 366);
         Known k = xids.get(ftSymbol);
-        Quote value = s != null ? toQuote(s, symbol, k != null ? k.type() : null) : null;
+        Quote value = null;
+        if (s != null) {
+            List<PricePoint> points = withAuctionCloses(closes(s), auctionCloses(ftSymbol, text(element(s), "Currency"),
+                    LocalDate.now(ZoneOffset.UTC).minusDays(10)));
+            value = toQuote(s, points, symbol, k != null ? k.type() : null);
+        }
         quotes.put(symbol, new Cached(value, System.currentTimeMillis() + QUOTE_TTL_MS));
         return value;
     }
@@ -215,7 +236,11 @@ public class FtProvider implements MarketDataProvider {
     public List<PricePoint> getHistory(String symbol, HistoryRange range) {
         String ftSymbol = parseFtSymbol(symbol);
         JsonNode s = ftSymbol != null ? series(ftSymbol, range.days()) : null;
-        return s == null ? List.of() : closes(s).stream().map(p -> new PricePoint(p.t() + "T00:00:00.000Z", p.c())).toList();
+        if (s == null) return List.of();
+        Map<String, Double> auction = auctionCloses(ftSymbol, text(element(s), "Currency"),
+                LocalDate.now(ZoneOffset.UTC).minusDays(range.days()));
+        return withAuctionCloses(closes(s), auction).stream()
+                .map(p -> new PricePoint(p.t() + "T00:00:00.000Z", p.c())).toList();
     }
 
     // shortcut: FT no publica los splits, así que los cierres anteriores a uno salen ya ajustados; si un valor seguido
@@ -227,8 +252,41 @@ public class FtProvider implements MarketDataProvider {
         JsonNode s = ftSymbol != null && days > 0 ? series(ftSymbol, days) : null;
         if (s == null) return DailyHistory.EMPTY;
         String start = from.toString();
-        return new DailyHistory(text(element(s), "Currency"),
-                closes(s).stream().filter(p -> p.t().compareTo(start) >= 0).toList());
+        String currency = text(element(s), "Currency");
+        return new DailyHistory(currency, withAuctionCloses(closes(s), auctionCloses(ftSymbol, currency, from)).stream()
+                .filter(p -> p.t().compareTo(start) >= 0).toList());
+    }
+
+    /** Símbolo de Yahoo del mismo valor en la misma bolsa (RARE:MIL:EUR → RARE.MI), o null si la bolsa no tiene subasta. */
+    static String yahooAuctionSymbol(String ftSymbol) {
+        String[] parts = ftSymbol.split(":");
+        if (parts.length < 2 || !parts[0].matches("[A-Z0-9][A-Z0-9-]*")) return null;
+        String suffix = AUCTION_VENUES.get(parts[1]);
+        return suffix != null ? parts[0] + "." + suffix : null;
+    }
+
+    /** Cierres de subasta por fecha desde `from`; vacío si la bolsa no tiene, la divisa no casa o Yahoo falla. */
+    private Map<String, Double> auctionCloses(String ftSymbol, String currency, LocalDate from) {
+        String ySymbol = yahooAuctionSymbol(ftSymbol);
+        if (ySymbol == null || currency == null) return Map.of();
+        try {
+            DailyHistory h = yahoo.getDailyHistory(ySymbol, from);
+            if (!currency.equalsIgnoreCase(h.currency())) return Map.of();
+            Map<String, Double> out = new HashMap<>();
+            for (PricePoint p : h.points()) out.put(p.t(), p.c());
+            return out;
+        } catch (RuntimeException e) {
+            return Map.of(); // sin Yahoo se queda el dato de FT, que solo difiere en la subasta
+        }
+    }
+
+    /** Cambia cada cierre de FT por el de la subasta del mismo día si están cerca (si no, es otro valor o un dato malo). */
+    static List<PricePoint> withAuctionCloses(List<PricePoint> ft, Map<String, Double> auction) {
+        if (auction.isEmpty()) return ft;
+        return ft.stream().map(p -> {
+            Double a = auction.get(p.t());
+            return a != null && a > 0 && Math.abs(a / p.c() - 1) <= MAX_AUCTION_GAP ? new PricePoint(p.t(), a) : p;
+        }).toList();
     }
 
     @Override
