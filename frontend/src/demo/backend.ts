@@ -174,7 +174,8 @@ function targetsOf(symbol: string): AnalystTargets | null {
 // Estado en memoria -------------------------------------------------------------------------------
 const stamp = () => new Date().toISOString();
 let settings: Settings = { ...DEFAULT_SETTINGS };
-let lists = [{ id: 1, name: 'Bolsa española' }, { id: 2, name: 'S&P 500' }, { id: 3, name: 'ETF' }];
+// «Mi vigilancia» va primera y mezcla bolsa española y estadounidense: es la que abre la portada.
+let lists = [{ id: 4, name: 'Mi vigilancia' }, { id: 1, name: 'Bolsa española' }, { id: 2, name: 'S&P 500' }, { id: 3, name: 'ETF' }];
 let items: Item[] = [];
 let instruments: Instrument[] = [];
 let operations: Operation[] = [];
@@ -201,6 +202,7 @@ function seed() {
   SPAIN.forEach((s, i) => seedItem(1, s, i));
   USA.forEach((s, i) => seedItem(2, s, i + 3));
   FUNDS.forEach((s, i) => seedItem(3, s, i + 7));
+  SPAIN.slice(0, 5).flatMap((s, i) => [s, USA[i]!]).forEach((s, i) => seedItem(4, s, i));
 
   const BROKERS = ['ING', 'MyInvestor', 'Interactive Brokers'];
   const HELD: [string, number][] = [

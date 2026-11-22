@@ -3,9 +3,9 @@
  * compartido con la app de verdad (pantalla abierta, pestaña, ordenaciones, tours…): usa una copia en memoria
  * que se tira al cerrar, y arranca en la pantalla que pide la portada, sin tour ni avisos.
  */
-// La vigilancia abre la lista del S&P 500: la portada ya enseña la bolsa española en su mapa de precios.
+// La vigilancia abre «Mi vigilancia», que mezcla valores españoles y estadounidenses.
 const VIEWS = {
-  watchlist: { page: 'lista', list: '2' },
+  watchlist: { page: 'lista', list: '4' },
   portfolio: { page: 'cartera', tab: 'resumen' },
   positions: { page: 'cartera', tab: 'abiertas' },
   operations: { page: 'cartera', tab: 'registro' },
