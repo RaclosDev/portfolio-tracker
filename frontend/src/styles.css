@@ -481,6 +481,7 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .note-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .info-icons { display: inline-flex; gap: 2px; align-items: center; }
 .holding-btn { color: var(--accent); }
+.per-btn { width: auto; height: auto; padding: 2px 4px; margin: -2px -4px; color: inherit; font: inherit; text-decoration: underline dotted var(--text-2); text-underline-offset: 3px; }
 .holding-pop { white-space: normal; min-width: 220px; }
 .holding-pop__title { display: block; margin-bottom: 6px; }
 .holding-pop__list { display: grid; grid-template-columns: auto auto; gap: 3px 16px; margin: 0; }

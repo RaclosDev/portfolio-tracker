@@ -1,5 +1,3 @@
-import { num, price } from './format.ts';
-
 /**
  * PER que tendría el valor a otro precio, con el mismo beneficio que el PER actual: PER × (precio / precio actual).
  * El precio y la cotización van en la misma divisa (los niveles se apuntan en la del valor), así que el cociente
@@ -11,19 +9,16 @@ export function perAt(pe: number | null | undefined, current: number | null | un
 }
 
 /**
- * Texto del hover del PER: el actual y, debajo, el que tendría a cada precio de compra. Sin PER o sin niveles
- * devuelve `undefined` y la celda se queda sin hover.
+ * PER a cada precio de compra (`n` es el número del nivel: Compra 1, Compra 2…). Sin PER o sin niveles
+ * devuelve una lista vacía y la celda se queda sin hover.
  */
-export function perTooltip(
+export function perLevels(
   pe: number | null | undefined,
   current: number | null | undefined,
   levels: number[],
-  currency?: string | null,
-): string | undefined {
-  const lines = levels.flatMap((p, i) => {
+): { n: number; price: number; per: number }[] {
+  return levels.flatMap((p, i) => {
     const v = perAt(pe, current, p);
-    return v == null ? [] : [`Compra ${i + 1} (${price(p, currency)}): PER ${num(v, 1)}`];
+    return v == null ? [] : [{ n: i + 1, price: p, per: v }];
   });
-  if (!lines.length) return undefined;
-  return [`PER actual: ${num(pe, 1)}`, ...lines].join('\n');
 }
