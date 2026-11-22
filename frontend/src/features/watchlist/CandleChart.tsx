@@ -4,6 +4,7 @@ import {
   CandlestickSeries,
   ColorType,
   createChart,
+  createSeriesMarkers,
   CrosshairMode,
   HistogramSeries,
   LineSeries,
@@ -15,13 +16,14 @@ import {
   type ISeriesApi,
   type LogicalRange,
   type MouseEventParams,
+  type SeriesMarker,
   type SeriesType,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type MutableRefObject } from 'react';
 import { api } from '../../api/client.ts';
-import type { ChartLine } from './chartLines.ts';
+import type { ChartLine, ChartMark } from './chartLines.ts';
 import { decimals } from '../../lib/format.ts';
 import {
   aggregate,
@@ -208,6 +210,8 @@ interface Props {
   lines: ChartLine[];
   /** Símbolo de TradingView, si lo tiene: para el enlace de abrirlo allí. */
   tvSymbol: string | null;
+  /** Operaciones propias (compras y ventas) marcadas sobre la vela de su fecha. */
+  marks?: ChartMark[];
 }
 
 /**
@@ -217,7 +221,7 @@ interface Props {
  * posiciones), que se seleccionan, se arrastran y se editan. Las compras de la lista y la orden salen como
  * líneas discontinuas.
  */
-export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Props) {
+export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, marks }: Props) {
   const linesKey = JSON.stringify(lines);
   const qc = useQueryClient();
   const candlesQ = useQuery({
@@ -335,6 +339,8 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Pr
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
   const primRef = useRef(new DrawingsPrimitive());
+  // Sube cada vez que se crea la serie: lo que se pinta sobre ella (las marcas) se vuelve a poner.
+  const [seriesGen, bumpSeries] = useReducer((n: number) => n + 1, 0);
   const levelLinesRef = useRef<IPriceLine[]>([]);
   const indSeriesRef = useRef<IndSeries[]>([]);
   const datesRef = useRef<string[]>([]);
@@ -438,6 +444,7 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Pr
     });
     chartRef.current = chart;
     seriesRef.current = series;
+    bumpSeries();
     fittedRef.current = false;
     const onSize = (width: number) => {
       if (width > 0 && needFitRef.current) {
@@ -703,6 +710,43 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol }: Pr
     // por eso también corre al crearse, y no solo al cambiar las velas.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bars, kind, hasData, symbol, precision]);
+
+  // Compras y ventas: una flecha en la vela que contiene su fecha (con velas semanales o mensuales, varias se juntan).
+  const marksKey = JSON.stringify(marks ?? []);
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series || !marks?.length || !bars.length) return;
+    const c = themeColors();
+    const days = bars.map((b) => b.t.slice(0, 10));
+    const grouped = new Map<string, { bar: number; side: ChartMark['side']; n: number }>();
+    for (const m of marks) {
+      if (m.date < days[0]!) continue;
+      let lo = 0;
+      let hi = days.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (days[mid]! <= m.date) lo = mid;
+        else hi = mid - 1;
+      }
+      const key = `${lo}-${m.side}`;
+      const g = grouped.get(key) ?? { bar: lo, side: m.side, n: 0 };
+      g.n++;
+      grouped.set(key, g);
+    }
+    const out: SeriesMarker<Time>[] = [...grouped.values()]
+      .sort((a, b) => a.bar - b.bar)
+      .map((g) => ({
+        time: chartTime(bars[g.bar]!.t),
+        position: g.side === 'buy' ? 'belowBar' : 'aboveBar',
+        shape: g.side === 'buy' ? 'arrowUp' : 'arrowDown',
+        color: g.side === 'buy' ? c.up : c.down,
+        text: `${g.side === 'buy' ? 'C' : 'V'}${g.n > 1 ? ` ×${g.n}` : ''}`,
+        size: 2,
+      }));
+    const plugin = createSeriesMarkers(series, out);
+    return () => plugin.detach();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bars, seriesGen, marksKey]);
 
   // Indicadores: los de precio encima de las velas y cada oscilador en su panel, debajo.
   useEffect(() => {
