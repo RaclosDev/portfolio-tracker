@@ -5,15 +5,17 @@ import { useSettings, useSparklines1y } from '../../api/hooks.ts';
 import type { TypeFilter } from '../watchlist/TagFilters.tsx';
 import { Icon } from '../../components/Icon.tsx';
 import { anyQuoteToday, QuoteAge } from '../../components/QuoteAge.tsx';
-import { MINOR_CURRENCY, money, num, qty, pct, price, shortDate } from '../../lib/format.ts';
+import { avgPrice, MINOR_CURRENCY, money, num, qty, pct, price, shortDate } from '../../lib/format.ts';
 import { Sparkline } from '../watchlist/Sparkline.tsx';
 import { signed, type CarteraModel } from './model.ts';
 import { DataBar, SortTable, type Column } from './SortTable.tsx';
 
-const Delta = ({ v, sub }: { v: number | null | undefined; sub?: number | null }) => (
+/** Importe con su porcentaje debajo; los dos con el color del importe (un +0,4 % no queda gris junto a +20 €). */
+const Delta = ({ v, sub, note }: { v: number | null | undefined; sub?: number | null; note?: ReactNode }) => (
   <div className="stack stack--right">
     <span className={`num delta ${signed(v)}`}>{money(v, 'EUR', 2)}</span>
-    {sub !== undefined && <span className={`sub num delta ${signed(sub)}`}>{pct(sub)}</span>}
+    {sub !== undefined && <span className={`sub num delta ${signed(v)}`}>{pct(sub)}</span>}
+    {note}
   </div>
 );
 
@@ -84,28 +86,37 @@ export function HoldingsView({ model, onOpen, onTag, expanded }: { model: Carter
   const sparks = useSparklines1y(symbols);
   const maxValue = Math.max(0, ...open.map((r) => r.valueEur ?? 0));
   const maxHist = Math.max(0, ...open.map((r) => Math.abs(r.historicEur ?? 0)));
+  const income = (r: HoldingRow) => r.ledger.dividendsEur + r.ledger.otherIncomeEur;
+  // % del día sobre el valor de ayer (valor − variación), como el del resumen.
+  const dayPct = (r: HoldingRow) => (r.dayChangeEur != null && r.valueEur != null && r.valueEur - r.dayChangeEur > 0 ? r.dayChangeEur / (r.valueEur - r.dayChangeEur) : null);
+  // Total sobre todo lo invertido en el valor (también lo ya vendido): con ventas por medio, el coste de hoy no sirve de base.
+  const histPct = (r: HoldingRow) => (r.historicEur != null && r.ledger.boughtEur > 0 ? r.historicEur / r.ledger.boughtEur : null);
+  const priced = open.filter((r) => r.historicEur != null);
+  const histSum = priced.reduce((t, r) => t + r.historicEur!, 0);
+  const boughtSum = priced.reduce((t, r) => t + r.ledger.boughtEur, 0);
+  const incomeSum = open.reduce((t, r) => t + income(r), 0);
+  const cobros = (v: number) => (v ? <span className="sub num">{money(v, 'EUR', 2)} cobros</span> : null);
 
   const columns: Column<HoldingRow>[] = [
     { id: 'name', label: 'Valor', sort: (r) => r.name.toLowerCase(), cell: (r) => <NameCell r={r} onOpen={onOpen} onTag={onTag} />, total: `Total · ${open.length} valores` },
     {
       id: 'shares',
-      label: 'Acciones',
+      label: 'Posición',
       align: 'right',
       title: 'Acciones que tienes y precio medio de compra (con comisiones, al cambio de cada compra)',
       sort: (r) => r.ledger.shares,
       cell: (r) => {
         const avg = averageNativePrice(r.ledger, r.currency, r.fxRate);
+        const brokers = Object.entries(r.ledger.sharesByBroker).filter(([, n]) => n > 1e-9);
         return (
-        <div className="stack stack--right">
-          <span className="num">{qty(r.ledger.shares)}</span>
-          {avg != null && <span className="sub num" title="Precio medio de compra">a {price(avg, r.currency)}</span>}
-          <span className="sub">
-            {Object.entries(r.ledger.sharesByBroker)
-              .filter(([, n]) => n > 1e-9)
-              .map(([b, n]) => `${b} ${num(n, Number.isInteger(n) ? 0 : 2)}`)
-              .join(' · ') || (r.ledger.cycleStart ? `desde ${shortDate(r.ledger.cycleStart)}` : '')}
-          </span>
-        </div>
+          <div className="stack stack--right">
+            <span className="num">{qty(r.ledger.shares)}</span>
+            {avg != null && <span className="sub num" title="Precio medio de compra">medio {avgPrice(avg, r.currency)}</span>}
+            {/* El reparto por bróker solo dice algo si hay más de uno; con uno, desde cuándo tienes la posición. */}
+            {brokers.length > 1
+              ? <span className="sub">{brokers.map(([b, n]) => `${b} ${num(n, Number.isInteger(n) ? 0 : 2)}`).join(' · ')}</span>
+              : r.ledger.cycleStart && <span className="sub" title={brokers[0] ? `En ${brokers[0][0]}` : undefined}>desde {shortDate(r.ledger.cycleStart)}</span>}
+          </div>
         );
       },
     },
@@ -138,33 +149,39 @@ export function HoldingsView({ model, onOpen, onTag, expanded }: { model: Carter
     {
       id: 'spark',
       label: '1 año',
-      cell: (r) => (r.instrument?.symbol ? <Sparkline closes={sparks.data?.[r.instrument.symbol]} period="12 meses" currency={r.currency} /> : <span className="muted">–</span>),
+      title: 'Cotización de los últimos 12 meses; la línea discontinua es tu precio medio de compra',
+      cell: (r) => (r.instrument?.symbol
+        ? <Sparkline closes={sparks.data?.[r.instrument.symbol]} cost={averageNativePrice(r.ledger, r.currency, r.fxRate)} period="12 meses" currency={r.currency} />
+        : <span className="muted">–</span>),
     },
     {
       id: 'value',
       label: 'Valoración',
       align: 'right',
-      title: 'Valor de mercado en euros',
+      title: 'Valor de mercado en euros, lo que costaron las acciones que quedan (FIFO, con comisiones) y su peso en la cartera',
       sort: (r) => r.valueEur,
       cell: (r) => (
         <DataBar value={r.valueEur} max={maxValue}>
-          <span className="num">{money(r.valueEur, 'EUR', 2)}</span>
+          <div className="stack stack--right">
+            <span className="num">{money(r.valueEur, 'EUR', 2)}</span>
+            <span className="sub num">
+              {/* En móvil no cabe el coste: queda el peso. */}
+              <span className="value-cost">coste {money(r.ledger.costEur, 'EUR', 2)}{r.weight != null && ' · '}</span>
+              {r.weight != null && <span title="Peso en la cartera">{pct(r.weight, 1).replace('+', '')}</span>}
+            </span>
+          </div>
         </DataBar>
       ),
-      total: <span className="num">{money(s.valueEur, 'EUR', 2)}</span>,
-    },
-    {
-      id: 'cost',
-      label: 'Coste',
-      align: 'right',
-      title: 'Lo que costaron las acciones que quedan (FIFO, con comisiones)',
-      sort: (r) => r.ledger.costEur,
-      cell: (r) => <span className="num">{money(r.ledger.costEur, 'EUR', 2)}</span>,
-      total: <span className="num">{money(s.costEur, 'EUR', 2)}</span>,
+      total: (
+        <div className="stack stack--right">
+          <span className="num">{money(s.valueEur, 'EUR', 2)}</span>
+          <span className="sub num">coste {money(s.costEur, 'EUR', 2)}</span>
+        </div>
+      ),
     },
     {
       id: 'unrealized',
-      label: 'Resultado',
+      label: 'Latente',
       align: 'right',
       title: 'Plusvalía si vendieras hoy: valor − coste',
       sort: (r) => r.unrealizedPct,
@@ -175,46 +192,37 @@ export function HoldingsView({ model, onOpen, onTag, expanded }: { model: Carter
       id: 'day',
       label: anyQuoteToday(open.map((r) => r.quote)) ? 'Hoy' : 'Última sesión',
       align: 'right',
+      title: 'Lo que ha ganado o perdido la posición en la sesión, en euros (con el cambio de divisa)',
       sort: (r) => r.dayChangeEur,
-      cell: (r) => <Delta v={r.dayChangeEur} />,
-      total: <Delta v={s.dayChangeEur} />,
-    },
-    {
-      id: 'income',
-      label: 'Ventas y cobros',
-      align: 'right',
-      title: 'Resultado de las ventas ya hechas y dividendos cobrados de este valor',
-      sort: (r) => r.ledger.realizedEur + r.ledger.dividendsEur + r.ledger.otherIncomeEur,
-      cell: (r) => {
-        const income = r.ledger.dividendsEur + r.ledger.otherIncomeEur;
-        // Sin ventas ni cobros, un guion: una columna llena de «0,00 €» tapa las filas que sí tienen.
-        if (!r.ledger.realizedEur && !income) return <span className="muted">–</span>;
-        return (
-          <div className="stack stack--right">
-            <span className={`num delta ${signed(r.ledger.realizedEur)}`}>{money(r.ledger.realizedEur, 'EUR', 2)}</span>
-            {income !== 0 && <span className="sub num">{money(income, 'EUR', 2)} cobros</span>}
-          </div>
-        );
-      },
+      cell: (r) => <Delta v={r.dayChangeEur} sub={dayPct(r)} />,
+      total: <Delta v={s.dayChangeEur} sub={s.dayChangePct} />,
     },
     {
       id: 'historic',
-      label: 'Total histórico',
+      label: 'Total',
       align: 'right',
-      title: 'Todo lo ganado con este valor desde la primera compra: latente + ventas + cobros',
+      title: 'Todo lo ganado con este valor desde la primera compra (latente + ventas + cobros) y su % sobre todo lo invertido en él',
       sort: (r) => r.historicEur,
-      cell: (r) => (
-        <DataBar value={r.historicEur} max={maxHist}>
-          <span className={`num delta ${signed(r.historicEur)}`}>{money(r.historicEur, 'EUR', 2)}</span>
-        </DataBar>
-      ),
-    },
-    {
-      id: 'weight',
-      label: 'Peso',
-      align: 'right',
-      sort: (r) => r.weight,
-      cell: (r) => <span className="num">{pct(r.weight, 1).replace('+', '')}</span>,
+      cell: (r) => {
+        const inc = income(r);
+        const sinceOpen = r.ledger.incomeSinceOpenEur;
+        const detail = [
+          `Latente ${money(r.unrealizedEur, 'EUR', 2)}`,
+          `Ventas ${money(r.ledger.realizedEur, 'EUR', 2)}`,
+          `Cobros ${money(inc, 'EUR', 2)}`,
+          ...(sinceOpen > 0 && r.ledger.costEur > 0 && r.ledger.cycleStart
+            ? [`Cobros desde ${shortDate(r.ledger.cycleStart)}: ${pct(sinceOpen / r.ledger.costEur, 1).replace('+', '')} sobre el coste`]
+            : []),
+        ].join('\n');
+        return (
+          <span title={detail}>
+            <DataBar value={r.historicEur} max={maxHist}>
+              <Delta v={r.historicEur} sub={histPct(r)} note={cobros(inc)} />
+            </DataBar>
+          </span>
+        );
+      },
+      total: <Delta v={histSum} sub={boughtSum ? histSum / boughtSum : null} note={cobros(incomeSum)} />,
     },
   ];
 

@@ -1,7 +1,7 @@
 import { instrumentKind, tradingViewSymbol, type Operation } from '@/shared';
 import { CompanyLogo } from '../../components/CompanyLogo.tsx';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { money, pct, price, qty, share } from '../../lib/format.ts';
+import { avgPrice, money, pct, price, qty, share } from '../../lib/format.ts';
 import { tabListKeys } from '../../lib/tabs.ts';
 import { useSize } from '../../lib/useSize.ts';
 import { CandleChart } from '../watchlist/LazyCandleChart.tsx';
@@ -211,7 +211,7 @@ export function HoldingExpanded({ model, ticker, onClose, onEditOperation, onAdd
                     {holding ? (
                       <>
                         <Kpi label="Acciones">{qty(t.shares)}</Kpi>
-                        <Kpi label="Coste medio">{avgNative ? price(avgNative, cur) : '–'}</Kpi>
+                        <Kpi label="Coste medio">{avgNative ? avgPrice(avgNative, cur) : '–'}</Kpi>
                         <Kpi label="Latente" tone={signed(holding.unrealizedEur)}>
                           {holding.unrealizedPct != null ? pct(holding.unrealizedPct) : '–'}
                         </Kpi>

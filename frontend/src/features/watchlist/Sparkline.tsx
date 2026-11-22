@@ -1,4 +1,4 @@
-import { pct, price } from '../../lib/format.ts';
+import { avgPrice, pct, price } from '../../lib/format.ts';
 
 const W = 84;
 const H = 26;
@@ -10,18 +10,21 @@ const H = 26;
 export function Sparkline({
   closes,
   level,
+  cost,
   period = '3 meses',
   currency,
 }: {
   closes: number[] | undefined;
   level?: number | null;
+  /** Tu precio medio de compra: siempre se ve (amplía el rango si hace falta) para saber si vas por encima o por debajo. */
+  cost?: number | null;
   period?: string;
   currency?: string | null;
 }) {
   if (!closes) return <span className="muted small">…</span>;
   if (closes.length < 2) return <span className="muted small">–</span>;
-  const min = Math.min(...closes);
-  const max = Math.max(...closes);
+  const min = Math.min(...closes, ...(cost != null ? [cost] : []));
+  const max = Math.max(...closes, ...(cost != null ? [cost] : []));
   const span = max - min || 1;
   const x = (i: number) => (i / (closes.length - 1)) * (W - 4) + 2;
   const y = (v: number) => H - 3 - ((v - min) / span) * (H - 6);
@@ -30,10 +33,12 @@ export function Sparkline({
   const change = (last - first) / first;
   const d = closes.map((c, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(c).toFixed(1)}`).join('');
   const showLevel = level != null && level >= min && level <= max;
-  const label = `Últimos ${period}: ${pct(change)} (de ${price(first, currency)} a ${price(last, currency)})`;
+  const label = `Últimos ${period}: ${pct(change)} (de ${price(first, currency)} a ${price(last, currency)})`
+    + (cost != null ? `. Línea: tu precio medio, ${avgPrice(cost, currency)}` : '');
   return (
     <svg className={`spark spark--${change >= 0 ? 'up' : 'down'}`} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
       <title>{label}</title>
+      {cost != null && <line className="spark__cost" x1={0} x2={W} y1={y(cost)} y2={y(cost)} />}
       {showLevel && <line className="spark__level" x1={0} x2={W} y1={y(level!)} y2={y(level!)} />}
       <path d={d} />
       <circle cx={x(closes.length - 1)} cy={y(last)} r={2.2} />

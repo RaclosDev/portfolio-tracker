@@ -1,5 +1,5 @@
 import { averageNativePrice, type HoldingRow } from '@/shared';
-import { money, pct, price, qty } from '../../lib/format.ts';
+import { avgPrice, money, pct, qty } from '../../lib/format.ts';
 import { HoverInfo } from './NoteCell.tsx';
 
 /** Lo que tienes de un valor de Vigilar en la cartera: icono con el resumen al pasar el ratón. */
@@ -13,14 +13,14 @@ export function HoldingInfo({ h }: { h: HoldingRow }) {
       label="En cartera: ver la posición"
       className="note-btn holding-btn"
       popClassName="holding-pop"
-      inline={`En cartera: ${qty(h.ledger.shares)} acciones${avg != null ? ` a ${price(avg, h.currency)}` : ''} · ${money(h.valueEur ?? h.ledger.costEur, 'EUR', 2)}`}
+      inline={`En cartera: ${qty(h.ledger.shares)} acciones${avg != null ? ` a ${avgPrice(avg, h.currency)}` : ''} · ${money(h.valueEur ?? h.ledger.costEur, 'EUR', 2)}`}
     >
       <strong className="holding-pop__title">En cartera</strong>
       <dl className="holding-pop__list">
         <dt>Acciones</dt>
         <dd className="num">{qty(h.ledger.shares)}</dd>
         <dt>Precio medio</dt>
-        <dd className="num">{avg != null ? price(avg, h.currency) : '–'}</dd>
+        <dd className="num">{avg != null ? avgPrice(avg, h.currency) : '–'}</dd>
         <dt>Coste</dt>
         <dd className="num">{money(h.ledger.costEur, 'EUR', 2)}</dd>
         <dt>Valor actual</dt>
