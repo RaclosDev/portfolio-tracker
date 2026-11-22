@@ -1,4 +1,4 @@
-import { DEFAULT_TAG_NAMES, instrumentKind, type CarteraRowBase, type ClosedRow, type HoldingRow } from '@/shared';
+import { averageNativePrice, DEFAULT_TAG_NAMES, instrumentKind, type CarteraRowBase, type ClosedRow, type HoldingRow } from '@/shared';
 import { CompanyLogo } from '../../components/CompanyLogo.tsx';
 import type { ReactNode } from 'react';
 import { useSettings, useSparklines1y } from '../../api/hooks.ts';
@@ -91,10 +91,14 @@ export function HoldingsView({ model, onOpen, onTag, expanded }: { model: Carter
       id: 'shares',
       label: 'Acciones',
       align: 'right',
+      title: 'Acciones que tienes y precio medio de compra (con comisiones, al cambio de cada compra)',
       sort: (r) => r.ledger.shares,
-      cell: (r) => (
+      cell: (r) => {
+        const avg = averageNativePrice(r.ledger, r.currency, r.fxRate);
+        return (
         <div className="stack stack--right">
           <span className="num">{qty(r.ledger.shares)}</span>
+          {avg != null && <span className="sub num" title="Precio medio de compra">a {price(avg, r.currency)}</span>}
           <span className="sub">
             {Object.entries(r.ledger.sharesByBroker)
               .filter(([, n]) => n > 1e-9)
@@ -102,7 +106,8 @@ export function HoldingsView({ model, onOpen, onTag, expanded }: { model: Carter
               .join(' · ') || (r.ledger.cycleStart ? `desde ${shortDate(r.ledger.cycleStart)}` : '')}
           </span>
         </div>
-      ),
+        );
+      },
     },
     {
       id: 'price',
