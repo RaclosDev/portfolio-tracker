@@ -2,7 +2,7 @@
 
 **Seguimiento de inversiones, desde una lista de vigilancia hasta el registro de operaciones.** Una aplicación personal para ver niveles de compra, ordenar una cartera y consultar cómo se calcula cada posición.
 
-![Portfolio Tracker: lista de vigilancia, resumen de cartera y registro de operaciones](docs/screenshots/hero.jpg)
+![Portfolio Tracker: lista de vigilancia y resumen de cartera](docs/screenshots/hero.jpg)
 
 [![CI](https://github.com/RaclosDev/portfolio-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/RaclosDev/portfolio-tracker/actions/workflows/ci.yml) [![CodeQL](https://github.com/RaclosDev/portfolio-tracker/actions/workflows/codeql.yml/badge.svg)](https://github.com/RaclosDev/portfolio-tracker/actions/workflows/codeql.yml) [![Licencia MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -26,11 +26,14 @@
   </tr>
   <tr>
     <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/positions-dark.png"><img src="docs/screenshots/positions-light.png" alt="Posiciones abiertas de la cartera con precio medio, valor y resultado" width="440"></picture><br><sub><b>Posiciones</b> · precio medio, valor y resultado</sub></td>
-    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/operations-dark.png"><img src="docs/screenshots/operations-light.png" alt="Registro filtrable de compras, ventas y dividendos" width="440"></picture><br><sub><b>Registro</b> · compras, ventas y dividendos</sub></td>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/exposure-dark.png"><img src="docs/screenshots/exposure-light.png" alt="Exposición real de la cartera por empresa, con los fondos y ETF desglosados" width="440"></picture><br><sub><b>Exposición</b> · empresa a empresa, fondos y ETF incluidos</sub></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/operations-dark.png"><img src="docs/screenshots/operations-light.png" alt="Registro filtrable de compras, ventas y dividendos" width="440"></picture><br><sub><b>Registro</b> · compras, ventas y dividendos</sub></td>
   </tr>
 </table>
 
-Capturas de la interfaz real en escritorio, renovadas en noviembre de 2026; se muestran en claro u oscuro según el tema de GitHub. Los datos son ficticios y reproducibles: no representan una cuenta, cotizaciones actuales ni resultados de inversión. Cada usuario dispone de listas, cartera y ajustes privados.
+Capturas de la interfaz real en escritorio, tomadas de la [demo pública](https://cartera.raclos.es/demo) en noviembre de 2026; se muestran en claro u oscuro según el tema de GitHub. Los datos son ficticios y reproducibles: no representan una cuenta, cotizaciones actuales ni resultados de inversión. Cada usuario dispone de listas, cartera y ajustes privados.
 
 ## Decisiones técnicas que puedes revisar
 
@@ -67,15 +70,14 @@ La [CI](.github/workflows/ci.yml) pasa lint, tipos, tests de la web y de la API 
 
 ## Fuentes de cotización
 
-Se consulta Yahoo Finance y, para los valores sin precio y con cobertura alternativa, Borsa Italiana / FIDA, Quefondos / VDOS, onvista (bolsas alemanas como Xetra o Tradegate), justETF (ETF por ISIN, en euros) y FT Markets, en ese orden. El buscador por nombre combina los catálogos de onvista y Euronext. Si ninguna responde, se muestra el último precio guardado como tal. Cada proveedor tiene su propia pausa ante límites de consultas.
+Se consultan Financial Hub y Yahoo Finance y, para los valores sin precio y con cobertura alternativa, Borsa Italiana / FIDA, Quefondos / VDOS, onvista (bolsas alemanas como Xetra o Tradegate), justETF (ETF por ISIN, en euros) y FT Markets, en ese orden. El buscador por nombre combina los catálogos de onvista y Euronext. Si ninguna responde, se muestra el último precio guardado como tal. Cada proveedor tiene su propia pausa ante límites de consultas.
 
 ### Composición de fondos y ETF
 
 La pestaña **Exposición** y la ficha de cada fondo usan su composición. La fuente principal es la API pública de [Financial Hub](https://api.financial-hub.es/docs) (datos de Morningstar, sin clave): con el ISIN encuentra el fondo y da su cartera completa (hasta 2.000 posiciones; la liquidez, las divisas a plazo y los derivados quedan como «sin desglosar»). Si no lo tiene o falla, se prueban extraETF y onvista (por ISIN), FT Markets (fondos y ETF, incluidos los españoles) y Yahoo Finance (por su ticker), que solo dan las 10 mayores posiciones; vale la primera que responde con datos coherentes. La composición se guarda una semana y, si todas las fuentes fallan, se muestra la última conocida.
 
-
 Borsa aporta el último valor liquidativo de fondos, con su fecha e ISIN; no proporciona una serie histórica desde esa ficha. Se puede buscar el nombre de la clase en «Cotización automática» y elegir el resultado de Borsa. Los identificadores `BORSA:2FADB…` se guardan sin necesitar claves de API. Como su buscador no indexa todos los ISIN, los vínculos verificados por ISIN están en `BorsaProvider.java` y se comprueban contra la ficha en cada actualización. No hay cobertura universal ni conversión automática entre clases de un fondo.
 
 Quefondos permite buscar fondos por su ISIN y aporta NAV fechado y observaciones mensuales para los gráficos individuales, sin clave de API. Los tickers de Yahoo con correspondencia verificada están en `QuefondosProvider.java`; cada ficha debe coincidir con su ISIN y divisa. Sus datos mensuales no sustituyen los cierres diarios del resumen: si un valor carece de histórico diario, se muestra una curva parcial de los valores disponibles, excluyendo también todas las operaciones de los omitidos y avisando de ello.
 
-Para añadir una fuente, se implementa `MarketDataProvider` y se incorpora en orden a `FallbackProvider` en `services.ts`. Una fuente solo cubre los símbolos que puede identificar con seguridad; una respuesta vacía permite probar la siguiente.
+Para añadir una fuente, se implementa `MarketDataProvider` y se añade, en su orden, a la lista de `FallbackProvider` en [`MarketConfig.java`](backend/src/main/java/com/cartera/service/market/MarketConfig.java). Una fuente solo cubre los símbolos que puede identificar con seguridad; una respuesta vacía permite probar la siguiente.
