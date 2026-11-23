@@ -26,7 +26,8 @@ export function Gate({ children }: { children: ReactNode }) {
   const [initialAccount, setInitialAccount] = useState<string>();
   const accountId = session.data ? session.data.user?.id ?? 'anonymous' : undefined;
   useEffect(() => {
-    if (!accountId) return;
+    // La demo no es una cuenta: si anotase su usuario, las pestañas abiertas de la app de verdad se recargarían.
+    if (!accountId || DEMO) return;
     if (accountId === 'anonymous') localStorage.removeItem(LS_SNAPSHOT);
     const pinned = initialAccount ?? (snapshotAccount && accountId !== 'anonymous' ? snapshotAccount : undefined);
     if (pinned && pinned !== accountId) {
@@ -45,7 +46,7 @@ export function Gate({ children }: { children: ReactNode }) {
       });
     };
     window.addEventListener(SESSION_LOST, lost);
-    const changed = (event: StorageEvent) => { if (event.key === AUTH_CHANGED) window.location.reload(); };
+    const changed = (event: StorageEvent) => { if (!DEMO && event.key === AUTH_CHANGED) window.location.reload(); };
     window.addEventListener('storage', changed);
     return () => {
       window.removeEventListener(SESSION_LOST, lost);

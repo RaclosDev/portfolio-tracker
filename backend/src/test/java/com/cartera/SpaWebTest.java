@@ -12,6 +12,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.endsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -40,6 +41,21 @@ class SpaWebTest {
         }
         // La raíz la resuelve la página de bienvenida de Spring (un forward a index.html).
         mvc.perform(get("/")).andExpect(status().isOk());
+    }
+
+    @Test
+    void onlyTheDemoCanBeFramedByThePortfolio() throws Exception {
+        for (String path : new String[] {"/demo", "/demo/cartera/SAN.MC"}) {
+            mvc.perform(get(path)).andExpect(status().isOk())
+                    .andExpect(header().string("Content-Security-Policy",
+                            endsWith("frame-ancestors 'self' https://raclosdev.github.io")))
+                    .andExpect(header().doesNotExist("X-Frame-Options"));
+        }
+        for (String path : new String[] {"/", "/login", "/demos", "/api/health"}) {
+            mvc.perform(get(path)).andExpect(status().isOk())
+                    .andExpect(header().string("Content-Security-Policy", endsWith("frame-ancestors 'self'")))
+                    .andExpect(header().string("X-Frame-Options", "SAMEORIGIN"));
+        }
     }
 
     @Test

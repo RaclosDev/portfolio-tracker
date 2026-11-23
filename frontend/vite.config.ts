@@ -11,7 +11,8 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
-    proxy: { '/api': { target: apiUrl, changeOrigin: false } },
+    // Contra una API remota (p. ej. la demo con precios reales) el Host tiene que ser el suyo.
+    proxy: { '/api': { target: apiUrl, changeOrigin: apiUrl.startsWith('https://') } },
   },
   test: { include: ['src/**/*.test.ts'] },
 });
