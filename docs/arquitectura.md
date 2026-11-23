@@ -65,7 +65,7 @@ Sobre el consenso: Yahoo publica el consenso de analistas (fuente LSEG/Refinitiv
 ## 4. Estructura
 
 ```
-watchlist/
+portfolio-tracker/
 ├─ backend/                API Spring Boot (Maven)
 │  ├─ src/main/java/com/cartera/
 │  │  ├─ controller/       Endpoints REST (/api/…)

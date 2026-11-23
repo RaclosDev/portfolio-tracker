@@ -264,6 +264,20 @@ function portfolioView() {
   }
   return { instruments, operations, quotes, fx: FX, generatedAt: stamp() };
 }
+/** Mayores posiciones de los ETF de la cartera, con pesos aproximados: alimentan la pestaña «Exposición». */
+const FUND_WEIGHTS: Record<string, [symbol: string, weight: number][]> = {
+  'SXR8.DE': [['NVDA', 0.071], ['AAPL', 0.066], ['MSFT', 0.062], ['AMZN', 0.039], ['META', 0.028], ['AVGO', 0.025], ['GOOGL', 0.021], ['BRK-B', 0.017], ['JPM', 0.015], ['LLY', 0.013]],
+  'VWCE.DE': [['NVDA', 0.044], ['AAPL', 0.041], ['MSFT', 0.038], ['AMZN', 0.024], ['META', 0.017], ['AVGO', 0.015], ['GOOGL', 0.013], ['JPM', 0.009], ['LLY', 0.008], ['BRK-B', 0.008]],
+};
+function portfolioComposition() {
+  return Object.fromEntries(Object.entries(FUND_WEIGHTS).map(([fund, weights]) => [fund, {
+    holdings: weights.map(([symbol, weight]) => {
+      const company = CATALOG.get(symbol)!;
+      return { name: company.name, isin: company.isin, ticker: symbol, weight };
+    }),
+    asOf: null, source: 'Datos de demostración', fetchedAt: stamp(),
+  }]));
+}
 function portfolioHistory(query: unknown) {
   const { from, to } = portfolioHistoryQuerySchema.parse(query);
   if (to > today()) throw new DemoError(400, 'El histórico no admite fechas futuras');
@@ -417,6 +431,7 @@ function handle(method: string, url: URL, body: unknown): unknown {
       return { quotes, fx, generatedAt };
     }
     case 'GET /api/portfolio/history': return portfolioHistory(query);
+    case 'GET /api/portfolio/composition': return portfolioComposition();
     case 'POST /api/operations': return saveOperation(body as { operation?: unknown; instrument?: unknown });
     case 'POST /api/operations/broker': {
       const { ids, broker, needsReview } = bulkBrokerSchema.parse(body);
