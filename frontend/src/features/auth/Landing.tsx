@@ -277,30 +277,12 @@ function Screens() {
   const screen = SCREENS[active]!;
   // En pantallas anchas va la demo de verdad; en el móvil no cabe usable y se queda la captura.
   const live = useMedia('(min-width: 1024px)');
-  // La demo pesa: se empieza a cargar cuando la portada ya ha terminado, sin esperar al scroll. Primero la
+  // La demo carga desde el principio, sin una captura delante que luego haya que cambiar por ella. Primero la
   // pestaña abierta y luego, una tras otra, las demás, para que cambiar de pestaña sea instantáneo.
   const [mounted, setMounted] = useState<string[]>([]);
-  const [pageLoaded, setPageLoaded] = useState(false);
   useEffect(() => {
-    if (!live) return;
-    // Safari no tiene requestIdleCallback: ahí basta con dejar respirar a la página un momento.
-    const hasIdle = typeof window.requestIdleCallback === 'function';
-    let idle = 0;
-    const start = () => {
-      idle = hasIdle
-        ? window.requestIdleCallback(() => setPageLoaded(true), { timeout: 1500 })
-        : window.setTimeout(() => setPageLoaded(true), 300);
-    };
-    if (document.readyState === 'complete') start();
-    else window.addEventListener('load', start, { once: true });
-    return () => {
-      window.removeEventListener('load', start);
-      if (hasIdle) window.cancelIdleCallback(idle); else window.clearTimeout(idle);
-    };
-  }, [live]);
-  useEffect(() => {
-    if (pageLoaded) setMounted((m) => (m.includes(screen.id) ? m : [...m, screen.id]));
-  }, [pageLoaded, screen.id]);
+    if (live) setMounted((m) => (m.includes(screen.id) ? m : [...m, screen.id]));
+  }, [live, screen.id]);
   const preloadNext = useCallback(() => {
     setMounted((m) => {
       const next = SCREENS.find((s) => !m.includes(s.id));
@@ -357,11 +339,13 @@ function Screens() {
       <div id="lp-screen" data-reveal role="tabpanel" aria-labelledby={`lp-tab-${screen.id}`} className="lp-screen">
         <p key={screen.id} className="lp-screen__text">{screen.text}</p>
         <div className={`lp-screen__frame${live ? ' lp-screen__frame--live' : ''}`}>
-          <img
-            key={`${screen.id}-${dark}`} src={`/landing/${screen.id}-${dark ? 'dark' : 'light'}.webp`}
-            width={1600} height={1000} loading="lazy" decoding="async"
-            alt={live ? '' : `Pantalla «${screen.tab}» de Portfolio Tracker con datos de ejemplo`}
-          />
+          {!live && (
+            <img
+              key={`${screen.id}-${dark}`} src={`/landing/${screen.id}-${dark ? 'dark' : 'light'}.webp`}
+              width={1600} height={1000} loading="lazy" decoding="async"
+              alt={`Pantalla «${screen.tab}» de Portfolio Tracker con datos de ejemplo`}
+            />
+          )}
           {live && SCREENS.filter((s) => mounted.includes(s.id)).map((s) => (
             <LiveDemo key={s.id} view={s.id} label={s.tab} active={s.id === screen.id} onReady={preloadNext} />
           ))}
@@ -372,26 +356,25 @@ function Screens() {
 }
 
 /**
- * La demo dentro de la portada: aparece sobre la captura cuando ya ha pintado sus datos y su pestaña está
- * abierta. Va en su propia memoria (ver demo/embed.ts), así que no toca nada del visitante.
+ * La demo dentro de la portada: se ve la de la pestaña abierta; las demás cargan por debajo, ocultas. Va en su
+ * propia memoria (ver demo/embed.ts), así que no toca nada del visitante.
  */
 function LiveDemo({ view, label, active, onReady }: { view: string; label: string; active: boolean; onReady: () => void }) {
-  const [ready, setReady] = useState(false);
   const timer = useRef<number>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
-  // El documento carga antes de que la app pinte: se espera a que no quede la pantalla de carga (máx. 6 s).
+  // La siguiente pestaña empieza a cargar cuando esta ya ha pintado, no antes: así no compiten (máx. 6 s).
   const waitForApp = (frame: HTMLIFrameElement, since = Date.now()) => {
     const doc = frame.contentDocument;
     const painted = doc?.getElementById('root')?.firstElementChild && !doc.querySelector('.enter-splash');
     if (painted || Date.now() - since > 6000) {
-      timer.current = window.setTimeout(() => { setReady(true); onReady(); }, 250);
+      timer.current = window.setTimeout(onReady, 250);
       return;
     }
     timer.current = window.setTimeout(() => waitForApp(frame, since), 120);
   };
   return (
     <iframe
-      className={`lp-live${ready && active ? ' lp-live--ready' : ''}`}
+      className={`lp-live${active ? ' lp-live--active' : ''}`}
       src={`/demo?vista=${view}`} title={`Demo de Portfolio Tracker: ${label}`}
       aria-hidden={!active || undefined} tabIndex={active ? undefined : -1} inert={!active}
       onLoad={(e) => waitForApp(e.currentTarget)}

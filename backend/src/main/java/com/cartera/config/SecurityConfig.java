@@ -13,6 +13,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.HeaderWriter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 
 /**
@@ -24,6 +25,23 @@ import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWrite
 @EnableWebSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
+
+    /** El portfolio del autor: la única web ajena que puede enseñar la demo dentro de un marco. */
+    static final String PORTFOLIO_ORIGIN = "https://raclosdev.github.io";
+
+    /**
+     * Quién puede enmarcar cada página: la aplicación, solo su propio dominio; la demo (/demo, con
+     * una cartera de ejemplo y sin sesión), también el portfolio. Va después de la cabecera de la CSP.
+     */
+    static final HeaderWriter FRAMING = (request, response) -> {
+        String path = request.getRequestURI();
+        if (path.equals("/demo") || path.startsWith("/demo/")) {
+            response.setHeader("Content-Security-Policy", response.getHeader("Content-Security-Policy")
+                    .replace("frame-ancestors 'self'", "frame-ancestors 'self' " + PORTFOLIO_ORIGIN));
+        } else {
+            response.setHeader("X-Frame-Options", "SAMEORIGIN");
+        }
+    };
 
     private final JwtAuthFilter jwtAuthFilter;
     private final RateLimitingFilter rateLimitingFilter;
@@ -73,7 +91,8 @@ public class SecurityConfig {
             .formLogin(form -> form.disable())
             .logout(logout -> logout.disable())
             .headers(headers -> headers
-                .frameOptions(frame -> frame.sameOrigin())
+                .frameOptions(frame -> frame.disable())
+                .addHeaderWriter(FRAMING)
                 .contentTypeOptions(content -> {})
                 .referrerPolicy(ref -> ref.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
                 .httpStrictTransportSecurity(hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31536000))
@@ -84,7 +103,7 @@ public class SecurityConfig {
                         + "font-src 'self'; "
                         + "img-src 'self' data: blob: https:; "
                         + "connect-src 'self' https://accounts.google.com/gsi/; "
-                        // La portada incrusta la demo (/demo); fuera de la propia web no se puede enmarcar.
+                        // La portada incrusta la demo (/demo). Quién puede enmarcar la web lo decide FRAMING.
                         + "frame-src 'self' https://accounts.google.com/gsi/; "
                         + "worker-src 'self'; manifest-src 'self'; "
                         + "base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'self'"))
