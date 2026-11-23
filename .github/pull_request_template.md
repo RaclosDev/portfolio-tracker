@@ -4,7 +4,8 @@
 
 ## Cómo se ha probado
 
-- [ ] `npm run lint && npm run typecheck && npm test && npm run build`
+- [ ] `cd backend && ./mvnw verify`
+- [ ] `cd frontend && npm run lint && npm test && npm run build`
 - [ ] Probado a mano en local cuando el cambio se ve en pantalla
 
 ## Notas para la revisión
