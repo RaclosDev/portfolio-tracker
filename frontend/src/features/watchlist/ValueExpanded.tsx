@@ -68,7 +68,8 @@ export function ValueExpanded({ row, base, width, onEdit, onBought, onClose, onR
   const [chosen, setView] = useState<View>(() => {
     const stored = localStorage.getItem(VIEW_KEY);
     // Las antiguas pestañas de TradingView y del gráfico histórico pasan a ser la gráfica de velas.
-    return stored === 'tradingview' || stored === 'grafico' ? 'velas' : (stored as View) || 'mapa';
+    // Sin vista guardada (primera visita, la demo) se abre la gráfica.
+    return stored === 'tradingview' || stored === 'grafico' ? 'velas' : (stored as View) || 'velas';
   });
   const id = useId();
   const box = useRef<HTMLDivElement>(null);
@@ -81,7 +82,7 @@ export function ValueExpanded({ row, base, width, onEdit, onBought, onClose, onR
   const tvSymbol = tradingViewSymbol(item.symbol, quote?.quoteType);
   // En el móvil no hay mapa de precios: la ficha con los datos y, debajo, la gráfica.
   const phone = useMedia(MOBILE);
-  const view = phone ? 'velas' : VIEWS.some(([v]) => v === chosen) ? chosen : 'mapa';
+  const view = phone ? 'velas' : VIEWS.some(([v]) => v === chosen) ? chosen : 'velas';
   const choose = (v: View) => {
     setView(v);
     localStorage.setItem(VIEW_KEY, v);
