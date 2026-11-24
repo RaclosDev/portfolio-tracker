@@ -6,6 +6,7 @@
  *  - alert: dato de cotización antiguo (sin conexión), junto al precio afectado,
  *  - locate: volver a centrar en pantalla el detalle abierto,
  *  - chevron, check: desplegables (abrir y opción elegida),
+ *  - calendar: campo de fecha,
  *  - refresh, bell, gear, plus, search: botones de la cabecera en el móvil, donde no cabe el texto
  *    (en el escritorio esos botones siguen llevando texto, que es más claro).
  */
@@ -19,6 +20,7 @@ const PATHS = {
   search: 'M8 2.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Zm4 9.5 3.5 3.5',
   chevron: 'M4.5 7 9 11.5 13.5 7',
   check: 'M3.5 9.5 7.2 13 14.5 5',
+  calendar: 'M3 4.5h12v11H3v-11Zm0 3.5h12M6 2.5v3M12 2.5v3',
   locate: 'M9 1.5v3M9 13.5v3M1.5 9h3M13.5 9h3M9 4.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9ZM9 8.2a.8.8 0 1 1 0 1.6.8.8 0 0 1 0-1.6Z',
   note: 'M4.5 2.5h6l3 3v10h-9v-13Zm6 0v3h3M6.8 9h4.4M6.8 12h4.4',
   wallet: 'M2.5 5.5h13v9.5h-13v-9.5Zm0 0 9-3 .8 3M12 9.2h3.5v2.6H12a1.3 1.3 0 0 1 0-2.6Z',

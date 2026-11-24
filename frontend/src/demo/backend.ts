@@ -4,6 +4,7 @@
  * cartera y las operaciones son ficticias, y los cambios se pierden al recargar. Sin conexión, todo es ficticio. Los cálculos usan el mismo código
  * compartido que el servidor (`@watchlist/shared`), así que las pantallas se comportan igual.
  */
+import { EMBED_THEME } from './embed.ts';
 import {
   bulkBrokerSchema,
   carteraImportSchema,
@@ -173,7 +174,7 @@ function targetsOf(symbol: string): AnalystTargets | null {
 
 // Estado en memoria -------------------------------------------------------------------------------
 const stamp = () => new Date().toISOString();
-let settings: Settings = { ...DEFAULT_SETTINGS };
+let settings: Settings = { ...DEFAULT_SETTINGS, ...(EMBED_THEME ? { theme: EMBED_THEME } : {}) };
 // «Mi vigilancia» va primera y mezcla bolsa española y estadounidense: es la que abre la portada.
 let lists = [{ id: 4, name: 'Mi vigilancia' }, { id: 1, name: 'Bolsa española' }, { id: 2, name: 'S&P 500' }, { id: 3, name: 'ETF' }];
 let items: Item[] = [];

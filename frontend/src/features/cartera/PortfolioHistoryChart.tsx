@@ -1,5 +1,6 @@
 import { shiftDate, type PortfolioHistoryPoint } from '@/shared';
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
+import { DateField } from '../../components/DateField.tsx';
 import { money } from '../../lib/format.ts';
 import { signed } from './model.ts';
 
@@ -25,9 +26,14 @@ export function PortfolioHistoryChart({ points, mode }: { points: PortfolioHisto
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const selectedIndex = points.findIndex((p) => p.date === selectedDate);
-  const index = selectedIndex < 0 ? points.length - 1 : selectedIndex;
+  // La fecha fijada (campo «Consultar fecha» o clic en la gráfica) manda; pasar el ratón solo la previsualiza.
+  const [pinnedDate, setPinnedDate] = useState<string | null>(null);
+  const [hoverDate, setHoverDate] = useState<string | null>(null);
+  const indexOf = (date: string | null) => (date == null ? -1 : points.findIndex((p) => p.date === date));
+  const pinnedAt = indexOf(pinnedDate);
+  const pinnedIndex = pinnedAt < 0 ? points.length - 1 : pinnedAt;
+  const hoverAt = indexOf(hoverDate);
+  const index = hoverAt < 0 ? pinnedIndex : hoverAt;
   const selected = points[index];
   // Las etiquetas del eje usan --fs-xs (0,857 rem): su ancho depende del tamaño de letra elegido en Ajustes.
   const labelPx = parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.857;
@@ -58,12 +64,18 @@ export function PortfolioHistoryChart({ points, mode }: { points: PortfolioHisto
 
   if (!selected) return <p className="chart-empty muted">No hay fechas en este periodo.</p>;
   const first = points[0]!;
-  const move = (event: PointerEvent<SVGSVGElement>) => {
+  const dateAt = (event: PointerEvent<SVGSVGElement>) => {
     const matrix = event.currentTarget.getScreenCTM();
-    if (!matrix) return;
+    if (!matrix) return null;
     const x = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse()).x;
     const next = Math.round((x - geo.left) / (width - geo.left - M.right) * (points.length - 1));
-    setSelectedDate(points[Math.max(0, Math.min(points.length - 1, next))]!.date);
+    return points[Math.max(0, Math.min(points.length - 1, next))]!.date;
+  };
+  const hover = (event: PointerEvent<SVGSVGElement>) => setHoverDate(dateAt(event));
+  const pin = (event: PointerEvent<SVGSVGElement>) => {
+    const date = dateAt(event);
+    if (date) setPinnedDate(date);
+    setHoverDate(null);
   };
 
   return <div className="portfolio-history" ref={container}>
@@ -77,8 +89,8 @@ export function PortfolioHistoryChart({ points, mode }: { points: PortfolioHisto
         <span className="small muted">{mode === 'result' ? 'Incluye ventas y cobros' : 'Sin efectivo'}</span></div>}
     </div>
     {geo.hasValues ? <svg className="portfolio-history__svg" viewBox={`0 0 ${width} ${H}`} role="img"
-      aria-label={`${mode === 'result' ? 'Resultado económico' : 'Valor de cartera'} del ${dateLabel(first.date)} al ${dateLabel(points[points.length - 1]!.date)}${compare ? ', con y sin efecto divisa' : ''}. Consulta cada fecha en el control inferior.`}
-      onPointerMove={move} onPointerDown={move}>
+      aria-label={`${mode === 'result' ? 'Resultado económico' : 'Valor de cartera'} del ${dateLabel(first.date)} al ${dateLabel(points[points.length - 1]!.date)}${compare ? ', con y sin efecto divisa' : ''}. Consulta cada fecha en el campo inferior.`}
+      onPointerMove={hover} onPointerDown={pin} onPointerLeave={() => setHoverDate(null)} onPointerCancel={() => setHoverDate(null)}>
       {geo.ticks.map((v) => <g key={v}>
         <line x1={geo.left} x2={width - M.right} y1={geo.y(v)} y2={geo.y(v)} stroke="var(--border)" />
         <text x={geo.left - 10} y={geo.y(v) + 4} textAnchor="end">{tickLabel(v)}</text>
@@ -94,10 +106,8 @@ export function PortfolioHistoryChart({ points, mode }: { points: PortfolioHisto
     </svg> : <p className="chart-empty muted">Faltan cotizaciones históricas para estas fechas. Revisa las cotizaciones de los valores o elige otro periodo.</p>}
     {compare && <div className="portfolio-history__legend" aria-label="Leyenda"><span>Con efecto divisa</span><span>Sin efecto divisa</span></div>}
     <div className="portfolio-history__cursor">
-      <label>Consultar fecha <input className="input" type="date" min={first.date} max={points[points.length - 1]!.date} value={selected.date}
-        onChange={(e) => { if (points.some((p) => p.date === e.target.value)) setSelectedDate(e.target.value); }} /></label>
-      <input type="range" min={0} max={points.length - 1} value={index} aria-label="Recorrer las fechas del gráfico"
-        aria-valuetext={`${dateLabel(selected.date)}: ${money(selected[field], 'EUR', 2)}`} onChange={(e) => setSelectedDate(points[Number(e.target.value)]!.date)} />
+      <label>Consultar fecha <DateField min={first.date} max={points[points.length - 1]!.date} value={points[pinnedIndex]!.date}
+        allowed={(d) => points.some((p) => p.date === d)} onChange={(d) => { setPinnedDate(d); setHoverDate(null); }} /></label>
     </div>
     {mode === 'result' && <dl className="portfolio-history__bridge" aria-label="Desglose del resultado del periodo">
       <div><dt>Valor inicial <small>{dateLabel(shiftDate(first.date, -1))}</small></dt><dd>{money(selected.startingValueEur, 'EUR', 2)}</dd></div>

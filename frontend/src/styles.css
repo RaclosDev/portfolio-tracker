@@ -258,6 +258,40 @@ p, li { text-wrap: pretty; }
 .select-menu__value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .select-menu .icon--chevron { flex: none; color: var(--text-2); transition: transform 120ms ease-out; }
 .select-menu[aria-expanded='true'] .icon--chevron { transform: rotate(180deg); }
+/* Campo de fecha (DateField): el mismo campo que los desplegables y un calendario propio. */
+.date-field { gap: 10px; font: inherit; font-variant-numeric: tabular-nums; }
+.field .date-field { width: 100%; }
+.date-field .icon--calendar { flex: none; color: var(--text-2); }
+.date-field--empty .select-menu__value { color: var(--text-2); }
+.sheet-date { margin-left: 8px; }
+.date-pop { width: 276px; padding: 10px; overflow: visible; }
+.date-pop__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.date-pop__title { font-size: var(--fs-sm); font-weight: 650; }
+.date-pop__title::first-letter { text-transform: uppercase; }
+.date-pop__nav { display: inline-grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); cursor: pointer; }
+.date-pop__nav:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+.date-pop__nav:disabled { opacity: 0.3; cursor: default; }
+.date-pop__nav--prev .icon { transform: rotate(90deg); }
+.date-pop__nav--next .icon { transform: rotate(-90deg); }
+.date-pop__grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.date-pop__dow { padding: 6px 0 4px; font-size: var(--fs-2xs); color: var(--text-2); text-align: center; }
+.date-pop__day {
+  height: 34px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--text);
+  font: inherit; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.date-pop__day:hover:not(:disabled), .date-pop__day:focus-visible { background: var(--surface-2); outline: none; }
+.date-pop__day:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+.date-pop__day[aria-current='date'] { box-shadow: inset 0 0 0 1px var(--border); font-weight: 650; }
+.date-pop__day[aria-pressed='true'], .date-pop__day[aria-pressed='true']:hover { background: var(--accent); color: var(--accent-text); font-weight: 650; box-shadow: none; }
+.date-pop__day:disabled { color: var(--text-2); opacity: 0.35; cursor: default; }
+.date-pop__foot { display: flex; justify-content: space-between; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+.date-pop__link { padding: 6px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--accent); font: inherit; font-size: var(--fs-sm); font-weight: 600; cursor: pointer; }
+.date-pop__link:hover { background: var(--surface-2); }
+@media (max-width: 700px) {
+  .date-pop { width: min(320px, calc(100vw - 16px)); }
+  .date-pop__day { height: 40px; }
+  .date-pop__nav { width: 40px; height: 40px; }
+}
 .tab__count { font-size: var(--fs-2xs); padding: 0 6px; border-radius: 99px; background: var(--border); }
 .tabs__sep { flex: 0 0 1px; align-self: stretch; margin: 6px 6px; background: var(--border); }
 .topbar__right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
@@ -415,7 +449,7 @@ p, li { text-wrap: pretty; }
   border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
 }
 .wl-table { width: 100%; border-collapse: separate; border-spacing: 0; }
-.wl-table--watchlist .col-mobile-price, .wl-table--watchlist .col-mobile-signal { display: none; }
+.wl-table--watchlist .col-mobile-price, .wl-table--watchlist .col-mobile-signal, .wl-table--watchlist .col-mobile-buy { display: none; }
 .wl-table th {
   position: sticky; top: 0;
   padding: 9px 10px; text-align: left; font-size: var(--fs-xs); font-weight: 600; color: var(--text-2);
@@ -1535,6 +1569,18 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
 .sheet-range__mean { position: absolute; top: 1px; width: 2px; height: 12px; margin-left: -1px; border-radius: 1px; background: var(--pm-consensus); }
 .sheet-range__price { position: absolute; top: 2px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--pm-price); box-shadow: 0 0 0 2px var(--surface); }
 .sheet__row dd .sheet-range__ends { display: flex; justify-content: space-between; margin-top: 2px; font-weight: 400; }
+.sheet__row dd .sheet-range__legend { display: none; }
+.sheet-range__key { display: inline-block; flex: none; }
+.sheet-range__key--price { width: 8px; height: 8px; border-radius: 50%; background: var(--pm-price); }
+.sheet-range__key--mean { width: 2px; height: 11px; border-radius: 1px; background: var(--pm-consensus); }
+.sheet-range__key--band { width: 14px; height: 4px; border-radius: 2px; background: color-mix(in oklab, var(--pm-consensus) 45%, transparent); }
+/* Móvil: primero los datos del valor y debajo la gráfica; la horquilla del consenso lleva su leyenda. */
+@media (max-width: 700px) {
+  .xp__body > .xp__data { order: -1; }
+  .xp__body > .xp__visual { padding-top: 12px; }
+  .sheet__row dd .sheet-range__legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; font-size: var(--fs-xs); font-weight: 400; color: var(--text-2); }
+  .sheet-range__legend > span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+}
 
 /* Compra prevista: tres cifras en fila. */
 .sheet-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 8px 0 2px; }
@@ -1625,6 +1671,30 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
   .wl-table--watchlist .col-mobile-signal .pill { font-size: var(--fs-2xs); padding: 1px 4px; }
 }
 
+/* Móvil: la fila es nombre + ticker, precio y los dos primeros precios de compra. Con logo, sin mercado. */
+@media (max-width: 700px) {
+  table.wl-table.wl-table--watchlist.wl-table--watchlist :is(th, td).col-mobile-signal { display: none; }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist thead tr:not(.group-row) > th.col-mobile-buy:not(#x):not(#y),
+  table.wl-table.wl-table--watchlist.wl-table--watchlist tr.row > td.col-mobile-buy:not(#x):not(#y) { display: table-cell; }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist :is(th, td).col-name { width: 35%; }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist :is(th, td).col-mobile-price { width: 22%; }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist :is(th, td).col-mobile-buy { width: 21.5%; }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist th { padding-left: 5px; padding-right: 5px; white-space: nowrap; }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist tr.row td { padding-left: 5px; padding-right: 5px; }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist :is(th, td).col-name { padding-left: 10px; }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist .col-name .sub-exchange { display: none; }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist .col-name .with-logo { gap: 6px; }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist .col-name .logo { width: 28px; height: 28px; flex: none; }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist .name-btn { font-size: var(--fs-md); line-height: 1.15; }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist .col-mobile-price .stack--right > :nth-child(n + 3) { display: none; }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist .col-mobile-price .num.strong { font-size: var(--fs-sm); }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist .col-mobile-price .mkt { display: none; }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist .col-mobile-buy .stack--right { align-items: flex-end; gap: 2px; }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist .col-mobile-buy .num { font-size: var(--fs-sm); }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist .col-mobile-buy .pill { font-size: var(--fs-2xs); padding: 1px 4px; }
+  table.wl-table.wl-table--watchlist.wl-table--watchlist .th-btn { min-width: 0; }
+}
+
 /* ---------- Cartera (registro de operaciones) ---------- */
 .cartera-table td { white-space: nowrap; }
 .cartera-table .num.delta, .cartera-table .delta { font-size: inherit; }
@@ -1702,7 +1772,6 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
 .portfolio-periods { margin-bottom: 6px; }
 .portfolio-dates { display: flex; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .portfolio-dates label, .portfolio-history__cursor label { display: flex; align-items: center; gap: 8px; font-size: var(--fs-xs); color: var(--text-2); }
-.portfolio-dates .input, .portfolio-history__cursor .input { width: auto; min-width: 0; padding: 6px 8px; font-size: var(--fs-xs); }
 .portfolio-history__readout { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 16px; margin-bottom: 6px; }
 .portfolio-history__readout > div { display: grid; gap: 3px; }
 .portfolio-history__readout strong { font-size: var(--fs-2xl); font-weight: 600; }
@@ -1717,7 +1786,6 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
 .portfolio-history__legend span::before { content: ''; width: 20px; border-top: 3px solid var(--accent); }
 .portfolio-history__legend span + span::before { border-color: var(--chart-3); border-top-style: dashed; }
 .portfolio-history__cursor { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 8px; }
-.portfolio-history__cursor input[type='range'] { flex: 1; min-width: 100px; accent-color: var(--accent); }
 .portfolio-history__bridge { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; border-top: 1px solid var(--border); margin: 12px 0 0; padding-top: 10px; font-size: var(--fs-xs); }
 .portfolio-history__bridge > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 2px 8px; }
 .portfolio-history__bridge > div:last-child { grid-column: 1 / -1; }
@@ -1747,9 +1815,9 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
   .cartera-breakdown .hl-cell { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .cartera-breakdown .hl-figure small { display: inline; }
   .portfolio-chart-tabs button, .portfolio-periods button { min-height: 44px; }
-  .portfolio-charts :is(.input, input[type='range']) { min-height: 44px; }
-  .portfolio-chart-tabs { flex-wrap: nowrap; overflow-x: auto; }
-  .portfolio-chart-tabs button { flex-shrink: 0; }
+  /* Se reparten el ancho: con scroll horizontal el margen negativo de la pestaña creaba además uno vertical. */
+  .portfolio-chart-tabs { flex-wrap: nowrap; gap: 4px; }
+  .portfolio-chart-tabs button { flex: 1 1 0; min-width: 0; padding-inline: 2px; }
   /* Ocho periodos en una fila: se reparten el ancho en vez de saltar a una segunda línea. */
   .portfolio-periods { flex-wrap: nowrap; gap: 0; }
   .portfolio-periods button { flex: 1 1 auto; min-width: 0; padding-inline: 4px; }
@@ -1769,7 +1837,7 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
   }
   .portfolio-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .portfolio-dates label { display: grid; gap: 4px; min-width: 0; }
-  .portfolio-dates .input { width: 100%; }
+  .portfolio-dates .date-field { width: 100%; }
   .portfolio-history__readout { gap: 10px 18px; }
   .portfolio-history__readout strong { font-size: var(--fs-xl); }
 }

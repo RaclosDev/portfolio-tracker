@@ -5,6 +5,7 @@ import { ApiError, api } from '../../api/client.ts';
 import { useDeleteItem, useSaveItem } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
 import { toast } from '../../components/feedback.tsx';
+import { DateField } from '../../components/DateField.tsx';
 import { MINOR_CURRENCY, money, num, parseDecimal, pct, price, shortDate } from '../../lib/format.ts';
 import type { OperationDraft } from '../cartera/OperationDialog.tsx';
 import { SymbolPicker } from './SymbolPicker.tsx';
@@ -307,7 +308,7 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought, prefi
               </div>
               <div className="field">
                 <label htmlFor="ou">Válida hasta</label>
-                <input id="ou" type="date" value={orderUntil} onChange={(e) => setOrderUntil(e.target.value)} />
+                <DateField id="ou" clearable value={orderUntil} onChange={setOrderUntil} />
               </div>
             </div>
           )}

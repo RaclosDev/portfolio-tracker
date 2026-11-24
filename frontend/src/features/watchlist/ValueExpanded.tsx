@@ -7,6 +7,7 @@ import { Icon } from '../../components/Icon.tsx';
 import { CompanyLogo } from '../../components/CompanyLogo.tsx';
 import { pct, price } from '../../lib/format.ts';
 import { tabListKeys } from '../../lib/tabs.ts';
+import { MOBILE, useMedia } from '../../lib/useMedia.ts';
 import { watchlistLines } from './chartLines.ts';
 import { CandleChart } from './LazyCandleChart.tsx';
 import { PriceMapLarge } from './PriceMapLarge.tsx';
@@ -78,7 +79,9 @@ export function ValueExpanded({ row, base, width, onEdit, onBought, onClose, onR
   const shownPrice = live?.price || quote?.price;
   // Los fondos sin cotización en bolsa no están en TradingView: sin enlace para abrirlo allí.
   const tvSymbol = tradingViewSymbol(item.symbol, quote?.quoteType);
-  const view = VIEWS.some(([v]) => v === chosen) ? chosen : 'mapa';
+  // En el móvil no hay mapa de precios: la ficha con los datos y, debajo, la gráfica.
+  const phone = useMedia(MOBILE);
+  const view = phone ? 'velas' : VIEWS.some(([v]) => v === chosen) ? chosen : 'mapa';
   const choose = (v: View) => {
     setView(v);
     localStorage.setItem(VIEW_KEY, v);
@@ -125,6 +128,7 @@ export function ValueExpanded({ row, base, width, onEdit, onBought, onClose, onR
 
       <div className="xp__body">
         <section className="xp__panel xp__visual">
+          {!phone && (
           <div className="xp__tabbar">
           <div className="xp__tabs" role="tablist" aria-label="Vista" onKeyDown={tabListKeys}>
             {VIEWS.map(([v, label]) => (
@@ -149,7 +153,8 @@ export function ValueExpanded({ row, base, width, onEdit, onBought, onClose, onR
             </button>
           )}
           </div>
-          <div className="xp__view" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${view}`}>
+          )}
+          <div className="xp__view" {...(phone ? { role: 'group', 'aria-label': 'Gráfica' } : { role: 'tabpanel', id: `${id}-panel`, 'aria-labelledby': `${id}-tab-${view}` })}>
           {view === 'mapa' ? (
             <>
               <PriceMapLarge row={row} />

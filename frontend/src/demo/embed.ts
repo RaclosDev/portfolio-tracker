@@ -13,11 +13,18 @@ const VIEWS = {
 
 export type EmbedView = keyof typeof VIEWS;
 
-const requested = window.location.pathname.startsWith('/demo')
-  ? new URLSearchParams(window.location.search).get('vista')
-  : null;
+const params = window.location.pathname.startsWith('/demo') ? new URLSearchParams(window.location.search) : null;
+const requested = params?.get('vista') ?? null;
 
 export const EMBED = requested !== null && requested in VIEWS && window.parent !== window;
+
+/**
+ * Tema que pide quien incrusta la demo (`&tema=oscuro` o `&tema=claro`), para que case con su página.
+ * Sin él, la demo sigue el tema del visitante.
+ */
+const THEMES = { oscuro: 'dark', claro: 'light' } as const;
+const theme = params?.get('tema') ?? '';
+export const EMBED_THEME = EMBED && theme in THEMES ? THEMES[theme as keyof typeof THEMES] : null;
 
 class MemoryStorage implements Storage {
   private data = new Map<string, string>();
@@ -46,4 +53,5 @@ if (EMBED) {
   memory.setItem('watchlist.cartera.tourSeen', '1');
   Object.defineProperty(window, 'localStorage', { configurable: true, value: memory });
   document.documentElement.classList.add('is-embed');
+  if (EMBED_THEME) document.documentElement.dataset.theme = EMBED_THEME; // desde el primer pintado
 }

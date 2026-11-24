@@ -19,6 +19,7 @@ import { ApiError, api } from '../../api/client.ts';
 import { useOperationMutations } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
 import { toast } from '../../components/feedback.tsx';
+import { DateField } from '../../components/DateField.tsx';
 import { money, parseDecimal, price } from '../../lib/format.ts';
 import { QuoteSymbolField } from './QuoteSymbolField.tsx';
 import { proposeTicker } from './proposeTicker.ts';
@@ -385,7 +386,7 @@ export function OperationDialog({ operation: op, draft, instruments, brokers, ho
           <div className="grid-3">
             <div className="field">
               <label htmlFor="op-date">Fecha</label>
-              <input id="op-date" type="date" value={date} max={localToday()} onChange={(e) => setDate(e.target.value)} />
+              <DateField id="op-date" value={date} max={localToday()} onChange={setDate} />
             </div>
             <div className="field">
               <label htmlFor="op-broker">Bróker</label>

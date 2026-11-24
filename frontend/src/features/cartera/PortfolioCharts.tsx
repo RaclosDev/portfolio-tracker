@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../../api/client.ts';
 import { Donut, type Slice } from './Donut.tsx';
+import { DateField } from '../../components/DateField.tsx';
 import { Icon } from '../../components/Icon.tsx';
 import { HISTORY_PERIODS, periodStart, type HistoryPeriod } from './historyRange.ts';
 import type { CarteraModel } from './model.ts';
@@ -55,8 +56,8 @@ function History({ first, mode, selection, onSelection, liveValue }: {
       {HISTORY_PERIODS.map((p) => <button type="button" key={p.id} title={p.title} aria-label={p.title} aria-pressed={period === p.id} onClick={() => onSelection({ ...selection, period: p.id })}>{p.label}</button>)}
     </div>
     <div className="portfolio-dates">
-      <label>Desde <input type="date" className="input" value={from} min={first} max={to || today} onChange={(e) => setDate('from', e.target.value)} /></label>
-      <label>Hasta <input type="date" className="input" value={to} min={from || first} max={today} onChange={(e) => setDate('to', e.target.value)} /></label>
+      <label>Desde <DateField value={from} min={first} max={to || today} onChange={(v) => setDate('from', v)} /></label>
+      <label>Hasta <DateField value={to} min={from || first} max={today} onChange={(v) => setDate('to', v)} /></label>
     </div>
     {!valid ? <p role="alert" className="error-box">Elige un periodo entre tu primera operación y hoy, con la fecha inicial anterior o igual a la final.</p>
       : history.isPending ? <ChartSkeleton height={280} label="Cargando precios y cambios históricos…" />
