@@ -266,11 +266,11 @@ export function App() {
     setPeekQ('');
   };
 
-  // El tour se abre solo la primera vez, cuando ya hay datos que enseñar.
+  // El tour se abre solo la primera vez, cuando ya hay datos que enseñar. En la demo no: se pide desde Ajustes.
   const hasTourData = onPortfolio ? (pf.data?.operations.length ?? 0) > 0 : (view?.rows.length ?? 0) > 0;
   const tourKey = onPortfolio ? LS_CARTERA_TOUR : LS_TOUR;
   useEffect(() => {
-    if (hasTourData && !localStorage.getItem(tourKey)) setTourOpen(true);
+    if (!DEMO && hasTourData && !localStorage.getItem(tourKey)) setTourOpen(true);
   }, [hasTourData, tourKey]);
   const closeTour = () => {
     localStorage.setItem(tourKey, '1');

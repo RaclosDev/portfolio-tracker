@@ -1,6 +1,7 @@
 import { DEFAULT_STATUS_NAMES, isMuted, levelStatus, localToday, type WatchlistRow } from '@/shared';
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { useSettings } from '../../api/hooks.ts';
+import { DateField } from '../../components/DateField.tsx';
 import { Icon } from '../../components/Icon.tsx';
 import { compact, money, num, parseDecimal, pct, price, RECOMMENDATION_ES, shortDate } from '../../lib/format.ts';
 import { KEY_DATE_LABEL, upcoming } from '../../lib/keyDates.ts';
@@ -197,7 +198,7 @@ export function QuoteSheet({ row, base, onEdit, editing = false, inline = false,
         {d.orderActive && (
           <label className="sheet-level__order sheet-level__until">
             Válida hasta
-            <input className="sheet-input num" type="date" value={d.orderUntil} onChange={(e) => ed.set('orderUntil', e.target.value)} />
+            <DateField clearable className="sheet-date" value={d.orderUntil} onChange={(v) => ed.set('orderUntil', v)} />
           </label>
         )}
       </li>
@@ -339,6 +340,11 @@ export function QuoteSheet({ row, base, onEdit, editing = false, inline = false,
                 <span className="sheet-range__ends num">
                   <span>Mín. {pr(round2(targets.low))}</span>
                   <span>Máx. {pr(round2(targets.high))}</span>
+                </span>
+                <span className="sheet-range__legend">
+                  <span><i className="sheet-range__key sheet-range__key--price" /> Precio hoy</span>
+                  <span><i className="sheet-range__key sheet-range__key--mean" /> Objetivo medio</span>
+                  <span><i className="sheet-range__key sheet-range__key--band" /> Del más bajo al más alto</span>
                 </span>
               </dd>
             )}

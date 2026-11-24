@@ -1,4 +1,5 @@
 import { COLOR_DEFS, type Colors, type Settings } from '@/shared';
+import { EMBED_THEME } from '../demo/embed.ts';
 
 /*
  * Colores configurables. Cada estado tiene un color base (Ajustes → Aspecto); de él se derivan
@@ -122,8 +123,10 @@ export function applyAppearance(s: Pick<Settings, 'skin' | 'theme' | 'density' |
   const el = document.documentElement;
   if (s.skin === 'paper') el.dataset.skin = s.skin;
   else delete el.dataset.skin; // la clásica es styles.css tal cual
-  if (s.theme === 'system') delete el.dataset.theme;
-  else el.dataset.theme = s.theme;
+  // Incrustada con un tema pedido, «como el sistema» es ese tema (también mientras cargan los ajustes).
+  const theme = s.theme === 'system' ? EMBED_THEME ?? 'system' : s.theme;
+  if (theme === 'system') delete el.dataset.theme;
+  else el.dataset.theme = theme;
   el.dataset.density = s.density;
   el.dataset.font = s.fontSize;
   derive(); // el contraste depende del tema

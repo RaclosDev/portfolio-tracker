@@ -194,6 +194,21 @@ function scrollToRow(id: number) {
   );
 }
 
+/** Nivel de compra en la fila del móvil: precio y distancia, sin edición (se edita en la ficha). */
+function MobileLevel({ row, index }: { row: WatchlistRow; index: number }) {
+  const level: LevelView | undefined = row.metrics.levels[index];
+  if (!level) return <span className="muted">–</span>;
+  return (
+    <span className="stack stack--right">
+      <span className="num">{price(level.price, row.quote?.currency)}</span>
+      <span className={`pill pill--${level.status}`}>
+        {level.status === 'reached' ? '✓ ' : ''}
+        {pct(level.distancePct)}
+      </span>
+    </span>
+  );
+}
+
 function PriceCell({ row }: { row: WatchlistRow }) {
   const { quote } = row;
   const mkt = quote && !quote.stale && quote.marketState ? MARKET_MARK[quote.marketState] : undefined;
@@ -244,7 +259,7 @@ const columns: Column[] = [
             <span className="ticker" title={[item.isin ?? quote?.isin, `Cotización: ${item.symbol}`].filter(Boolean).join(' · ')}>
               {displayTicker(item)}
             </span>
-            {quote?.exchange && <> · {quote.exchange}</>}
+            {quote?.exchange && <span className="sub-exchange"> · {quote.exchange}</span>}
             {/* Etiquetas de divisa y tipo en todas las filas; la divisa distinta de la base lleva color. */}
             {quote?.currency && (
               <TagButton
@@ -693,6 +708,16 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
                 Compra<span className="sort-ind" aria-hidden>{sort.id === 'map' ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</span>
               </button>
             </th>
+            <th className="col-mobile-buy al-right" aria-sort={sort.id === 'map' ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
+              <button type="button" className="th-btn" onClick={() => toggle('map')} title="Ordena por cercanía al nivel de compra">
+                Compra 1<span className="sort-ind" aria-hidden>{sort.id === 'map' ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</span>
+              </button>
+            </th>
+            <th className="col-mobile-buy al-right" aria-sort={sort.id === 'level1' ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
+              <button type="button" className="th-btn" onClick={() => toggle('level1')} title="Ordena por distancia a la compra 2">
+                Compra 2<span className="sort-ind" aria-hidden>{sort.id === 'level1' ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</span>
+              </button>
+            </th>
             <th className="col-actions">
               <span className="sr-only">Acciones</span>
             </th>
@@ -729,6 +754,13 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
                   {r.item.orderActive && <span className="pill watchlist-order-pill">Con orden</span>}
                 </span>
               </td>
+              <td className="col-mobile-buy al-right">
+                <span className="stack stack--right">
+                  <MobileLevel row={r} index={0} />
+                  {r.item.orderActive && <span className="pill watchlist-order-pill">Con orden</span>}
+                </span>
+              </td>
+              <td className="col-mobile-buy al-right"><MobileLevel row={r} index={1} /></td>
               <td className="col-actions">
                 <button
                   type="button"
@@ -743,7 +775,7 @@ export function WatchlistTable({ rows, listId, baseCurrency, blink, hiddenColumn
             </tr>
             {isOpen(r) && (
               <tr className="row-expand" id={`detalle-${r.item.id}`}>
-                <td colSpan={visible.length + 3}>
+                <td colSpan={visible.length + 5}>
                   <ValueExpanded
                     row={r}
                     base={baseCurrency}
