@@ -73,7 +73,8 @@ export function SortTable<T>({
   useLayoutEffect(() => {
     if (!anyOpen) return;
     const count = () => {
-      const ths = table.current?.querySelectorAll<HTMLElement>('thead th') ?? [];
+      // Solo la cabecera de esta tabla: las del desplegable (Lotes, Operaciones) también tienen <th>.
+      const ths = table.current?.querySelectorAll<HTMLElement>(':scope > thead > tr > th') ?? [];
       setSpan([...ths].filter((th) => getComputedStyle(th).display !== 'none').length || columns.length);
     };
     count();
