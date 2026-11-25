@@ -38,6 +38,11 @@ public class SecurityConfig {
         if (path.equals("/demo") || path.startsWith("/demo/")) {
             response.setHeader("Content-Security-Policy", response.getHeader("Content-Security-Policy")
                     .replace("frame-ancestors 'self'", "frame-ancestors 'self' " + PORTFOLIO_ORIGIN));
+            // La primera pantalla de la demo solo espera a las cotizaciones: el navegador las pide a la vez que el
+            // JavaScript en vez de cuando este ya ha cargado (~350 ms después). Mismo modo que el fetch de la demo.
+            if (path.equals("/demo")) {
+                response.setHeader("Link", "</api/public/market/demo/quotes>; rel=preload; as=fetch; crossorigin=anonymous");
+            }
         } else {
             response.setHeader("X-Frame-Options", "SAMEORIGIN");
         }

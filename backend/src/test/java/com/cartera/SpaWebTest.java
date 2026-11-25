@@ -59,6 +59,13 @@ class SpaWebTest {
     }
 
     @Test
+    void theDemoPreloadsItsQuotesAlongWithTheScripts() throws Exception {
+        mvc.perform(get("/demo")).andExpect(status().isOk())
+                .andExpect(header().string("Link", "</api/public/market/demo/quotes>; rel=preload; as=fetch; crossorigin=anonymous"));
+        mvc.perform(get("/login")).andExpect(status().isOk()).andExpect(header().doesNotExist("Link"));
+    }
+
+    @Test
     void indexIsNeverAStale304AfterADeploy() throws Exception {
         // Los ficheros del jar llevan todos la fecha de 1980; con Last-Modified, el navegador recibía un 304 y se
         // quedaba con el index.html (y el front) del despliegue anterior.

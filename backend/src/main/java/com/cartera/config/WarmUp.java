@@ -3,6 +3,7 @@ package com.cartera.config;
 import com.cartera.controller.BootstrapController;
 import com.cartera.model.User;
 import com.cartera.repository.UserRepository;
+import com.cartera.service.market.DemoPayload;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -15,7 +16,8 @@ import tools.jackson.databind.json.JsonMapper;
  * Calienta la app antes de abrir el puerto. Render pasa el tráfico a la instancia nueva en cuanto el puerto acepta
  * conexiones, y con 0,1 CPU la primera visita tras desplegar pagaba la JVM fría: 30 s en cargar. Aquí se construye
  * la primera pantalla de cada cuenta (consultas, cotizaciones a la caché, JSON) mientras la versión anterior sigue
- * atendiendo. El servidor web arranca en una fase posterior, así que espera a que esto termine.
+ * atendiendo, y la demo pública (precios, velas de cinco años y su JSON). El servidor web arranca en una fase
+ * posterior, así que espera a que esto termine.
  */
 @Component
 @ConditionalOnProperty(name = "app.warmup.enabled", havingValue = "true")
@@ -31,6 +33,7 @@ public class WarmUp implements SmartLifecycle {
     private final BootstrapController bootstrap;
     private final JwtUtil jwt;
     private final JsonMapper json;
+    private final DemoPayload demo;
     private volatile boolean running;
 
     @Override
@@ -52,6 +55,15 @@ public class WarmUp implements SmartLifecycle {
             log.warn("Calentamiento interrumpido: {}", e.toString());
         }
         log.info("Calentamiento: {} cuentas en {} ms", done, System.currentTimeMillis() - t0);
+        // La demo pública: precios, velas y su JSON listos antes de la primera visita.
+        long t1 = System.currentTimeMillis();
+        try {
+            demo.quotes();
+            demo.full();
+            log.info("Calentamiento: demo en {} ms", System.currentTimeMillis() - t1);
+        } catch (RuntimeException e) {
+            log.warn("Calentamiento: falló la demo: {}", e.toString());
+        }
         running = true;
     }
 

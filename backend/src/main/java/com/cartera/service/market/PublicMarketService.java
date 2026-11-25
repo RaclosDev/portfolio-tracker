@@ -13,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
@@ -50,6 +51,7 @@ public class PublicMarketService {
      */
     private final ReentrantLock landingLock = new ReentrantLock();
     private final ReentrantLock demoLock = new ReentrantLock();
+    private final AtomicBoolean refreshing = new AtomicBoolean();
 
     /** Cotización y velas de 5 minutos de las últimas sesiones. */
     public Snapshot landing() {
@@ -63,12 +65,34 @@ public class PublicMarketService {
         }
     }
 
-    /** Cotización y velas diarias de cinco años. */
+    /**
+     * Cotización y velas diarias de cinco años. Si la copia guardada ha caducado se devuelve igualmente y se renueva
+     * por detrás: la visita no espera a las fuentes (unos segundos con 24 valores). Solo espera la primera de todas.
+     */
     public Snapshot demo() {
+        Snapshot current = demo;
+        if (current != null && !current.quotes().isEmpty()) {
+            if (!fresh(current) && refreshing.compareAndSet(false, true)) {
+                Thread.ofVirtual().name("demo-refresh").start(() -> {
+                    try {
+                        rebuildDemo();
+                    } finally {
+                        refreshing.set(false);
+                    }
+                });
+            }
+            return current;
+        }
+        return rebuildDemo();
+    }
+
+    private Snapshot rebuildDemo() {
         demoLock.lock();
         try {
             if (fresh(demo)) return demo;
-            demo = build(DEMO, s -> market.getCandles(s, null).candles());
+            Snapshot built = build(DEMO, s -> market.getCandles(s, null).candles());
+            // Una renovación fallida (sin cotizaciones) no tapa la copia anterior.
+            if (!built.quotes().isEmpty() || demo == null) demo = built;
             return demo;
         } finally {
             demoLock.unlock();
