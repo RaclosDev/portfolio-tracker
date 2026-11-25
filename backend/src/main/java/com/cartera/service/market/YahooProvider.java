@@ -216,7 +216,7 @@ public class YahooProvider implements MarketDataProvider {
     }
 
     /** Barras del gráfico: instante (ms) y valores, saltando las vacías. */
-    record Bar(long at, Double o, Double h, Double l, Double c) {
+    record Bar(long at, Double o, Double h, Double l, Double c, Double v) {
     }
 
     static List<Bar> bars(JsonNode chart) {
@@ -225,7 +225,7 @@ public class YahooProvider implements MarketDataProvider {
         List<Bar> out = new ArrayList<>();
         for (int i = 0; i < ts.size(); i++) {
             out.add(new Bar(ts.get(i).asLong() * 1000, num(q.path("open").path(i)), num(q.path("high").path(i)),
-                    num(q.path("low").path(i)), num(q.path("close").path(i))));
+                    num(q.path("low").path(i)), num(q.path("close").path(i)), num(q.path("volume").path(i))));
         }
         return out;
     }
@@ -284,7 +284,7 @@ public class YahooProvider implements MarketDataProvider {
         double o = b.o() != null ? b.o() : c;
         double h = Math.max(b.h() != null ? b.h() : c, Math.max(o, c));
         double l = Math.min(b.l() != null ? b.l() : c, Math.min(o, c));
-        return new Candle(t, o, h, l, c);
+        return new Candle(t, o, h, l, c, b.v() != null && b.v() >= 0 ? b.v() : null);
     }
 
     @Override

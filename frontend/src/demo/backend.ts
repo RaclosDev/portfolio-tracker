@@ -89,7 +89,7 @@ const CATALOG = new Map([...SPAIN, ...USA, ...FUNDS].map((s) => [s.symbol, s]));
 const FX: Record<string, number> = { EUR: 1, USD: 1.09 };
 
 /** Cotizaciones y velas diarias reales de los valores del catálogo (GET /api/public/market/demo y /demo/quotes). */
-interface RealCandle { t: string; o: number; h: number; l: number; c: number }
+interface RealCandle { t: string; o: number; h: number; l: number; c: number; v?: number | null }
 interface Snapshot { quotes?: Record<string, Quote>; candles?: Record<string, RealCandle[]> }
 const realQuotes = new Map<string, Quote>();
 const realCandles = new Map<string, RealCandle[]>();

@@ -59,6 +59,8 @@ import {
   indicatorLabel,
   normalizeIndicator,
   TEMPLATES,
+  fmtVolume,
+  hasVolume,
   type Indicator,
   type IndicatorDef,
   type IndKind,
@@ -120,7 +122,10 @@ const GROUPS: { id: string; label: string; tools: DrawTool[] }[] = [
   { id: 'measure', label: 'Medir', tools: ['measure'] },
 ];
 const SHORTCUTS: Record<string, DrawTool> = { KeyT: 'trend', KeyH: 'hline', KeyJ: 'hray', KeyV: 'vline', KeyF: 'fib' };
-const DEFAULT_INDICATORS: Indicator[] = [{ id: 'sma-20', kind: 'sma', params: { n: 20 }, color: IND_COLORS[0]! }];
+const VOLUME_INDICATOR: Indicator = { id: 'volume-20', kind: 'volume', params: { n: 20 }, color: IND_COLORS[1]! };
+const DEFAULT_INDICATORS: Indicator[] = [{ id: 'sma-20', kind: 'sma', params: { n: 20 }, color: IND_COLORS[0]! }, VOLUME_INDICATOR];
+/** Marca de que el volumen ya se añadió una vez a los indicadores guardados: si luego se quita, no vuelve. */
+const VOLUME_ADDED_KEY = 'watchlist.velas.volumenAnadido';
 const IND_LIST = Object.values(INDICATOR_DEFS);
 const LEVEL_COLOR = 'rgba(140, 143, 154, 0.85)';
 const HIST_UP = 'rgba(38, 166, 154, 0.6)';
@@ -297,6 +302,13 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
   const [storedInd, setIndicators] = usePersisted<Indicator[]>('watchlist.velas.indicadores', DEFAULT_INDICATORS, isIndicators);
   // Lo guardado puede venir en el formato antiguo de las medias: se lee ya normalizado.
   const indicators = useMemo(() => storedInd.map((i) => normalizeIndicator(i)!), [storedInd]);
+  // Quien ya tenía indicadores guardados de antes del volumen lo recibe una vez, como los nuevos.
+  useEffect(() => {
+    if (localStorage.getItem(VOLUME_ADDED_KEY)) return;
+    localStorage.setItem(VOLUME_ADDED_KEY, '1');
+    if (!storedInd.some((i) => i.kind === 'volume')) setIndicators([...storedInd, VOLUME_INDICATOR]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [indQuery, setIndQuery] = useState('');
   const [magnet, setMagnet] = usePersisted<boolean>('watchlist.velas.iman', false, (v) => typeof v === 'boolean');
   /** La escala de precios se abre hasta que se ven todas las líneas: compras, orden, objetivos y horizontales dibujadas. */
@@ -323,7 +335,12 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
   const bars = useMemo(() => (intraday ? intradayBars : aggregate(candles, shown)), [candles, intradayBars, intraday, shown]);
   // Todos los decimales que trae el precio: si cotiza a 14,6083, el gráfico no lo redondea a 14,61.
   const precision = useMemo(() => pricePrecision(bars, quoted, liveQuote?.price), [bars, quoted, liveQuote?.price]);
-  const visibleInd = useMemo(() => indicators.filter((i) => !i.hidden), [indicators]);
+  // Sin volumen (fondos, datos sin él) su panel no sale vacío.
+  const withVolume = useMemo(() => hasVolume(bars), [bars]);
+  const visibleInd = useMemo(
+    () => indicators.filter((i) => !i.hidden && (i.kind !== 'volume' || withVolume)),
+    [indicators, withVolume],
+  );
   /** Cifras de cada indicador visible, por línea y alineadas con las velas. */
   const indData = useMemo(
     () => new Map(visibleInd.map((ind) => [ind.id, INDICATOR_DEFS[ind.kind].compute(bars, ind.params)])),
@@ -761,7 +778,9 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
       const digits = def.precision ?? precision;
       const common = {
         priceLineVisible: false, lastValueVisible: def.pane === 'sub', crosshairMarkerVisible: false,
-        priceFormat: { type: 'price' as const, precision: digits, minMove: 10 ** -digits },
+        priceFormat: def.format === 'volume'
+          ? { type: 'volume' as const }
+          : { type: 'price' as const, precision: digits, minMove: 10 ** -digits },
       };
       const lines = new Map<string, ISeriesApi<'Line' | 'Histogram'>>();
       for (const l of def.lines) {
@@ -803,9 +822,11 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
       const values = indData.get(ind.id);
       if (!values) continue;
       for (const [key, se] of lines) {
-        const hist = def.lines.find((l) => l.key === key)?.style === 'histogram';
+        const line = def.lines.find((l) => l.key === key);
+        const hist = line?.style === 'histogram';
+        const up = (v: number, i: number) => (line?.tone === 'candle' ? bars[i]!.c >= bars[i]!.o : v >= 0);
         se.setData((values[key] ?? []).flatMap((v, i) =>
-          v == null ? [] : [hist ? { time: chartTime(bars[i]!.t), value: v, color: v >= 0 ? HIST_UP : HIST_DOWN } : { time: chartTime(bars[i]!.t), value: v }],
+          v == null ? [] : [hist ? { time: chartTime(bars[i]!.t), value: v, color: up(v, i) ? HIST_UP : HIST_DOWN } : { time: chartTime(bars[i]!.t), value: v }],
         ));
       }
       if (band && def.levels) band.set(bars.map(() => def.levels![1]!), bars.map(() => def.levels![0]!), alpha(ind.color, 0.08));
@@ -1369,7 +1390,7 @@ function Legend({ name, step, bars, flat, indicators, indData, precision, setter
               const v = values?.[l.key]?.[i];
               return (
                 <b key={l.key} style={{ color: l.color ?? ind.color }}>
-                  {' '}{v != null ? v.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d }) : '—'}
+                  {' '}{v == null ? '—' : def.format === 'volume' ? fmtVolume(v) : v.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d })}
                 </b>
               );
             })}

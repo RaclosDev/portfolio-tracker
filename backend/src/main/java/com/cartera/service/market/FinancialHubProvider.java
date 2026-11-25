@@ -429,7 +429,8 @@ public class FinancialHubProvider implements MarketDataProvider {
                     double o = num(p.get("open")) != null ? num(p.get("open")) : c;
                     double hi = num(p.get("high")) != null ? num(p.get("high")) : c;
                     double lo = num(p.get("low")) != null ? num(p.get("low")) : c;
-                    candles.add(new Candle(t, o, Math.max(hi, Math.max(o, c)), Math.min(lo, Math.min(o, c)), c));
+                    candles.add(new Candle(t, o, Math.max(hi, Math.max(o, c)), Math.min(lo, Math.min(o, c)), c,
+                            volume(p.get("volume"))));
                 }
             }
             cursor = str(d.get("nextCursor"));
@@ -519,7 +520,14 @@ public class FinancialHubProvider implements MarketDataProvider {
         if (str(q.get("currency")) != null && !str(q.get("currency")).equals(currency)) return null;
         Double hi = num(day.get("high"));
         Double lo = num(day.get("low"));
-        return new Candle(t, o, Math.max(hi != null ? hi : c, Math.max(o, c)), Math.min(lo != null ? lo : c, Math.min(o, c)), c);
+        return new Candle(t, o, Math.max(hi != null ? hi : c, Math.max(o, c)), Math.min(lo != null ? lo : c, Math.min(o, c)), c,
+                volume(q.get("volume")));
+    }
+
+    /** Títulos negociados, o null si no viene o no es válido. */
+    static Double volume(JsonNode n) {
+        Double v = num(n);
+        return v != null && v >= 0 ? v : null;
     }
 
     /**

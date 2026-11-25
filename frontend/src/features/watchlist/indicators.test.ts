@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Candle } from '@/shared';
 import {
-  atr, bollinger, cci, demaS, donchian, emaS, hmaS, ichimoku, INDICATOR_DEFS, macd, normalizeIndicator, psar, roc, rsi, smaS,
+  atr, bollinger, cci, demaS, donchian, emaS, fmtVolume, hasVolume, hmaS, ichimoku, INDICATOR_DEFS, macd, normalizeIndicator, psar, roc, rsi, smaS,
   stochastic, williamsR, wmaS,
 } from './indicators.ts';
 
@@ -78,6 +78,20 @@ describe('osciladores', () => {
   });
   it('ATR de velas iguales es su rango', () => {
     expect(atr(up.map((b) => ({ ...b, c: 10, h: 11, l: 9 })), 5).at(-1)).toBe(2);
+  });
+});
+
+describe('volumen', () => {
+  it('pinta el volumen de cada vela con su media y deja huecos donde no hay', () => {
+    const bars = [{ ...bar(10, 0), v: 100 }, { ...bar(11, 1), v: 300 }, { ...bar(12, 2), v: null }, { ...bar(13, 3), v: 200 }];
+    const out = INDICATOR_DEFS.volume.compute(bars, { n: 2 });
+    expect(out.v).toEqual([100, 300, null, 200]);
+    expect(out.ma).toEqual([null, 200, null, null]);
+  });
+  it('sabe si hay volumen y lo abrevia', () => {
+    expect(hasVolume(up)).toBe(false);
+    expect(hasVolume([{ ...bar(10, 0), v: 0 }, { ...bar(10, 1), v: 5 }])).toBe(true);
+    expect(fmtVolume(18_612_987)).toBe('18,61 M');
   });
 });
 

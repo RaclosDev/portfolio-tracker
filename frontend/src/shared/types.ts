@@ -184,6 +184,8 @@ export interface Candle {
   h: number;
   l: number;
   c: number;
+  /** Títulos negociados; sin él (fondos, datos antiguos) no hay volumen. */
+  v?: number | null;
 }
 
 /** Herramientas de dibujo del gráfico de velas (las mismas que en Financial Hub). */
