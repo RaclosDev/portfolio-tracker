@@ -48,7 +48,7 @@ class SpaWebTest {
         for (String path : new String[] {"/demo", "/demo/cartera/SAN.MC"}) {
             mvc.perform(get(path)).andExpect(status().isOk())
                     .andExpect(header().string("Content-Security-Policy",
-                            endsWith("frame-ancestors 'self' https://raclosdev.github.io")))
+                            endsWith("frame-ancestors 'self' https://portfolio.raclos.es")))
                     .andExpect(header().doesNotExist("X-Frame-Options"));
         }
         for (String path : new String[] {"/", "/login", "/demos", "/api/health"}) {
