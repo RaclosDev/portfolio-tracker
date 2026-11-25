@@ -8,14 +8,17 @@
 
 [Arquitectura](docs/arquitectura.md) · [Instalación y uso](docs/guia.md) · [Capturas reproducibles](docs/screenshots/README.md) · [Abrir Portfolio Tracker](https://cartera.raclos.es) · [Demo con datos ficticios](https://cartera.raclos.es/demo)
 
-## Qué resuelve
+## Lo más destacado
 
-- **Vigilar acciones, ETF y fondos:** listas, búsqueda por nombre, ticker o ISIN, hasta tres niveles de compra y distancia al precio actual. Los importes contemplan la conversión de divisa.
-- **Entender la cartera:** posiciones, reparto por valor, sector y bróker, rentabilidad y posiciones cerradas, calculados a partir de compras, ventas y otras operaciones.
-- **Mantener un registro:** dividendos, scrip, derechos, splits y traspasos entre fondos; importación de Excel/CSV con revisión de columnas, vista previa y detección de posibles duplicados. El cálculo de lotes utiliza FIFO y permite exportar informes.
-- **Recibir avisos:** notificaciones push de niveles y órdenes registradas, con un resumen diario. La aplicación hace seguimiento; no envía operaciones a un bróker.
-- **Usarla en cualquier pantalla:** PWA instalable con tema claro y oscuro, y vista compacta en el móvil.
-- **Conservar los datos:** copias diarias y una copia antes de importar, con exportación y restauración desde la interfaz.
+- **Gráficos de velas con análisis técnico:** nueve intervalos, de 1 minuto a mensual, en velas o en línea. Incluye 16 indicadores (medias SMA, EMA, WMA, HMA y DEMA, bandas de Bollinger, canales de Donchian, Ichimoku, SAR parabólico, RSI, MACD, estocástico, CCI, Williams %R, ROC y ATR) y 13 herramientas de dibujo: tendencias, rayos, canales, retrocesos de Fibonacci, previsiones de operación larga o corta, texto y formas, además de una regla para medir. Tus niveles de compra se ven sobre el propio gráfico.
+- **Calculadora de la renta:** ganancias y pérdidas por ejercicio con FIFO por valor (todos los brókers juntos), regla de los dos meses en las recompras, compensación del 25 % entre saldos, arrastre de pérdidas cuatro años y cuota estimada con la escala del ahorro. Dividendos y primas con sus retenciones, y un informe listo para imprimir.
+- **Lista de vigilancia con niveles de compra:** acciones, ETF y fondos buscados por nombre, ticker o ISIN, hasta tres niveles de compra por valor, distancia al precio actual y órdenes registradas. Los importes contemplan la conversión de divisa.
+- **Exposición real, empresa a empresa:** los fondos y ETF se desglosan con su composición completa (hasta 2.000 posiciones por fondo) para ver cuánto pesa de verdad cada empresa en el conjunto de la cartera, la tengas directamente o a través de varios fondos.
+- **Registro con diez tipos de operación:** compras, ventas, dividendos, acciones liberadas (scrip), venta de derechos, primas de emisión y de asistencia, splits y traspasos entre fondos que conservan el coste y la antigüedad.
+- **Cartera y evolución:** posiciones abiertas y cerradas, reparto por valor, sector y bróker, rentabilidad y curva histórica reconstruida a partir de las operaciones.
+- **Importación de Excel y CSV:** asignación de columnas, vista previa, detección de posibles duplicados y una copia de seguridad antes de aplicar.
+- **Avisos en el móvil:** notificaciones push cuando un valor toca un nivel o una orden registrada, con un resumen diario. La aplicación hace seguimiento; no envía operaciones a un bróker.
+- **En cualquier pantalla:** PWA instalable con tema claro y oscuro, vista compacta en el móvil, copias diarias y restauración desde la interfaz.
 
 ## Un recorrido por la aplicación
 
@@ -39,6 +42,8 @@ Capturas de la interfaz real en escritorio, tomadas de la [demo pública](https:
 
 | Problema | Implementación | Dónde verlo |
 | --- | --- | --- |
+| Calcular la renta con las reglas fiscales españolas | Motor puro y probado con casos de referencia: FIFO, regla de los dos meses, compensación entre saldos y arrastre de pérdidas | [`tax.ts`](frontend/src/shared/cartera/tax.ts) |
+| Indicadores y dibujos sobre el gráfico | 16 indicadores calculados en el cliente y un modelo de dibujos con geometría propia, ambos con pruebas unitarias | [`indicators.ts`](frontend/src/features/watchlist/indicators.ts), [`chartDrawing.ts`](frontend/src/features/watchlist/chartDrawing.ts) |
 | Reconstruir posiciones desde operaciones | Cálculo de lotes FIFO separado de la presentación, con pruebas de dominio | [`Ledger.java`](backend/src/main/java/com/cartera/service/portfolio/Ledger.java) |
 | Trabajar con datos de mercado externos | Varias fuentes en cadena tras una misma interfaz, con caché y pausa propia ante límites de consultas | [`service/market`](backend/src/main/java/com/cartera/service/market) |
 | Recuperar una cartera tras una importación | Copias automáticas y servicio de restauración | [`BackupService.java`](backend/src/main/java/com/cartera/service/backup/BackupService.java) |
