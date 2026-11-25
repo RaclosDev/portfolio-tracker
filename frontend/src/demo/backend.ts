@@ -88,28 +88,33 @@ const FUNDS = [
 const CATALOG = new Map([...SPAIN, ...USA, ...FUNDS].map((s) => [s.symbol, s]));
 const FX: Record<string, number> = { EUR: 1, USD: 1.09 };
 
-/** Cotizaciones y velas diarias reales de los valores del catálogo (GET /api/public/market/demo). */
+/** Cotizaciones y velas diarias reales de los valores del catálogo (GET /api/public/market/demo y /demo/quotes). */
 interface RealCandle { t: string; o: number; h: number; l: number; c: number }
+interface Snapshot { quotes?: Record<string, Quote>; candles?: Record<string, RealCandle[]> }
 const realQuotes = new Map<string, Quote>();
 const realCandles = new Map<string, RealCandle[]>();
-async function loadReal() {
+async function loadSnapshot(url: string, ms: number): Promise<Snapshot | undefined> {
   try {
-    const res = await fetch('/api/public/market/demo', { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return;
-    const snap = await res.json() as { quotes: Record<string, Quote>; candles: Record<string, RealCandle[]> };
-    for (const [symbol, quote] of Object.entries(snap.quotes ?? {})) {
-      const s = CATALOG.get(symbol);
-      if (!s || typeof quote?.price !== 'number') continue;
-      s.price = quote.price;
-      if (typeof quote.changePct === 'number') s.changePct = quote.changePct;
-      realQuotes.set(symbol, quote);
-    }
-    for (const [symbol, list] of Object.entries(snap.candles ?? {})) {
-      const daily = (list ?? []).filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c.t) && c.c > 0);
-      if (CATALOG.has(symbol) && daily.length > 20) realCandles.set(symbol, daily);
-    }
+    const res = await fetch(url, { signal: AbortSignal.timeout(ms) });
+    return res.ok ? await res.json() as Snapshot : undefined;
   } catch {
     // Sin conexión con el servidor: la demo sigue con sus precios.
+    return undefined;
+  }
+}
+function applyQuotes(quotes: Snapshot['quotes']) {
+  for (const [symbol, quote] of Object.entries(quotes ?? {})) {
+    const s = CATALOG.get(symbol);
+    if (!s || typeof quote?.price !== 'number') continue;
+    s.price = quote.price;
+    if (typeof quote.changePct === 'number') s.changePct = quote.changePct;
+    realQuotes.set(symbol, quote);
+  }
+}
+function applyCandles(candles: Snapshot['candles']) {
+  for (const [symbol, list] of Object.entries(candles ?? {})) {
+    const daily = (list ?? []).filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c.t) && c.c > 0);
+    if (CATALOG.has(symbol) && daily.length > 20) realCandles.set(symbol, daily);
   }
 }
 /** Cierre real del último día de mercado no posterior a `date`. */
@@ -198,13 +203,15 @@ function seedItem(listId: number, s: Security, index: number) {
     }),
   });
 }
-/** Listas y cartera de ejemplo, con los precios reales si han llegado. */
-function seed() {
+/** Listas de ejemplo, con los precios reales si han llegado. */
+function seedLists() {
   SPAIN.forEach((s, i) => seedItem(1, s, i));
   USA.forEach((s, i) => seedItem(2, s, i + 3));
   FUNDS.forEach((s, i) => seedItem(3, s, i + 7));
   SPAIN.slice(0, 5).flatMap((s, i) => [s, USA[i]!]).forEach((s, i) => seedItem(4, s, i));
-
+}
+/** Cartera de ejemplo: compras y dividendos a los cierres reales de cada día si han llegado las velas. */
+function seedPortfolio() {
   const BROKERS = ['ING', 'MyInvestor', 'Interactive Brokers'];
   const HELD: [string, number][] = [
     ['IBE.MC', 320], ['SAN.MC', 900], ['ITX.MC', 85], ['REP.MC', 260], ['AAPL', 22], ['MSFT', 14],
@@ -239,8 +246,20 @@ function seed() {
     }
   });
 }
-/** Hasta tener los precios (o rendirse) no responde: así las listas y la cartera se siembran con ellos. */
-const ready = loadReal().then(seed);
+/**
+ * Lo primero que se ve (las listas) solo espera a las cotizaciones, que pesan poco. Las velas de cinco años,
+ * que necesitan la cartera y las gráficas, se piden a la vez y llegan por detrás. Si el servidor aún no
+ * tiene /demo/quotes, las cotizaciones salen de la respuesta completa.
+ */
+const full = loadSnapshot('/api/public/market/demo', 15000);
+const ready = loadSnapshot('/api/public/market/demo/quotes', 4000)
+  .then(async (snap) => applyQuotes((snap ?? (await full))?.quotes))
+  .then(seedLists);
+const withHistory = Promise.all([full, ready]).then(([snap]) => {
+  applyCandles(snap?.candles);
+  seedPortfolio();
+});
+const NEEDS_HISTORY = /^\/api\/(portfolio|operations|instruments|market\/(history|candles|sparklines))(\/|$)/;
 
 // Vistas ------------------------------------------------------------------------------------------
 const listView = (list: { id: number; name: string }) => ({ ...list, itemCount: items.filter((i) => i.listId === list.id).length });
@@ -570,8 +589,8 @@ function handle(method: string, url: URL, body: unknown): unknown {
 /** Sustituto de `fetch` para el modo demo: misma forma de respuesta que la API real. */
 export async function demoFetch(method: string, url: string, body?: unknown): Promise<Response> {
   const json = (status: number, data: unknown) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
-  await ready;
   const parsed = new URL(url, window.location.origin);
+  await (NEEDS_HISTORY.test(parsed.pathname) ? withHistory : ready);
   const interval = parsed.searchParams.get('interval');
   if (method === 'GET' && parsed.pathname.startsWith('/api/market/candles/') && interval && interval !== '1d') {
     const real = await realIntraday(parsed.pathname.slice('/api/market/candles/'.length).toUpperCase(), interval);

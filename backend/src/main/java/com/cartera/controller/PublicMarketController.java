@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /** Precios reales sin sesión para la portada y la demo; solo valores de una lista fija. */
 @RestController
@@ -35,6 +36,13 @@ public class PublicMarketController {
     @GetMapping("/demo")
     public ResponseEntity<Snapshot> demo() {
         return cached(market.demo());
+    }
+
+    /** Solo las cotizaciones de la demo: lo que necesita su primera pantalla, sin las velas de cinco años. */
+    @GetMapping("/demo/quotes")
+    public ResponseEntity<Snapshot> demoQuotes() {
+        Snapshot s = market.demo();
+        return cached(new Snapshot(s.quotes(), Map.of(), s.fetchedAt()));
     }
 
     /** Velas intradía reales para la ficha de la demo; solo valores de su catálogo. */
