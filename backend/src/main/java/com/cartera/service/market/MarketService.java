@@ -71,6 +71,12 @@ public class MarketService {
     private static final long EMPTY_HISTORY_TTL_MS = 5 * 60_000L;
     private static final long PROFILE_TTL_MS = 30L * 24 * 60 * 60_000;
     private static final long ALL_CANDLES_TTL_MS = 6 * 60 * 60_000L;
+    /**
+     * Las velas diarias se renuevan cada minuto mientras el gráfico está abierto, pero en la base de datos solo hacen
+     * falta como respaldo (sin conexión o tras un reinicio): se guardan como mucho cada seis horas. Escribir ~1.300
+     * velas en cada vuelta impedía que la base de datos se durmiera.
+     */
+    private static final long CANDLES_PERSIST_MS = 6 * 60 * 60_000L;
     /** Los minigráficos usan observaciones diarias o mensuales: se renuevan cada 3 h. */
     private static final long SPARK_TTL_MS = 3 * 60 * 60_000L;
     /** Pausa entre históricos renovados en segundo plano, para no ir a ráfagas. */
@@ -120,6 +126,8 @@ public class MarketService {
     private final Map<String, CompletableFuture<DailyHistoryResult>> dailyPending = new ConcurrentHashMap<>();
     private final Map<String, CompletableFuture<CandlesResult>> candlesPending = new ConcurrentHashMap<>();
     private final Map<String, CompletableFuture<CandlesResult>> allCandlesPending = new ConcurrentHashMap<>();
+    /** Cuándo se guardaron por última vez las velas diarias de cada valor en la base de datos. */
+    private final Map<String, Long> candlesPersistedAt = new ConcurrentHashMap<>();
     private final Map<String, HistoryRange> refreshQueue = new ConcurrentHashMap<>();
     private final AtomicBoolean refreshing = new AtomicBoolean();
     private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
@@ -710,8 +718,12 @@ public class MarketService {
                         ? provider.getCandles(symbol, LocalDate.now(ZoneOffset.UTC).minusDays(5 * 366))
                         : provider.getIntradayCandles(symbol, interval);
                 if (candles != null && !candles.isEmpty()) {
-                    mem.put(key, new Entry<>(candles, System.currentTimeMillis()));
-                    if (daily) cache.save(kind, symbol, candles);
+                    long now = System.currentTimeMillis();
+                    mem.put(key, new Entry<>(candles, now));
+                    if (daily && now - candlesPersistedAt.getOrDefault(symbol, 0L) >= CANDLES_PERSIST_MS) {
+                        cache.save(kind, symbol, candles);
+                        candlesPersistedAt.put(symbol, now);
+                    }
                     return new CandlesResult(candles, false);
                 }
             } catch (RuntimeException e) {

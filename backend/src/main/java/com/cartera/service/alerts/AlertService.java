@@ -81,6 +81,12 @@ public class AlertService {
     private final Map<UUID, AlertState> stateCache = new ConcurrentHashMap<>();
     /** Órdenes ya apuntadas de cada usuario ({@link #touchedKey}): se leen una vez. */
     private final Map<UUID, Set<String>> touchedCache = new ConcurrentHashMap<>();
+    /**
+     * Lo que ve la app (órdenes pendientes e historial), que se consulta cada pocos segundos: se sirve de memoria y
+     * solo se vuelve a leer si algo cambia. Así la base de datos puede dormirse mientras la app está abierta.
+     */
+    private final Map<UUID, List<TouchedOrderResponse>> pendingCache = new ConcurrentHashMap<>();
+    private final Map<UUID, List<AlertEntry>> historyCache = new ConcurrentHashMap<>();
 
     /** El usuario ha cambiado algo (ha podido descartar órdenes o borrar la cuenta): se vuelve a leer. */
     @EventListener
@@ -91,6 +97,8 @@ public class AlertService {
     private void forget(UUID userId) {
         stateCache.remove(userId);
         touchedCache.remove(userId);
+        pendingCache.remove(userId);
+        historyCache.remove(userId);
     }
 
     /**
@@ -219,6 +227,7 @@ public class AlertService {
             t.setTouchedAt(now);
             try {
                 touched.saveAndFlush(t);
+                pendingCache.remove(userId);
             } catch (DataIntegrityViolationException e) {
                 // Otra comprobación la apuntó a la vez.
             }
@@ -230,8 +239,15 @@ public class AlertService {
     }
 
     /** Órdenes tocadas pendientes de revisar. Se olvidan solas si la orden se quita o cambia de precio. */
-    @Transactional
     public List<TouchedOrderResponse> touchedOrders(UUID userId) {
+        List<TouchedOrderResponse> cached = pendingCache.get(userId);
+        if (cached != null) return cached;
+        List<TouchedOrderResponse> pending = tx.execute(status -> loadTouchedOrders(userId));
+        pendingCache.put(userId, pending);
+        return pending;
+    }
+
+    private List<TouchedOrderResponse> loadTouchedOrders(UUID userId) {
         // Si se olvida alguna, la lista en memoria ya no vale.
         if (touched.forgetStale(userId) > 0) touchedCache.remove(userId);
         List<TouchedOrder> pending = touched.findByUserIdOrderByTouchedAtAscIdAsc(userId).stream()
@@ -260,14 +276,15 @@ public class AlertService {
     @Transactional
     public void dismissTouched(UUID userId, Long itemId) {
         touched.dismiss(userId, itemId);
+        pendingCache.remove(userId);
     }
 
-    @Transactional(readOnly = true)
     public List<AlertEntry> history(UUID userId) {
-        return history.findByUserIdOrderByIdDesc(userId, Limit.of(HISTORY_LIMIT)).stream()
-                .map(r -> new AlertEntry(AlertRules.iso(r.getAt()), r.getKind(), r.getItemId(), r.getSymbol(),
-                        r.getTitle(), r.getBody(), "servidor"))
-                .toList();
+        return historyCache.computeIfAbsent(userId, id ->
+                history.findByUserIdOrderByIdDesc(id, Limit.of(HISTORY_LIMIT)).stream()
+                        .map(r -> new AlertEntry(AlertRules.iso(r.getAt()), r.getKind(), r.getItemId(), r.getSymbol(),
+                                r.getTitle(), r.getBody(), "servidor"))
+                        .toList());
     }
 
     private void saveHistory(UUID userId, List<Alert> alerts, Instant now) {
@@ -286,6 +303,7 @@ public class AlertService {
             history.flush();
             history.trim(userId, HISTORY_KEEP);
         });
+        historyCache.remove(userId);
     }
 
     /** Una copia completa al día dentro de la base de datos (se guardan las últimas). */
