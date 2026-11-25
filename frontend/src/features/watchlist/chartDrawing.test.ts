@@ -53,6 +53,11 @@ describe('intervalos, medias y periodos', () => {
     expect(aggregate(daily, 'M').map((m) => m.t)).toEqual(['2026-10-29', '2026-11-02']);
     expect(daily[0]!.c).toBe(10);
   });
+  it('suma el volumen de las velas agregadas', () => {
+    const daily = [{ ...candle('2026-10-29', 10), v: 100 }, { ...candle('2026-10-30', 11), v: 50 }, { ...candle('2026-11-02', 12), v: 7 }];
+    expect(aggregate(daily, 'W').map((w) => w.v)).toEqual([150, 7]);
+    expect(daily[0]!.v).toBe(100);
+  });
 
   it('sitúa fechas en barras semanales y mensuales', () => {
     const weeks = ['2026-11-02', '2026-11-09', '2026-11-16'];

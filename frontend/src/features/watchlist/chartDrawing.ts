@@ -123,6 +123,7 @@ export function aggregate(candles: Candle[], step: Step): Candle[] {
       bar.h = Math.max(bar.h, c.h);
       bar.l = Math.min(bar.l, c.l);
       bar.c = c.c;
+      if (c.v != null) bar.v = (bar.v ?? 0) + c.v;
     } else {
       out.push({ ...c });
       key = k;

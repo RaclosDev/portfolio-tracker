@@ -7,14 +7,16 @@ export type IndKind =
   | 'sma' | 'ema' | 'wma' | 'hma' | 'dema'
   | 'bb' | 'donchian' | 'ichimoku' | 'psar'
   | 'rsi' | 'macd' | 'stoch' | 'cci' | 'willr' | 'roc'
-  | 'atr';
-export type IndGroup = 'medias' | 'bandas' | 'osciladores' | 'volatilidad';
+  | 'atr'
+  | 'volume';
+export type IndGroup = 'medias' | 'bandas' | 'osciladores' | 'volatilidad' | 'volumen';
 
 export const IND_GROUPS: [IndGroup, string][] = [
   ['medias', 'Medias móviles'],
   ['bandas', 'Bandas y canales'],
   ['osciladores', 'Osciladores'],
   ['volatilidad', 'Volatilidad'],
+  ['volumen', 'Volumen'],
 ];
 
 export interface ParamDef {
@@ -33,6 +35,8 @@ export interface LineDef {
   /** Color fijo; sin él, el del indicador. */
   color?: string;
   width?: number;
+  /** Histograma en verde o rojo según la vela suba o baje (volumen); sin él, según el signo. */
+  tone?: 'candle';
 }
 
 export interface IndicatorDef {
@@ -52,6 +56,8 @@ export interface IndicatorDef {
   fill?: { a: string; b: string; up?: string; down?: string };
   /** Decimales en su panel; sin él, los del precio. */
   precision?: number;
+  /** Cifras grandes abreviadas (18,6 M), como el volumen. */
+  format?: 'volume';
   compute: (bars: Candle[], p: Record<string, number>) => Record<string, Series>;
 }
 
@@ -366,7 +372,23 @@ export const INDICATOR_DEFS: Record<IndKind, IndicatorDef> = {
     params: [period(14)], lines: [{ key: 'v', label: 'ATR', width: 2 }],
     compute: (b, p) => ({ v: atr(b, p.n!) }),
   },
+  volume: {
+    kind: 'volume', short: 'Vol', name: 'Volumen', group: 'volumen', pane: 'sub', format: 'volume',
+    params: [P('n', 'Media', 20)],
+    lines: [{ key: 'v', label: 'Volumen', style: 'histogram', tone: 'candle' }, { key: 'ma', label: 'Media', width: 1 }],
+    compute: (b, p) => {
+      const v = b.map((c) => c.v ?? null);
+      return { v, ma: smaS(v, p.n!) };
+    },
+  },
 };
+
+/** Hay volumen que pintar: alguna vela trae títulos negociados. */
+export const hasVolume = (bars: Candle[]) => bars.some((b) => b.v != null && b.v > 0);
+
+/** 18.612.987 → «18,61 M». */
+export const fmtVolume = (v: number) =>
+  v.toLocaleString('es-ES', { notation: 'compact', maximumFractionDigits: 2 });
 
 export const IND_COLORS = ['#f6a609', '#2962ff', '#e040fb', '#00bcd4', '#43a047', '#ef5350', '#8d6e63'];
 
