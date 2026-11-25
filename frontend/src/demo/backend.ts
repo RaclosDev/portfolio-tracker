@@ -4,6 +4,7 @@
  * cartera y las operaciones son ficticias, y los cambios se pierden al recargar. Sin conexión, todo es ficticio. Los cálculos usan el mismo código
  * compartido que el servidor (`@watchlist/shared`), así que las pantallas se comportan igual.
  */
+import { price } from '../lib/format.ts';
 import { EMBED_THEME } from './embed.ts';
 import {
   bulkBrokerSchema,
@@ -24,6 +25,7 @@ import {
   settingsPatchSchema,
   settingsSchema,
   shiftDate,
+  type AlertRecord,
   type AnalystTargets,
   type Instrument,
   type Item,
@@ -175,6 +177,32 @@ function targetsOf(symbol: string): AnalystTargets | null {
     trailingPE: round(11 + (h % 240) / 10, 1), marketCap: Math.round(s.price * (4 + (h % 90)) * 1e8),
     fetchedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Historial de avisos de ejemplo, con los textos del servidor: los valores de «Mi vigilancia» que ya están en
+ * zona de compra o muy cerca, y la orden abierta. Así el historial no sale vacío en la demo.
+ */
+function demoAlerts(): AlertRecord[] {
+  const out: AlertRecord[] = [];
+  const at = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+  for (const item of items.filter((i) => i.listId === 4)) {
+    const q = quoteOf(item.symbol);
+    const level = item.buyPrices[0];
+    if (!q || q.price == null || level == null) continue;
+    const name = q.name ?? item.symbol;
+    const base = { itemId: item.id, symbol: item.symbol, host: 'Demo', at: at(25 + out.length * 340) };
+    if (item.orderActive && item.orderPrice != null && item.orderUntil) {
+      const days = dayDiff(today(), item.orderUntil);
+      out.push({ ...base, kind: 'orderExpiring', title: `${name}: la orden caduca en ${days} días`, body: 'Renuévala en el banco si quieres mantenerla.' });
+    } else if (q.price <= level) {
+      out.push({ ...base, kind: 'reached', title: `${name}: en zona de compra`, body: `Cotiza a ${price(q.price, q.currency)}, por debajo de tu compra 1 (${price(level, q.currency)}).` });
+    } else if (q.price / level - 1 <= 0.02) {
+      const gap = (1 - level / q.price).toLocaleString('es-ES', { style: 'percent', maximumFractionDigits: 1 });
+      out.push({ ...base, kind: 'near', title: `${name}: muy cerca de tu compra 1`, body: `Cotiza a ${price(q.price, q.currency)}; le falta caer un ${gap} hasta ${price(level, q.currency)}.` });
+    }
+  }
+  return out;
 }
 
 // Estado en memoria -------------------------------------------------------------------------------
@@ -484,7 +512,7 @@ function handle(method: string, url: URL, body: unknown): unknown {
     case 'GET /api/market/quotes': return symbolsOf(query.symbols).map(quoteOf).filter(Boolean);
     case 'GET /api/market/fx': return FX;
     case 'GET /api/market/sparklines': return sparklines(symbolsOf(query.symbols), query.range ?? '3m');
-    case 'GET /api/alerts': return [];
+    case 'GET /api/alerts': return demoAlerts();
     case 'POST /api/alerts/check': return { alerts: 0 };
     case 'GET /api/push/key': return { publicKey: null, enabled: false };
     case 'GET /api/push/devices': return [];

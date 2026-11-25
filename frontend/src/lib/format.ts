@@ -11,9 +11,12 @@ function nf(key: string, opts: Intl.NumberFormatOptions) {
 /** Marca de dato vacío en tablas (guion corto). */
 const DASH = '–';
 
-/** Decimales que trae un número (máx. 6): 20.345 → 3. */
+/**
+ * Decimales que trae un número (máx. 6): 20.345 → 3. Antes se queda en 7 cifras significativas, las que guarda
+ * un float de 32 bits: Yahoo da 22.790000915527344 por 22.79 y no son seis decimales.
+ */
 export const decimals = (v: number) => {
-  const s = String(Number(v.toFixed(6)));
+  const s = String(Number(Number(v.toPrecision(7)).toFixed(6)));
   const i = s.indexOf('.');
   return i < 0 ? 0 : s.length - i - 1;
 };

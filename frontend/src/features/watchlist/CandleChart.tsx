@@ -877,6 +877,15 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
     prim.update();
   }, [drawings, selected, tool, pending, hidden, hasData, kind]);
 
+  // A ventana completa (sin la API del navegador) la página de detrás no se desplaza.
+  useEffect(() => {
+    if (!full || document.fullscreenElement) return;
+    const html = document.documentElement;
+    const before = html.style.overflow;
+    html.style.overflow = 'hidden';
+    return () => { html.style.overflow = before; };
+  }, [full]);
+
   useEffect(() => {
     const onChange = () => setFull(document.fullscreenElement === rootRef.current);
     document.addEventListener('fullscreenchange', onChange);
@@ -956,9 +965,14 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
     a.download = `${symbol}-${candles.at(-1)?.t ?? 'grafico'}.png`;
     a.click();
   };
+  // Safari del iPhone no pone en pantalla completa nada que no sea un vídeo, y dentro de un marco sin permiso
+  // se rechaza: entonces el gráfico ocupa toda la ventana con CSS.
   const toggleFull = () => {
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void rootRef.current?.requestFullscreen();
+    if (document.fullscreenElement) return void document.exitFullscreen();
+    if (full) return setFull(false);
+    const root = rootRef.current;
+    if (typeof root?.requestFullscreen === 'function') root.requestFullscreen().catch(() => setFull(true));
+    else setFull(true);
   };
   /** Vuelve a la vista del periodo elegido, con las escalas de precio ajustadas solas (como Alt+R en TradingView). */
   const resetView = () => {
@@ -1030,6 +1044,7 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     const mod = e.ctrlKey || e.metaKey;
     if (e.key === 'Escape') {
+      if (full && !document.fullscreenElement && tool === 'cursor' && !selected && !indOpen) setFull(false);
       chooseTool('cursor');
       setSelected(null);
       setIndOpen(false);
@@ -1068,7 +1083,7 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
   return (
     <div className={`xp-candles${full ? ' is-full' : ''}`} ref={rootRef} tabIndex={-1} onKeyDown={onKeyDown}>
       <div className="xp-candles__top" role="toolbar" aria-label="Opciones del gráfico">
-        <div className="segmented segmented--small" role="group" aria-label="Intervalo">
+        <div className="segmented segmented--small xp-candles__steps" role="group" aria-label="Intervalo">
           {STEPS.map(([s, label, title]) => (
             <button
               key={s}
@@ -1374,10 +1389,10 @@ function Legend({ name, step, bars, flat, indicators, indData, precision, setter
   return (
     <div className="xp-candles__legend" aria-hidden="true">
       <div>
-        <strong>{name}</strong> · {STEP_LABEL[step]}
-        {!flat && <> · A <b className={tone}>{f(bar.o)}</b> M <b className={tone}>{f(bar.h)}</b> m <b className={tone}>{f(bar.l)}</b></>}
+        <span className="xp-candles__id"><strong>{name}</strong> · {STEP_LABEL[step]} · </span>
+        {!flat && <>A <b className={tone}>{f(bar.o)}</b> M <b className={tone}>{f(bar.h)}</b> m <b className={tone}>{f(bar.l)}</b></>}
         {' '}C <b className={tone}>{f(bar.c)}</b>
-        {change != null && prev && <b className={tone}> {change >= 0 ? '+' : ''}{f(change)} ({fmtPct(change / prev.c)})</b>}
+        {change != null && prev && <b className={tone}><span className="xp-candles__abs"> {change >= 0 ? '+' : ''}{f(change)}</span> ({fmtPct(change / prev.c)})</b>}
       </div>
       {indicators.map((ind) => {
         const def = INDICATOR_DEFS[ind.kind];

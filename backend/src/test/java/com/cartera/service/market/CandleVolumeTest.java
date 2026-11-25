@@ -40,4 +40,17 @@ class CandleVolumeTest {
         List<Candle> candles = YahooProvider.candlesFromChart(chart);
         assertThat(candles).extracting(Candle::v).containsExactly(18612987d, null);
     }
+
+    @Test
+    void lasVelasDeYahooPierdenElRuidoDelFloat() {
+        JsonNode chart = JSON.readTree("""
+                {"meta":{"currency":"EUR","exchangeTimezoneName":"Europe/Madrid"},
+                 "timestamp":[1764061200],
+                 "indicators":{"quote":[{"open":[22.790000915527344],"high":[22.950000762939453],
+                   "low":[22.709999084472656],"close":[22.719999313354492],"volume":[7464774]}]}}""");
+        Candle c = YahooProvider.candlesFromChart(chart).getFirst();
+        assertThat(List.of(c.o(), c.h(), c.l(), c.c())).containsExactly(22.79, 22.95, 22.71, 22.72);
+        assertThat(YahooProvider.clean(1392.219970703125)).isEqualTo(1392.22);
+        assertThat(YahooProvider.clean(0.0123456789)).isEqualTo(0.01234568);
+    }
 }
