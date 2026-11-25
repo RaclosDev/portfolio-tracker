@@ -1,6 +1,7 @@
 /**
  * Iconos de la app, dibujados a mano para este uso:
  *  - pencil: editar la fila (acción repetida en cada fila, donde un texto ocuparía demasiado),
+ *  - info: explicación larga de una sección (se lee al pasar el ratón o al pulsar),
  *  - note: la fila tiene una nota (se lee al pasar el ratón o al pulsar),
  *  - wallet: el valor está en la cartera (el resumen de la posición se lee igual que la nota),
  *  - alert: dato de cotización antiguo (sin conexión), junto al precio afectado,
@@ -23,6 +24,7 @@ const PATHS = {
   calendar: 'M3 4.5h12v11H3v-11Zm0 3.5h12M6 2.5v3M12 2.5v3',
   locate: 'M9 1.5v3M9 13.5v3M1.5 9h3M13.5 9h3M9 4.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9ZM9 8.2a.8.8 0 1 1 0 1.6.8.8 0 0 1 0-1.6Z',
   note: 'M4.5 2.5h6l3 3v10h-9v-13Zm6 0v3h3M6.8 9h4.4M6.8 12h4.4',
+  info: 'M9 1.8a7.2 7.2 0 1 1 0 14.4 7.2 7.2 0 0 1 0-14.4ZM9 8.2v4.6M9 5.4v.1',
   wallet: 'M2.5 5.5h13v9.5h-13v-9.5Zm0 0 9-3 .8 3M12 9.2h3.5v2.6H12a1.3 1.3 0 0 1 0-2.6Z',
 };
 

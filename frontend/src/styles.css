@@ -517,6 +517,11 @@ th.col-name { z-index: 2; background: var(--surface-2); }
 .holding-btn { color: var(--accent); }
 .per-btn { width: auto; height: auto; padding: 2px 4px; margin: -2px -4px; color: inherit; font: inherit; text-decoration: underline dotted var(--text-2); text-underline-offset: 3px; }
 .holding-pop { white-space: normal; min-width: 220px; }
+/* Icono (i) con la explicación larga de una sección, junto a su título. */
+.info-tip { width: 24px; height: 24px; margin: -4px 0; vertical-align: middle; }
+.pcard__head > .info-tip { margin-right: auto; }
+.info-tip__pop { white-space: normal; font-weight: 400; }
+.info-head { display: flex; align-items: center; gap: 4px; }
 .holding-pop__title { display: block; margin-bottom: 6px; }
 .holding-pop__list { display: grid; grid-template-columns: auto auto; gap: 3px 16px; margin: 0; }
 .holding-pop__list dt { color: var(--text-2); }
@@ -1792,7 +1797,6 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
 .portfolio-history__bridge dt { color: var(--text-2); }
 .portfolio-history__bridge dt small { display: block; }
 .portfolio-history__bridge dd { margin: 0; font-variant-numeric: tabular-nums; }
-.portfolio-chart-note { color: var(--text-2); font-size: var(--fs-2xs); line-height: 1.5; margin: 10px 0 0; }
 @media (max-width: 1050px) {
   .portfolio-overview { grid-template-columns: minmax(0, 1fr); }
   .portfolio-ledger, .portfolio-analytics { display: contents; }
@@ -1857,7 +1861,6 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
   .cartera-filter-dialog .exposure-filters__sources { margin: -8px 0 0; }
   .cartera-filter-dialog .exposure-part { min-height: 40px; }
   .exposure__count { margin: 0 0 6px; }
-  .exposure > .exposure__note:last-child { margin: 14px 0 0; }
   .registro__count { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 6px; }
   .registro__count .btn { flex: none; min-height: 36px; }
   /* Escalera de precios del detalle: nombre, precio y distancia sin pisarse; la barra no cabe. */
@@ -1932,7 +1935,6 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
   .cartera-compact tr.row--open > td { background: var(--surface-2); }
 }
 
-.exposure__note { margin: 0 0 10px; max-width: 90ch; font-size: var(--fs-sm); }
 .exposure-parts { display: flex; flex-wrap: wrap; gap: 4px 6px; }
 .exposure-part {
   display: inline-flex; align-items: baseline; gap: 4px; min-height: 24px; padding: 2px 8px; font: inherit; color: inherit; cursor: pointer;

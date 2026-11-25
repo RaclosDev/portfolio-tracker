@@ -1,6 +1,6 @@
 import { averageNativePrice, type HoldingRow } from '@/shared';
 import { avgPrice, money, pct, qty } from '../../lib/format.ts';
-import { HoverInfo } from './NoteCell.tsx';
+import { HoverInfo } from '../../components/HoverInfo.tsx';
 
 /** Lo que tienes de un valor de Vigilar en la cartera: icono con el resumen al pasar el ratón. */
 export function HoldingInfo({ h }: { h: HoldingRow }) {

@@ -9,6 +9,7 @@ import { HISTORY_PERIODS, periodStart, type HistoryPeriod } from './historyRange
 import type { CarteraModel } from './model.ts';
 import { ChartSkeleton } from '../../components/Skeleton.tsx';
 import { PortfolioHistoryChart, type HistoryMode } from './PortfolioHistoryChart.tsx';
+import { InfoTip } from '../../components/HoverInfo.tsx';
 
 const VIEWS: { label: string; title: string; mode: HistoryMode }[] = [
   { label: 'Resultado', title: 'Resultado del periodo', mode: 'result' },
@@ -72,12 +73,16 @@ function History({ first, mode, selection, onSelection, liveValue }: {
         {history.data.stale && <p className="small muted">No se han podido actualizar todos los históricos. Se muestran los datos disponibles en caché. <button className="link-btn" onClick={() => void history.refetch()}>Reintentar</button></p>}
         {!history.data.available && history.data.missing.length > 0 && <p className="small muted">Hay huecos por falta de datos de {history.data.missing.join(', ')}. No se suman valores parciales.</p>}
       </>}
-    <p className="portfolio-chart-note">{mode === 'result'
-      ? 'Resultado = valor final − valor inicial − compras + ventas + cobros. Base: cierre anterior al periodo. Cobros después de comisiones y retención en origen, antes del IRPF español.'
-      : mode === 'fx'
-        ? 'Comparación de las acciones que tienes en cada fecha, manteniendo el cambio del inicio. El efecto divisa mostrado no incluye ventas ni cobros ya realizados.'
-        : 'Valor de las acciones en cada fecha, sin saldo en efectivo. Una venta reduce este valor; el beneficio se conserva en Resultado.'}</p>
   </>;
+}
+
+/** Explicación de cada gráfica, detrás del icono (i) del título. */
+function chartNote(mode: HistoryMode): string {
+  return mode === 'result'
+    ? 'Resultado = valor final − valor inicial − compras + ventas + cobros. Base: cierre anterior al periodo. Cobros después de comisiones y retención en origen, antes del IRPF español.'
+    : mode === 'fx'
+      ? 'Comparación de las acciones que tienes en cada fecha, manteniendo el cambio del inicio. El efecto divisa mostrado no incluye ventas ni cobros ya realizados.'
+      : 'Valor de las acciones en cada fecha, sin saldo en efectivo. Una venta reduce este valor; el beneficio se conserva en Resultado.';
 }
 
 /** Evolución de la cartera en el tiempo: resultado, valor y efecto divisa del periodo elegido. */
@@ -90,6 +95,7 @@ export function PortfolioCharts({ model }: { model: CarteraModel }) {
   return <section className="pcard portfolio-charts" aria-labelledby="portfolio-chart-title">
     <div className="pcard__head">
       <h2 id="portfolio-chart-title">Evolución <span className="pcard__sub">· {VIEWS[view]!.title.toLowerCase()}</span></h2>
+      <InfoTip label={`Cómo se calcula: ${VIEWS[view]!.title.toLowerCase()}`}>{chartNote(VIEWS[view]!.mode)}</InfoTip>
     </div>
     <div className="portfolio-chart-tabs" role="group" aria-label="Elegir gráfica">
       {VIEWS.map(({ label, title }, i) => <button type="button" key={label} title={title} aria-pressed={view === i} onClick={() => setView(i)}>{label}</button>)}

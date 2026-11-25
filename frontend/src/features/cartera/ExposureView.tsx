@@ -8,6 +8,7 @@ import { useReportFilters, type ExtraFilters } from './extraFilters.ts';
 import { DIRECT, exposureSources, filterExposure, NO_FILTER, type ExposureFilter } from './exposureFilter.ts';
 import { DataBar, SortTable, type Column } from './SortTable.tsx';
 import { SelectMenu } from '../../components/SelectMenu.tsx';
+import { InfoTip } from '../../components/HoverInfo.tsx';
 
 const eur = (v: number) => <span className="num">{v ? money(v, 'EUR', 2) : '–'}</span>;
 
@@ -112,12 +113,11 @@ export function ExposureView({ model, onOpen, search, filterSlot, mobile = false
   if (!exposure.rows.length && !exposure.rest.length) return <p className="empty">No hay posiciones abiertas con precio.</p>;
   const count = shown.length === exposure.rows.length ? `${shown.length} empresas` : `${shown.length} de ${exposure.rows.length} empresas`;
   const loading = compositions.isLoading ? 'Cargando la composición de los fondos…' : compositions.isError ? 'No se ha podido cargar la composición de los fondos.' : '';
-  const note = (
-    <p className="muted exposure__note">
+  const info = (
+    <InfoTip label="Cómo se calcula la exposición">
       Suma lo que tienes en directo y lo que llevan dentro tus fondos y ETF. De la mayoría se conoce la cartera completa; de los que solo
       se conocen sus mayores posiciones, la parte «vía fondos» es un mínimo. Lo que no se desglosa (liquidez, divisas o lo que falta) queda abajo.
-      {!mobile && loading && ` ${loading}`}
-    </p>
+    </InfoTip>
   );
   const sourceChips = sources.length > 1 && (
     <div className="exposure-parts exposure-filters__sources" role="group" aria-label="Filtrar por origen">
@@ -137,7 +137,6 @@ export function ExposureView({ model, onOpen, search, filterSlot, mobile = false
   );
   return (
     <div className="exposure">
-      {!mobile && note}
       {filterSlot && createPortal(<>
         <label className="exposure-filters__check" title="Empresas que tienes por dos o más vías: en directo y en fondos, o en varios fondos">
           <input type="checkbox" checked={filter.repeated} onChange={(e) => set({ repeated: e.target.checked })} /> Solo repetidas
@@ -149,7 +148,7 @@ export function ExposureView({ model, onOpen, search, filterSlot, mobile = false
           options={[0, 10, 50, 100, 500, 1000].map((v) => ({ value: v, label: v ? `Desde ${money(v, 'EUR', 0)}` : 'Cualquier importe' }))}
         />
         {mobile && sourceChips && <><span className="watchlist-filter-label">De dónde sale</span>{sourceChips}</>}
-        {!mobile && <span className="muted exposure-filters__count">{count}</span>}
+        {!mobile && <span className="muted exposure-filters__count">{count}{loading && ` · ${loading}`}{info}</span>}
         {!mobile && filtered && (
           <button type="button" className="btn btn--ghost btn--small" onClick={() => setFilter(NO_FILTER)}>
             Quitar filtros
@@ -157,7 +156,7 @@ export function ExposureView({ model, onOpen, search, filterSlot, mobile = false
         )}
       </>, filterSlot)}
       {!mobile && sourceChips}
-      {mobile && <p className="muted small exposure__count">{count}{loading && ` · ${loading}`}</p>}
+      {mobile && <div className="muted small exposure__count">{count}{loading && ` · ${loading}`}{info}</div>}
       <SortTable
         rows={shown}
         columns={columns}
@@ -202,7 +201,6 @@ export function ExposureView({ model, onOpen, search, filterSlot, mobile = false
           </div>
         </>
       )}
-      {mobile && note}
     </div>
   );
 }
