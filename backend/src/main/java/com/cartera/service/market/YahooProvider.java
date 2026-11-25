@@ -13,6 +13,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 
+import java.math.BigDecimal;
+import java.math.MathContext;
+import java.math.RoundingMode;
 import java.net.http.HttpClient;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -280,10 +283,10 @@ public class YahooProvider implements MarketDataProvider {
     }
 
     private static Candle candle(String t, Bar b) {
-        double c = b.c();
-        double o = b.o() != null ? b.o() : c;
-        double h = Math.max(b.h() != null ? b.h() : c, Math.max(o, c));
-        double l = Math.min(b.l() != null ? b.l() : c, Math.min(o, c));
+        double c = clean(b.c());
+        double o = b.o() != null ? clean(b.o()) : c;
+        double h = Math.max(b.h() != null ? clean(b.h()) : c, Math.max(o, c));
+        double l = Math.min(b.l() != null ? clean(b.l()) : c, Math.min(o, c));
         return new Candle(t, o, h, l, c, b.v() != null && b.v() >= 0 ? b.v() : null);
     }
 
@@ -497,6 +500,16 @@ public class YahooProvider implements MarketDataProvider {
     }
 
     // ---------------------------------------------------------------- utilidades
+
+    /**
+     * Los precios de las velas de Yahoo son floats de 32 bits (22.790000915527344 por 22.79): se quedan en las
+     * 7 cifras significativas que guardan, o el gráfico enseña seis decimales de ruido.
+     */
+    static double clean(double v) {
+        return new BigDecimal(v).round(FLOAT_DIGITS).doubleValue();
+    }
+
+    private static final MathContext FLOAT_DIGITS = new MathContext(7, RoundingMode.HALF_EVEN);
 
     static Double num(JsonNode v) {
         return v != null && v.isNumber() && Double.isFinite(v.asDouble()) ? v.asDouble() : null;

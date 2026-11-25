@@ -128,7 +128,7 @@ export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'sy
         aria-activedescendant={showList && options[active] ? `${listId}-${active}` : undefined}
         autoComplete="off"
         data-autofocus={autoFocus || undefined}
-        placeholder={placeholder ?? 'Nombre, ticker, ISIN o WKN (p. ej. Inditex, ITX.MC)'}
+        placeholder={placeholder ?? 'Nombre, ticker, ISIN o WKN'}
         value={value}
         onChange={(e) => {
           onChange(e.target.value);
