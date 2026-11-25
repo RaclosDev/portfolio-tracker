@@ -1,6 +1,6 @@
 import { num, price } from '../../lib/format.ts';
 import { perLevels } from '../../lib/per.ts';
-import { HoverInfo } from './NoteCell.tsx';
+import { HoverInfo } from '../../components/HoverInfo.tsx';
 
 /**
  * PER de la tabla de Vigilar. Con precios de compra, el número abre el mismo popover que Notas y

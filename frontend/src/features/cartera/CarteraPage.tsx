@@ -20,6 +20,7 @@ import { SelectMenu } from '../../components/SelectMenu.tsx';
 import { Dialog } from '../../components/Dialog.tsx';
 import { MOBILE, useMedia } from '../../lib/useMedia.ts';
 import type { ExtraFilters } from './extraFilters.ts';
+import { InfoTip } from '../../components/HoverInfo.tsx';
 
 const CarteraImportDialog = lazy(() => import('./CarteraImportDialog.tsx').then((m) => ({ default: m.CarteraImportDialog })));
 
@@ -125,8 +126,8 @@ function ResumenView({ model }: { model: CarteraModel }) {
         <section className="pcard portfolio-annual" aria-labelledby="annual-results-title">
           <div className="pcard__head">
             <h2 id="annual-results-title">Ventas y cobros por año</h2>
+            <InfoTip label="Qué incluye: ventas y cobros por año">Lo ya realizado: ganancias en ventas y cobros. No incluye la variación del latente.</InfoTip>
           </div>
-          <p className="pcard__note">Lo ya realizado: ganancias en ventas y cobros. No incluye la variación del latente.</p>
           <div className="table-wrap" role="region" aria-label="Detalle anual de ventas y cobros" tabIndex={0}>
             <table className="wl-table cartera-table">
               <thead>

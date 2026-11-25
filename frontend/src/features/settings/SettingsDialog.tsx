@@ -30,6 +30,7 @@ import { BandsEditor } from './BandsEditor.tsx';
 import { NotificationsPanel } from './NotificationsPanel.tsx';
 import { applyAppearance, applyColors } from '../../lib/theme.ts';
 import { COLUMN_OPTIONS } from '../watchlist/WatchlistTable.tsx';
+import { InfoTip } from '../../components/HoverInfo.tsx';
 
 type Section = 'general' | 'estados' | 'etiquetas' | 'tema' | 'columnas' | 'colores' | 'notificaciones' | 'listas' | 'copias';
 
@@ -594,11 +595,13 @@ export function SettingsDialog({ settings, lists, onClose, onStartTour }: Props)
           Cada día se guarda una copia completa en el servidor, y otra antes de cada importación. También puedes descargar
           tus datos a un fichero o cargar uno.
         </p>
-        <h4 className="settings-sub">Excel</h4>
-        <p className="muted small">
-          Exporta todas las listas y la cartera a un .xlsx (filas amarillas con orden puesta, en azul las de otra divisa). Al
-          importar un Excel o CSV se añaden o actualizan valores en la lista que elijas, sin borrar nada.
-        </p>
+        <div className="info-head">
+          <h4 className="settings-sub">Excel</h4>
+          <InfoTip label="Qué hace exportar e importar Excel">
+            Exporta todas las listas y la cartera a un .xlsx (filas amarillas con orden puesta, en azul las de otra divisa). Al
+            importar un Excel o CSV se añaden o actualizan valores en la lista que elijas, sin borrar nada.
+          </InfoTip>
+        </div>
         <div className="row-actions" style={{ justifyContent: 'flex-start', marginBottom: 18 }}>
           <button type="button" className="btn" onClick={onExportExcel} disabled={exporting}>
             {exporting ? 'Preparando…' : 'Exportar a Excel'}
