@@ -247,12 +247,14 @@ function seedPortfolio() {
   });
 }
 /**
- * Lo primero que se ve (las listas) solo espera a las cotizaciones, que pesan poco. Las velas de cinco años,
- * que necesitan la cartera y las gráficas, se piden a la vez y llegan por detrás. Si el servidor aún no
- * tiene /demo/quotes, las cotizaciones salen de la respuesta completa.
+ * Lo primero que se ve (las listas) solo espera a las cotizaciones, que pesan poco (el servidor las precarga
+ * con la página, cabecera Link). Las velas de cinco años (450 KB), que necesitan la cartera y las gráficas, se
+ * piden después: en un móvil, pedidas a la vez, se comían el ancho de banda de las cotizaciones. Si estas
+ * fallan, salen de la respuesta completa.
  */
-const full = loadSnapshot('/api/public/market/demo', 15000);
-const ready = loadSnapshot('/api/public/market/demo/quotes', 4000)
+const quotes = loadSnapshot('/api/public/market/demo/quotes', 4000);
+const full = quotes.then(() => loadSnapshot('/api/public/market/demo', 15000));
+const ready = quotes
   .then(async (snap) => applyQuotes((snap ?? (await full))?.quotes))
   .then(seedLists);
 const withHistory = Promise.all([full, ready]).then(([snap]) => {
