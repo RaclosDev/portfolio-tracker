@@ -46,7 +46,7 @@
   --chart-9: #4f46e5;
   --chart-rest: #8b93a1;
   /* Barra del navegador en el móvil (meta theme-color; lib/theme.ts la mantiene al día). */
-  --chrome: var(--accent);
+  --chrome: var(--surface);
 
   --font-mono: ui-monospace, 'Cascadia Mono', Menlo, monospace;
 
@@ -1166,7 +1166,9 @@ fieldset.form__section { min-inline-size: 0; }
 /* ---------- Móvil: cabecera compacta y barra de herramientas en menos líneas ---------- */
 @media (max-width: 700px) {
   /* Cabecera en una sola fila: lista (con su menú) y Cartera a la izquierda; lupa, actualizar, avisos y ajustes a la derecha. */
-  .topbar { position: relative; padding: 4px 6px 4px 8px; padding-top: max(4px, env(safe-area-inset-top)); gap: 2px; }
+  /* Fija y opaca arriba: iOS 26/27 solo deja de difuminar el borde superior de la app instalada si encuentra ahí
+     un elemento fijo de color sólido, y entonces pinta la barra de estado de ese color. */
+  .topbar { position: sticky; top: 0; padding: 4px 6px 4px 8px; padding-top: max(4px, env(safe-area-inset-top)); gap: 2px; }
   .brand h1 { display: none; }
   .topbar__right { display: contents; }
   .content { padding: 12px 12px max(32px, env(safe-area-inset-bottom)); }
