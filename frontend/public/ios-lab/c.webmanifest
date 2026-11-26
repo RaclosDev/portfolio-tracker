@@ -1,0 +1,14 @@
+{
+  "id": "/ios-lab/c",
+  "name": "Lab C",
+  "short_name": "Lab C",
+  "start_url": "/ios-lab/c.html",
+  "scope": "/ios-lab/",
+  "display": "standalone",
+  "background_color": "#14181e",
+  "theme_color": "#14181e",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

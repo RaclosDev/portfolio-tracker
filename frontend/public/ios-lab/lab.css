@@ -1,0 +1,37 @@
+/* Laboratorio del difuminado superior de iOS 26/27 en apps de pantalla de inicio. Temporal. */
+:root { color-scheme: dark; --bg: #14181e; --surface: #1d232c; --text: #e8ecf1; --muted: #9aa4b2; --accent: #14b8a6; }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.35 -apple-system, system-ui, sans-serif; }
+
+.lab-header {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  padding-top: max(10px, env(safe-area-inset-top));
+  background: var(--surface); border-bottom: 1px solid #2c3440;
+}
+.lab-header b { font-size: 18px; }
+.lab-header span { color: var(--muted); font-size: 13px; }
+/* Cabecera fija y opaca: el candidato que WebKit busca 4 px por debajo del borde superior. */
+html[data-header='fixed'] .lab-header { position: sticky; top: 0; z-index: 10; }
+
+/* Franja de 11 px que no pinta nada (background-clip: text sin texto) pero declara un color de fondo. */
+.lab-strip { display: none; }
+html[data-header='strip'] .lab-strip {
+  display: block; position: fixed; top: 0; left: 0; right: 0; height: 11px; z-index: 2147483647;
+  pointer-events: none; background-color: var(--bg); -webkit-background-clip: text; background-clip: text;
+}
+
+/* Variante F: la página no se desplaza; solo un contenedor interno, que llega hasta detrás de la hora. */
+html[data-shell='inner'], html[data-shell='inner'] body { height: 100%; overflow: hidden; }
+html[data-shell='inner'] .lab-scroll { position: fixed; inset: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+.lab-diag { margin: 12px 14px; padding: 10px 12px; border-radius: 10px; background: #0d1116; font: 12px/1.5 ui-monospace, Menlo, monospace; color: #b8c2cf; white-space: pre-wrap; }
+.lab-note { margin: 12px 14px; color: var(--muted); font-size: 14px; }
+.lab-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #232a34; }
+.lab-row i { flex: none; width: 34px; height: 34px; border-radius: 8px; }
+.lab-row b { display: block; font-size: 17px; }
+.lab-row small { color: var(--muted); font-size: 12px; letter-spacing: .02em; }
+
+.lab-list { margin: 0; padding: 0 14px 40px; list-style: none; }
+.lab-list li { padding: 14px 0; border-bottom: 1px solid #232a34; }
+.lab-list a { color: var(--accent); font-size: 18px; font-weight: 600; text-decoration: none; }
+.lab-list p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
