@@ -1940,9 +1940,12 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
     border-bottom: 1px solid var(--border);
   }
   .cartera-compact .col-name { width: 44%; }
-  .cartera-exposure .col-name { width: 50%; }
+  .cartera-exposure .col-name { width: 48%; }
   .cartera-exposure .col-total { width: 29%; }
-  .cartera-exposure .col-weight { width: 21%; }
+  .cartera-exposure .col-weight { width: 23%; }
+  /* Las cabeceras parten por espacios: con anywhere «Valoración» y «% cartera» se cortaban a mitad de palabra a 320 px. */
+  .cartera-compact .th-btn { gap: 2px; overflow-wrap: normal; }
+  .cartera-compact.cartera-compact > thead > tr > th.al-right { padding-inline: 4px; }
   .cartera-compact .col-type { width: 27%; }
   .cartera-compact .col-amount { width: 27%; }
   /* La casilla ocupa toda su celda: 44 px de zona táctil sin abrir la operación al fallar el toque. */
