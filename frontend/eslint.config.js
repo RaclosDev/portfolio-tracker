@@ -20,5 +20,4 @@ export default tseslint.config(
   },
   { files: ['vite.config.ts'], languageOptions: { globals: { ...globals.node } } },
   { files: ['public/sw.js'], languageOptions: { globals: { ...globals.serviceworker } } },
-  { files: ['public/ios-lab/*.js'], languageOptions: { globals: { ...globals.browser } } },
 );
