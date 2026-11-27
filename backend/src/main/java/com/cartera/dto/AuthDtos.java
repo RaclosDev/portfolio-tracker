@@ -27,6 +27,15 @@ public final class AuthDtos {
     public record GoogleLoginRequest(@NotBlank @Size(max = 4096) String credential) {
     }
 
+    public record ChangePasswordRequest(
+            @NotBlank @Size(max = 200) String currentPassword,
+            @NotBlank @Size(max = 200) String newPassword) {
+    }
+
+    /** Para borrar la cuenta se confirma con la contraseña o, si la cuenta solo entra con Google, con un ID token. */
+    public record DeleteAccountRequest(@Size(max = 200) String password, @Size(max = 4096) String credential) {
+    }
+
     /** Access token recién emitido y su usuario. El refresh token va aparte, en su cookie. */
     public record AccessTokenResponse(String accessToken, UserResponse user) {
     }

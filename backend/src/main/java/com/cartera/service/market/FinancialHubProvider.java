@@ -10,6 +10,7 @@ import com.cartera.dto.market.Quote;
 import com.cartera.dto.market.SymbolSearchResult;
 import com.cartera.repository.MarketCacheRepository;
 import com.cartera.util.Isin;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.cartera.util.MarketSymbols;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -26,7 +27,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -53,6 +54,12 @@ public class FinancialHubProvider implements MarketDataProvider {
     private static final long RETRY_LOGO_MS = DAY_MS / 24;
     private static final long RANGE_TTL_MS = 12 * 3_600_000L;
     private static final int BATCH = 100;
+    static final int MAX_REFS = 5_000;
+    static final int MAX_LOGOS = 5_000;
+    /** Cuánto se espera para reintentar el rango de 52 semanas tras un fallo (no en cada lectura de precios). */
+    private static final long RANGE_RETRY_MS = 10 * 60_000L;
+    /** Búsquedas de logo a la API por minuto, sumando a todos los visitantes. */
+    static final int MAX_LOGO_LOOKUPS_PER_MINUTE = 60;
     private static final int RESOLVE_PARALLEL = 4;
 
     /** Historia que se pide de cada intervalo intradía: unas 2.000-5.000 velas. */
@@ -114,6 +121,10 @@ public class FinancialHubProvider implements MarketDataProvider {
     private record Cached<T>(T value, long at) {
     }
 
+    private static <T> Map<String, T> bounded(int max) {
+        return Caffeine.newBuilder().maximumSize(max).<String, T>build().asMap();
+    }
+
     private record Range(Double low, Double high) {
     }
 
@@ -122,9 +133,13 @@ public class FinancialHubProvider implements MarketDataProvider {
 
     private final MarketHttp http;
     private final HttpClient client = MarketHttp.newClient(false);
-    private final Map<String, Cached<FhRef>> refs = new ConcurrentHashMap<>();
-    private final Map<String, Cached<Range>> ranges = new ConcurrentHashMap<>();
-    private final Map<String, Cached<String>> logos = new ConcurrentHashMap<>();
+    // Con tope de entradas: las claves salen de lo que escribe el usuario (símbolos, ISIN) y no pueden crecer sin límite.
+    private final Map<String, Cached<FhRef>> refs = bounded(MAX_REFS);
+    private final Map<String, Cached<Range>> ranges = bounded(MAX_REFS);
+    private final Map<String, Cached<String>> logos = bounded(MAX_LOGOS);
+    /** Búsquedas de logo que van a la API (no salen de la caché) en el minuto en curso: tope para todos los visitantes. */
+    private final AtomicInteger logoLookups = new AtomicInteger();
+    private volatile long logoWindowStart;
     private final ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
 
     private final MarketCacheRepository store;
@@ -248,6 +263,11 @@ public class FinancialHubProvider implements MarketDataProvider {
             logos.put(key, new Cached<>(saved, row.fetchedAtMillis()));
             return saved;
         }
+        if (!takeLogoLookup(now)) {
+            // Demasiadas búsquedas nuevas a la vez (alguien recorre ISIN a ciegas): el logo que se tenía sirve.
+            if (saved != null) return saved;
+            throw new MarketSourceException("Demasiadas búsquedas de logos; vuelve a intentarlo en un minuto.");
+        }
         String url;
         try {
             String path = logoPath(lookup(key, null), key);
@@ -263,6 +283,17 @@ public class FinancialHubProvider implements MarketDataProvider {
         logos.put(key, new Cached<>(url, now));
         store.save(LOGO_KIND, key, url);
         return url;
+    }
+
+    /** Cuenta una búsqueda a la API en la ventana de un minuto; false si ya se ha gastado el cupo. */
+    private boolean takeLogoLookup(long now) {
+        synchronized (logoLookups) {
+            if (now - logoWindowStart >= 60_000L) {
+                logoWindowStart = now;
+                logoLookups.set(0);
+            }
+            return logoLookups.incrementAndGet() <= MAX_LOGO_LOOKUPS_PER_MINUTE;
+        }
     }
 
     static String keepKnownLogo(String found, String saved) {
@@ -387,16 +418,23 @@ public class FinancialHubProvider implements MarketDataProvider {
                 ref.isin(), false, false);
     }
 
-    /** Máximo y mínimo del último año (para el rango de 52 semanas), con caché de 12 h; sin datos si falla. */
+    /**
+     * Máximo y mínimo del último año (para el rango de 52 semanas), con caché de 12 h. Si falla no se vuelve a
+     * intentar en cada lectura de precios (con la API caída cada intento puede tardar segundos y frena al vigilante
+     * de avisos): se guarda el fallo diez minutos y mientras tanto sirve el último rango conocido, o ninguno.
+     */
     private Range yearRange(FhRef ref) {
         String key = ref.kind() + ":" + ref.id();
         Cached<Range> cached = ranges.get(key);
-        if (cached != null && System.currentTimeMillis() - cached.at() < RANGE_TTL_MS) return cached.value();
+        long now = System.currentTimeMillis();
+        if (cached != null && now - cached.at() < RANGE_TTL_MS) return cached.value();
         List<PricePoint> points;
         try {
             points = series(ref, "range=1y");
         } catch (RuntimeException e) {
-            return null;
+            Range known = cached != null ? cached.value() : null;
+            ranges.put(key, new Cached<>(known, now - RANGE_TTL_MS + RANGE_RETRY_MS));
+            return known;
         }
         Range range = new Range(points.stream().mapToDouble(PricePoint::c).min().stream().boxed().findFirst().orElse(null),
                 points.stream().mapToDouble(PricePoint::c).max().stream().boxed().findFirst().orElse(null));
@@ -482,6 +520,9 @@ public class FinancialHubProvider implements MarketDataProvider {
                 }
             }
         }
+        prefetchRanges(resolved.entrySet().stream()
+                .filter(e -> quotes.containsKey(e.getValue().kind() + ":" + e.getValue().id()))
+                .map(Map.Entry::getValue).distinct().toList());
         List<Quote> out = new ArrayList<>();
         resolved.forEach((symbol, ref) -> {
             JsonNode q = quotes.get(ref.kind() + ":" + ref.id());
@@ -490,6 +531,29 @@ public class FinancialHubProvider implements MarketDataProvider {
             if (quote != null) out.add(quote);
         });
         return out;
+    }
+
+    /** Rellena la caché de rangos de 52 semanas que falten, de cuatro en cuatro en paralelo en vez de una a una. */
+    private void prefetchRanges(List<FhRef> refs) {
+        long now = System.currentTimeMillis();
+        List<FhRef> missing = refs.stream().filter(r -> {
+            Cached<Range> c = ranges.get(r.kind() + ":" + r.id());
+            return c == null || now - c.at() >= RANGE_TTL_MS;
+        }).toList();
+        for (int i = 0; i < missing.size(); i += RESOLVE_PARALLEL) {
+            List<Future<Range>> futures = missing.subList(i, Math.min(i + RESOLVE_PARALLEL, missing.size())).stream()
+                    .map(r -> pool.submit(() -> yearRange(r))).toList();
+            for (Future<Range> f : futures) {
+                try {
+                    f.get();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                } catch (java.util.concurrent.ExecutionException e) {
+                    log.debug("Rango de 52 semanas no disponible: {}", e.getMessage());
+                }
+            }
+        }
     }
 
     @Override

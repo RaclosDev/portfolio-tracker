@@ -16,6 +16,8 @@ public interface InstrumentRepository extends JpaRepository<Instrument, Long> {
 
     List<Instrument> findByUserIdOrderByTicker(UUID userId);
 
+    long countByUserId(UUID userId);
+
     Optional<Instrument> findByUserIdAndTicker(UUID userId, String ticker);
 
     /** Rellena el sector o el nombre si aún no los tiene: nunca pisa lo escrito a mano. */

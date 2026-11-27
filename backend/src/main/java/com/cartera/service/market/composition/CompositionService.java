@@ -16,6 +16,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -43,9 +49,15 @@ public class CompositionService {
     private final Map<String, CompletableFuture<FundComposition>> pending = new ConcurrentHashMap<>();
     /** Ticker de cada ISIN ya resuelto (el valor vacío es «OpenFIGI no lo conoce»). */
     private final Map<String, String> isinTicker = new ConcurrentHashMap<>();
-    /** Las consultas a OpenFIGI van de una en una: sin clave admite pocas por minuto. */
-    /** ReentrantLock y no synchronized: en Java 21 un hilo virtual que espera la red dentro de synchronized bloquea su hilo real. */
+    /**
+     * Las consultas a OpenFIGI van de una en una (sin clave admite pocas por minuto), pero en segundo plano y no en el
+     * camino de la petición: quien pide una composición espera como mucho {@link #figiWaitMs}, no a toda la cola.
+     * ReentrantLock y no synchronized: en Java 21 un hilo virtual que espera la red dentro de synchronized bloquea su hilo real.
+     */
     private final ReentrantLock figiLock = new ReentrantLock();
+    private final ExecutorService figiWorkers = Executors.newVirtualThreadPerTaskExecutor();
+    /** Cuánto se espera a OpenFIGI antes de servir la composición sin los tickers que falten (se completan después). */
+    long figiWaitMs = 2_000;
 
     public CompositionService(List<CompositionSource> sources, MarketCacheRepository cache, JsonMapper json, OpenFigiClient figi) {
         this.sources = sources;
@@ -118,23 +130,18 @@ public class CompositionService {
                 String ticker = text(r.data());
                 if (ticker != null || now - r.fetchedAtMillis() < UNKNOWN_TICKER_TTL_MS) isinTicker.put(isin, ticker != null ? ticker : "");
             });
-            figiLock.lock();
-            try {
-                List<String> ask = missing.stream().filter(i -> !isinTicker.containsKey(i)).toList();
-                if (!ask.isEmpty()) {
-                    Map<String, String> found;
-                    try {
-                        found = figi.homeTickers(ask);
-                    } catch (RuntimeException e) {
-                        found = Map.of();
-                    }
-                    found.forEach((isin, ticker) -> {
-                        isinTicker.put(isin, ticker != null ? ticker : "");
-                        cache.save(ISIN_TICKER_KIND, isin, ticker);
-                    });
+            List<String> ask = missing.stream().filter(i -> !isinTicker.containsKey(i)).toList();
+            if (!ask.isEmpty()) {
+                Future<?> resolving = figiWorkers.submit(() -> resolveTickers(ask));
+                try {
+                    resolving.get(figiWaitMs, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException e) {
+                    // Sigue en segundo plano: esta vez sin esos tickers, la próxima ya los tiene.
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } catch (ExecutionException e) {
+                    log.debug("No se pudieron completar los tickers: {}", e.getMessage());
                 }
-            } finally {
-                figiLock.unlock();
             }
         }
         return comp.withHoldings(comp.holdings().stream().map(h -> {
@@ -142,6 +149,27 @@ public class CompositionService {
             String t = isinTicker.get(h.isin().toUpperCase(Locale.ROOT));
             return h.withTicker(t == null || t.isEmpty() ? null : t);
         }).toList());
+    }
+
+    /** Pregunta a OpenFIGI lo que aún no se sabe, de uno en uno entre todas las peticiones. */
+    private void resolveTickers(List<String> isins) {
+        figiLock.lock();
+        try {
+            List<String> ask = isins.stream().filter(i -> !isinTicker.containsKey(i)).toList();
+            if (ask.isEmpty()) return;
+            Map<String, String> found;
+            try {
+                found = figi.homeTickers(ask);
+            } catch (RuntimeException e) {
+                found = Map.of();
+            }
+            found.forEach((isin, ticker) -> {
+                isinTicker.put(isin, ticker != null ? ticker : "");
+                cache.save(ISIN_TICKER_KIND, isin, ticker);
+            });
+        } finally {
+            figiLock.unlock();
+        }
     }
 
     private static String text(JsonNode n) {

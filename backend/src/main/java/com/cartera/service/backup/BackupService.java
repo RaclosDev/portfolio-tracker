@@ -22,6 +22,7 @@ import com.cartera.repository.OperationRepository;
 import com.cartera.repository.SnapshotRepository;
 import com.cartera.repository.WatchItemRepository;
 import com.cartera.repository.WatchListRepository;
+import com.cartera.service.Quotas;
 import com.cartera.service.SettingsService;
 import com.cartera.service.portfolio.PortfolioMapper;
 import com.cartera.service.portfolio.PortfolioService;
@@ -192,6 +193,7 @@ public class BackupService {
         if (skipIfEmpty && itemCount == 0 && data.portfolio().operations().isEmpty()) return null;
         Snapshot s = snapshots.saveAndFlush(new Snapshot(userId, reason, patches.write(data)));
         snapshots.prune(userId, KEEP_SNAPSHOTS);
+        snapshots.pruneBySize(userId, Quotas.MAX_SNAPSHOT_BYTES);
         return s;
     }
 
@@ -230,6 +232,9 @@ public class BackupService {
             }
             parsedLists.add(new ParsedList(name, rows));
         }
+        // Una copia que no cabe en los topes de la cuenta se rechaza entera antes de tocar nada.
+        Quotas.check(parsedLists.size(), Quotas.MAX_LISTS, "listas");
+        Quotas.check(parsedLists.stream().mapToInt(l -> l.items().size()).sum(), Quotas.MAX_WATCH_ITEMS, "valores vigilados");
         JsonNode settingsNode = raw.get("settings");
         if (settingsNode != null && !settingsNode.isObject()) settingsNode = null;
         ParsedPortfolio portfolio = null;
@@ -245,6 +250,8 @@ public class BackupService {
             for (JsonNode n : p.path("operations")) {
                 ops.add(patches.convert(n, OperationRequest.class, "portfolio.operations." + i++));
             }
+            Quotas.check(ins.size(), Quotas.MAX_INSTRUMENTS, "valores de la cartera");
+            Quotas.check(ops.size(), Quotas.MAX_OPERATIONS, "operaciones");
             portfolio = new ParsedPortfolio(ins, ops);
         }
         return new Parsed(settingsNode, parsedLists, portfolio);

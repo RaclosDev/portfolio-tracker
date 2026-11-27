@@ -1,5 +1,6 @@
 package com.cartera.service.market;
 
+import com.cartera.repository.MarketCacheRepository;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -8,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class FinancialHubLogoTest {
 
@@ -36,6 +38,23 @@ class FinancialHubLogoTest {
         assertThat(FinancialHubProvider.logoPath(h, "ES0113900J37")).isNull();
         assertThat(FinancialHubProvider.logoPath(h, "US0000000001")).isNull();
         assertThat(FinancialHubProvider.logoPath(List.of(), "ES0113900J37")).isNull();
+    }
+
+    @Test
+    void lasBusquedasDeLogoNuevasTienenUnCupoPorMinuto() {
+        MarketCacheRepository store = mock(MarketCacheRepository.class);
+        FinancialHubProvider hub = new FinancialHubProvider(mock(MarketHttp.class), store);
+        // La caché persistente no sabe nada y la API no responde: cada ISIN distinto cuenta una búsqueda.
+        int attempts = FinancialHubProvider.MAX_LOGO_LOOKUPS_PER_MINUTE + 10;
+        int budgetErrors = 0;
+        for (int i = 0; i < attempts; i++) {
+            try {
+                hub.logoUrl("ES" + String.format("%09d", i) + "0");
+            } catch (RuntimeException e) {
+                if (e.getMessage() != null && e.getMessage().contains("Demasiadas búsquedas")) budgetErrors++;
+            }
+        }
+        assertThat(budgetErrors).isEqualTo(10);
     }
 
     @Test

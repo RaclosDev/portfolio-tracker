@@ -23,6 +23,9 @@ public interface WatchItemRepository extends JpaRepository<WatchItem, Long> {
     @Query("select coalesce(max(i.position), 0) from WatchItem i where i.list.id = :listId")
     int maxPosition(Long listId);
 
+    @Query("select count(i) from WatchItem i where i.list.userId = :userId")
+    long countByUser(UUID userId);
+
     @Query("select count(i) from WatchItem i where i.list.id = :listId")
     long countByList(Long listId);
 

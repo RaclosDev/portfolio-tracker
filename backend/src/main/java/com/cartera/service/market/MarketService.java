@@ -123,6 +123,11 @@ public class MarketService {
     /** Símbolos ya buscados en la base de datos como reserva: no se vuelven a leer. */
     private final Set<String> quotesLoaded = ConcurrentHashMap.newKeySet();
     private final Map<String, CompletableFuture<Quote>> quotePending = new ConcurrentHashMap<>();
+    /** Desde cuándo llegan precios de un valor en otra divisa que la conocida (fuente alternativa): ver {@link #currencyChanged}. */
+    private final Map<String, Long> currencyMismatchSince = Caffeine.newBuilder().maximumSize(10_000)
+            .<String, Long>build().asMap();
+    /** Cuánto se rechazan los precios en otra divisa antes de aceptar que la divisa del valor ha cambiado de verdad. */
+    static final long CURRENCY_SWITCH_MS = 24 * 60 * 60_000L;
     private final Map<String, CompletableFuture<DailyHistoryResult>> dailyPending = new ConcurrentHashMap<>();
     private final Map<String, CompletableFuture<CandlesResult>> candlesPending = new ConcurrentHashMap<>();
     private final Map<String, CompletableFuture<CandlesResult>> allCandlesPending = new ConcurrentHashMap<>();
@@ -255,6 +260,7 @@ public class MarketService {
         for (Quote q : fetched) bySymbol.put(q.symbol().toUpperCase(Locale.ROOT), q);
         for (String sym : missing) {
             Quote q = bySymbol.get(sym.toUpperCase(Locale.ROOT));
+            if (q != null && currencyChanged(sym, q, now)) q = null; // se sirve el último precio, marcado como no fresco
             if (q != null) {
                 Quote quote = q.withSymbol(sym).withStale(false);
                 mem.put("quote:" + sym, new Entry<>(quote, now));
@@ -264,15 +270,43 @@ public class MarketService {
                 out.put(sym, quote);
             } else {
                 // Sin precio nuevo: el último en memoria y, si no hay, el guardado (se lee una sola vez).
-                Entry<Quote> last = memGet("quote:" + sym);
-                if (last == null && quotesLoaded.add(sym)) {
-                    last = load("quote", sym, Quote.class);
-                    if (last != null && last.value() != null) mem.put("quote:" + sym, last);
-                }
+                Entry<Quote> last = lastQuote(sym);
                 if (last != null && last.value() != null) out.put(sym, last.value().withStale(true));
             }
         }
         return out;
+    }
+
+    /** El último precio conocido de un valor: el de memoria y, si no hay, el guardado (se lee una sola vez). */
+    private Entry<Quote> lastQuote(String sym) {
+        Entry<Quote> last = memGet("quote:" + sym);
+        if (last == null && quotesLoaded.add(sym)) {
+            last = load("quote", sym, Quote.class);
+            if (last != null && last.value() != null) mem.put("quote:" + sym, last);
+        }
+        return last != null && last.value() != null ? last : null;
+    }
+
+    /**
+     * ¿Llega el precio en una divisa distinta de la conocida? Las fuentes alternativas pueden cotizar en otra divisa
+     * (justETF siempre en euros) y los niveles de compra del usuario no guardan divisa: comparar un precio en euros
+     * con un nivel en dólares da avisos falsos. Mientras la divisa no coincida se rechaza el precio nuevo (se sirve el
+     * último, no fresco, y no se avisa con él). Si la diferencia dura un día entero se acepta como cambio real.
+     */
+    private boolean currencyChanged(String sym, Quote fresh, long now) {
+        Entry<Quote> last = lastQuote(sym);
+        String before = last != null ? last.value().currency() : null;
+        if (before == null || fresh.currency() == null || before.equals(fresh.currency())) {
+            currencyMismatchSince.remove(sym);
+            return false;
+        }
+        long since = currencyMismatchSince.computeIfAbsent(sym, k -> now);
+        if (now - since >= CURRENCY_SWITCH_MS) {
+            log.warn("{} cotiza ahora en {} y no en {}; se acepta el cambio de divisa.", sym, fresh.currency(), before);
+            currencyMismatchSince.remove(sym);
+            return false;
+        }
+        return true;
     }
 
     /** Guarda en la base de datos las cotizaciones nuevas (cada pocas horas y al apagar). */

@@ -29,6 +29,8 @@ public interface WatchListRepository extends JpaRepository<WatchList, Long> {
     @Query("select l from WatchList l where l.userId = :userId")
     List<WatchList> lockAllByUser(UUID userId);
 
+    long countByUserId(UUID userId);
+
     @Query("select coalesce(max(l.position), 0) from WatchList l where l.userId = :userId")
     int maxPosition(UUID userId);
 

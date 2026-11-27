@@ -36,6 +36,20 @@ public interface SnapshotRepository extends JpaRepository<Snapshot, Long> {
 
     Optional<Snapshot> findByIdAndUserId(Long id, UUID userId);
 
+    /**
+     * Borra las copias más antiguas cuando todas juntas pasan de {@code budget} bytes (la más reciente se conserva
+     * siempre). Sin esto, 40 copias de una cuenta enorme ocuparían cientos de megas.
+     */
+    @Modifying
+    @Query(value = """
+            delete from {h-schema}snapshots where id in (
+                select id from (
+                    select id, row_number() over w as rn, sum(octet_length(data::text)) over w as total
+                    from {h-schema}snapshots where user_id = :userId
+                    window w as (order by created_at desc, id desc)) t
+                where rn > 1 and total > :budget)""", nativeQuery = true)
+    int pruneBySize(@Param("userId") UUID userId, @Param("budget") long budget);
+
     /** Borra las copias más antiguas del usuario y deja las {@code keep} más recientes. */
     @Modifying
     @Query(value = """

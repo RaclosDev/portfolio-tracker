@@ -63,6 +63,16 @@ public class GoogleAuthService {
         return user;
     }
 
+    /** Comprueba que el ID token es de la cuenta de Google vinculada a este usuario (confirmar un borrado). */
+    public void confirm(User user, String credential) {
+        if (credential == null || credential.isBlank() || user.getGoogleSubject() == null) {
+            throw ApiException.badRequest("Confirma con tu cuenta de Google.");
+        }
+        if (!verified(credential).subject().equals(user.getGoogleSubject())) {
+            throw ApiException.forbidden("Esa cuenta de Google no es la de esta cuenta.");
+        }
+    }
+
     private GoogleIdentity verified(String credential) {
         GoogleIdentity identity = verifier.verify(credential);
         if (!identity.emailVerified() || identity.email() == null) {

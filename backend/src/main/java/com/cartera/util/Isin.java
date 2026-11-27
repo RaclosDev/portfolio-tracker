@@ -56,6 +56,29 @@ public final class Isin {
         return q != null && PATTERN.matcher(q.trim().toUpperCase(Locale.ROOT)).matches();
     }
 
+    /**
+     * ¿Tiene el dígito de control correcto (Luhn sobre las letras pasadas a número)? Descarta ISIN inventados sin
+     * gastar una consulta a una fuente externa.
+     */
+    public static boolean hasValidCheckDigit(String q) {
+        if (!isIsin(q)) return false;
+        String isin = q.trim().toUpperCase(Locale.ROOT);
+        StringBuilder digits = new StringBuilder();
+        for (char c : isin.toCharArray()) digits.append(Character.isDigit(c) ? String.valueOf(c) : String.valueOf(c - 'A' + 10));
+        int sum = 0;
+        boolean dbl = false;
+        for (int i = digits.length() - 1; i >= 0; i--) {
+            int d = digits.charAt(i) - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) d -= 9;
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return sum % 10 == 0;
+    }
+
     /** Sufijo de Yahoo de un código de bolsa, o null si Yahoo no la tiene. */
     public static String suffix(String exchCode) {
         for (Map.Entry<String, String> e : SUFFIX) if (e.getKey().equals(exchCode)) return e.getValue();

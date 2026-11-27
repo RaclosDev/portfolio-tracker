@@ -199,6 +199,13 @@ public final class Ledger {
         return out;
     }
 
+    /** Ticker canónico de cada ticker (el suyo si no tiene ISIN): los que comparten ISIN dan el mismo. */
+    static Map<String, String> canonicalTickers(List<Instrument> instruments) {
+        Map<String, String> out = new HashMap<>();
+        identityByTicker(instruments).forEach((ticker, id) -> out.put(ticker, id.key()));
+        return out;
+    }
+
     private static String normIsin(String isin) {
         if (isin == null) return null;
         String v = isin.trim().toUpperCase();

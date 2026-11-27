@@ -89,6 +89,12 @@ public class SessionService {
         tokens.findByTokenHashForUpdate(hash(refreshToken)).ifPresent(t -> tokens.deleteFamily(t.getFamilyId()));
     }
 
+    /** Cierra todas las sesiones del usuario (en todos sus dispositivos). Los access tokens ya emitidos caducan solos. */
+    @Transactional
+    public void endAll(UUID userId) {
+        tokens.deleteAllOf(userId);
+    }
+
     /** Borra cada noche las sesiones caducadas y los tokens rotados que ya no sirven para detectar reutilización. */
     @Scheduled(cron = "0 15 4 * * *")
     @Transactional

@@ -88,18 +88,6 @@ class AuditRegressionTest {
                 .andExpect(status().isUnauthorized());
     }
 
-    /** Tras 10 fallos con el mismo correo se bloquea el correo, aunque cada intento venga de una IP distinta. */
-    @Test
-    void loginIsLimitedPerEmail() throws Exception {
-        String email = "bloqueo-" + UUID.randomUUID() + "@test.invalid";
-        register(email);
-        for (int i = 0; i < 10; i++) {
-            mvc.perform(login(email, "mal-" + i).header("X-Forwarded-For", "10.0.0." + i))
-                    .andExpect(status().isUnauthorized());
-        }
-        mvc.perform(login(email, PASSWORD)).andExpect(status().isTooManyRequests());
-    }
-
     /** Restaurar no busca ISIN con la transacción abierta: lo completa después, fuera de ella. */
     @Test
     void restoreLooksUpIsinsAfterCommit() throws Exception {

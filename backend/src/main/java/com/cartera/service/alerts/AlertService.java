@@ -32,6 +32,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.DayOfWeek;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -63,6 +64,12 @@ public class AlertService {
     static final ZoneId MADRID = ZoneId.of("Europe/Madrid");
     private static final int HISTORY_KEEP = 500;
     private static final int HISTORY_LIMIT = 200;
+    /** Cada cuánto se repasan los precios de quien no puede recibir avisos ahora (avisos apagados o bolsas cerradas). */
+    static final Duration SLOW_INTERVAL = Duration.ofMinutes(5);
+    /** Intentos del resumen diario si todos los dispositivos fallan (p. ej. 403 tras cambiar las claves VAPID). */
+    static final int MAX_SUMMARY_ATTEMPTS = 3;
+    static final Duration SUMMARY_RETRY = Duration.ofMinutes(15);
+    static final Duration BACKUP_RETRY = Duration.ofMinutes(30);
 
     private final AlertRecordRepository history;
     private final AlertStateRepository states;
@@ -87,6 +94,17 @@ public class AlertService {
      */
     private final Map<UUID, List<TouchedOrderResponse>> pendingCache = new ConcurrentHashMap<>();
     private final Map<UUID, List<AlertEntry>> historyCache = new ConcurrentHashMap<>();
+    /** Hasta cuándo no se piden precios de un usuario que ahora no puede recibir avisos. */
+    private final Map<UUID, Instant> slowUntil = new ConcurrentHashMap<>();
+    /** Intentos del resumen del día que no llegaron a ningún dispositivo. */
+    private final Map<UUID, SummaryTries> summaryTries = new ConcurrentHashMap<>();
+    /** Cuándo se puede volver a intentar la copia diaria de un usuario cuya copia ha fallado. */
+    private final Map<UUID, Instant> backupRetryAt = new ConcurrentHashMap<>();
+    /** Usuarios cuyo estado de avisos no se pudo guardar: se conserva el de memoria y se reintenta el guardado. */
+    private final Set<UUID> unsaved = ConcurrentHashMap.newKeySet();
+
+    private record SummaryTries(LocalDate day, int attempts, Instant next) {
+    }
 
     /** El usuario ha cambiado algo (ha podido descartar órdenes o borrar la cuenta): se vuelve a leer. */
     @EventListener
@@ -95,7 +113,9 @@ public class AlertService {
     }
 
     private void forget(UUID userId) {
-        stateCache.remove(userId);
+        // Si el último estado no llegó a la base de datos, el de memoria es el bueno: releerlo repetiría avisos.
+        if (!unsaved.contains(userId)) stateCache.remove(userId);
+        slowUntil.remove(userId); // ha cambiado algo: la siguiente vuelta mira los precios sin esperar
         touchedCache.remove(userId);
         pendingCache.remove(userId);
         historyCache.remove(userId);
@@ -110,6 +130,9 @@ public class AlertService {
         try {
             AlertWorkset.UserData data = workset.get(userId);
             if (data == null) {
+                unsaved.remove(userId);
+                summaryTries.remove(userId);
+                backupRetryAt.remove(userId);
                 forget(userId);
                 return List.of();
             }
@@ -126,10 +149,20 @@ public class AlertService {
                 boolean changed = state.getLastCheckedAt() == null
                         || !Objects.equals(state.getMemory(), memoryBefore)
                         || !Objects.equals(state.getLastSummaryOn(), summaryBefore)
-                        || !Objects.equals(state.getLastBackupOn(), backupBefore);
+                        || !Objects.equals(state.getLastBackupOn(), backupBefore)
+                        || unsaved.contains(userId);
                 if (changed) {
                     state.setLastCheckedAt(now);
-                    stateCache.put(userId, states.save(state));
+                    try {
+                        stateCache.put(userId, states.save(state));
+                        unsaved.remove(userId);
+                    } catch (RuntimeException e) {
+                        // Se sigue con el estado de memoria (no se repiten avisos mientras corra) y se reintenta el
+                        // guardado en la siguiente vuelta; sin esto, tras un reinicio se volverían a mandar.
+                        stateCache.put(userId, state);
+                        unsaved.add(userId);
+                        log.warn("No se pudo guardar el estado de avisos de un usuario; se reintentará: {}", e.toString());
+                    }
                 }
             }
         } finally {
@@ -139,7 +172,7 @@ public class AlertService {
 
     private List<Alert> check(UUID userId, AlertWorkset.UserData data, Instant now, ZonedDateTime local,
                               LocalDate today, AlertState state, boolean force, Long maxAgeMs) {
-        dailySnapshot(userId, today, state);
+        dailySnapshot(userId, today, state, now);
         Settings s = data.settings();
         Settings.Notifications n = s.notifications();
         String hhmm = AlertRules.hhmm(local.toLocalTime());
@@ -147,9 +180,14 @@ public class AlertService {
             DayOfWeek day = local.getDayOfWeek();
             if (n.skipWeekends() && (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY)) return List.of();
             if (n.quietHours() && AlertRules.inTimeRange(hhmm, n.quietFrom(), n.quietTo())) return List.of();
+            // Sin avisos que dar o con las bolsas cerradas, pedir precios cada vuelta no sirve de nada.
+            Instant until = slowUntil.get(userId);
+            if (until != null && now.isBefore(until)) return List.of();
         }
 
         List<Row> rows = rows(data, maxAgeMs);
+        if (!force && (!n.enabled() || allClosed(rows))) slowUntil.put(userId, now.plus(SLOW_INTERVAL));
+        else slowUntil.remove(userId);
         // Las órdenes tocadas se apuntan siempre, también con los avisos apagados: quedan para revisarlas en la app.
         recordTouched(userId, rows, now);
         if (!force && !n.enabled()) return List.of();
@@ -168,7 +206,12 @@ public class AlertService {
         if (!memory.equals(before)) state.setMemory(json.writeValueAsString(memory));
 
         if (!alerts.isEmpty()) {
-            saveHistory(userId, alerts, now);
+            try {
+                saveHistory(userId, alerts, now);
+            } catch (RuntimeException e) {
+                // El historial es un extra: si no se guarda, el aviso se manda igual (si no, se perdería para siempre).
+                log.warn("No se pudo guardar el historial de avisos: {}", e.toString());
+            }
             for (Alert a : alerts) {
                 push.sendAll(userId, new PushPayload(a.title(), a.body(), a.kind() + "-" + a.itemId(), "/"));
             }
@@ -176,14 +219,41 @@ public class AlertService {
         }
 
         // Resumen del día: una vez, a partir de la hora elegida.
-        if (n.dailySummary() && hhmm.compareTo(n.dailySummaryAt()) >= 0 && !today.equals(state.getLastSummaryOn())) {
+        if (n.dailySummary() && hhmm.compareTo(n.dailySummaryAt()) >= 0 && !today.equals(state.getLastSummaryOn())
+                && summaryDue(userId, today, now)) {
             AlertRules.Summary summary = AlertRules.dailySummary(rows, today, s.statusNames());
             SendResult res = summary == null ? null
                     : push.sendAll(userId, new PushPayload(summary.title(), summary.body(), "resumen", "/"));
-            // Solo se da por enviado si llegó a algún dispositivo (o no había a quién): si fallan todos, se reintenta.
-            if (res == null || res.sent() > 0 || res.failed() == 0) state.setLastSummaryOn(today);
+            // Se da por enviado si llegó a algún dispositivo (o no había a quién). Si fallan todos se reintenta unas
+            // pocas veces y se deja: con las claves VAPID cambiadas todos dan 403 y reintentar cada 10 s no tiene fin.
+            if (res == null || res.sent() > 0 || res.failed() == 0) {
+                state.setLastSummaryOn(today);
+                summaryTries.remove(userId);
+            } else {
+                SummaryTries prev = summaryTries.get(userId);
+                int attempts = prev != null && prev.day().equals(today) ? prev.attempts() + 1 : 1;
+                if (attempts >= MAX_SUMMARY_ATTEMPTS) {
+                    log.warn("El resumen diario no llegó a ningún dispositivo tras {} intentos; se deja por hoy.", attempts);
+                    state.setLastSummaryOn(today);
+                    summaryTries.remove(userId);
+                } else {
+                    summaryTries.put(userId, new SummaryTries(today, attempts, now.plus(SUMMARY_RETRY)));
+                }
+            }
         }
         return alerts;
+    }
+
+    /** ¿Toca intentar el resumen? Tras un intento fallido se espera un rato antes del siguiente. */
+    private boolean summaryDue(UUID userId, LocalDate today, Instant now) {
+        SummaryTries tries = summaryTries.get(userId);
+        return tries == null || !tries.day().equals(today) || !now.isBefore(tries.next());
+    }
+
+    /** Todos los valores con precio tienen su bolsa cerrada (o no hay valores): los precios no van a cambiar. */
+    static boolean allClosed(List<Row> rows) {
+        return rows.stream().allMatch(r -> r.quote() == null
+                || "CLOSED".equalsIgnoreCase(r.quote().marketState()));
     }
 
     /**
@@ -307,11 +377,20 @@ public class AlertService {
     }
 
     /** Una copia completa al día dentro de la base de datos (se guardan las últimas). */
-    private void dailySnapshot(UUID userId, LocalDate today, AlertState state) {
+    private void dailySnapshot(UUID userId, LocalDate today, AlertState state, Instant now) {
         if (today.equals(state.getLastBackupOn())) return;
-        // Primero la copia y luego la marca: si la copia falla, se vuelve a intentar en la siguiente vuelta.
-        backup.snapshot(userId, "diaria", true);
-        state.setLastBackupOn(today);
+        Instant retryAt = backupRetryAt.get(userId);
+        if (retryAt != null && now.isBefore(retryAt)) return;
+        // Primero la copia y luego la marca. Si la copia falla no se pierde nada más: los avisos siguen y la copia se
+        // reintenta pasado un rato (no en cada vuelta).
+        try {
+            backup.snapshot(userId, "diaria", true);
+            state.setLastBackupOn(today);
+            backupRetryAt.remove(userId);
+        } catch (RuntimeException e) {
+            backupRetryAt.put(userId, now.plus(BACKUP_RETRY));
+            log.warn("No se pudo hacer la copia diaria de un usuario; se reintentará: {}", e.toString());
+        }
     }
 
     private AlertRules.Memory memory(AlertState state) {
