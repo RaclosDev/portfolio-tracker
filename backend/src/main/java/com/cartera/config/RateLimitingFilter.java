@@ -81,7 +81,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     }
 
     /** La IP del visitante: el salto que añadió el último proxy de confianza (no el que manda el navegador). */
-    String clientIp(HttpServletRequest request) {
+    public String clientIp(HttpServletRequest request) {
         ServletRequest original = request;
         while (original instanceof ServletRequestWrapper wrapper) original = wrapper.getRequest();
         HttpServletRequest raw = original instanceof HttpServletRequest http ? http : request;

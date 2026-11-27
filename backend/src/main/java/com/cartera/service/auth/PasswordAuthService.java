@@ -31,11 +31,23 @@ public class PasswordAuthService {
     private static final String BAD_CREDENTIALS = "Correo o contraseña incorrectos";
     /** bcrypt solo usa los primeros 72 bytes y Spring Security rechaza (con una excepción) las más largas. */
     static final int MAX_PASSWORD_BYTES = 72;
-    /** Fallos seguidos por correo antes de frenar: el límite por IP no basta si el atacante cambia de IP. */
-    static final int MAX_FAILURES_PER_EMAIL = 10;
-    private final Cache<String, AtomicInteger> failures =
-            Caffeine.newBuilder().expireAfterWrite(Duration.ofMinutes(15))
-                    .maximumSize(10_000).build();
+    static final int MIN_PASSWORD_CHARS = 12;
+    /**
+     * Fallos seguidos desde una misma IP contra un mismo correo antes de frenar esa IP con ese correo. Así quien
+     * escribe mal la contraseña no deja fuera al dueño de la cuenta, que entra desde otra IP.
+     */
+    static final int MAX_FAILURES_PER_EMAIL_AND_IP = 10;
+    /**
+     * Techo por correo sumando todas las IP (un ataque repartido). Es alto a propósito: al llegar a él se bloquea
+     * hasta la contraseña correcta, para que nadie pueda seguir probando sin límite.
+     */
+    static final int MAX_FAILURES_PER_EMAIL = 100;
+    private final Cache<String, AtomicInteger> failures = failureWindow();
+    private final Cache<String, AtomicInteger> failuresByIp = failureWindow();
+
+    private static Cache<String, AtomicInteger> failureWindow() {
+        return Caffeine.newBuilder().expireAfterWrite(Duration.ofMinutes(15)).maximumSize(10_000).build();
+    }
 
     private final UserRepository users;
     private final PasswordEncoder passwordEncoder;
@@ -59,15 +71,36 @@ public class PasswordAuthService {
         return email.trim().toLowerCase(Locale.ROOT);
     }
 
+    /** Entra con correo y contraseña. {@code ip}: de quién viene el intento, para contar los fallos por IP. */
     @Transactional
-    public User login(String email, String password) {
+    public User login(String email, String password, String ip) {
         String normalized = normalizeEmail(email);
-        AtomicInteger failed = failures.getIfPresent(normalized);
-        if (failed != null && failed.get() >= MAX_FAILURES_PER_EMAIL) {
+        User user = users.findByEmail(normalized).orElse(null);
+        verify(user, normalized, password, ip);
+        if (!tooLong(password) && passwordEncoder.upgradeEncoding(user.getPasswordHash())) {
+            user.setPasswordHash(passwordEncoder.encode(password));
+            log.info("Contraseña de {} guardada de nuevo con el algoritmo actual.", user.getId());
+        }
+        return user;
+    }
+
+    /**
+     * Comprueba la contraseña de quien ya tiene sesión (cambiar la contraseña, borrar la cuenta). Cuenta los
+     * fallos igual que el inicio de sesión: un token robado no sirve para adivinar la contraseña a ciegas.
+     */
+    public void confirmPassword(User user, String password, String ip) {
+        verify(user, normalizeEmail(user.getEmail()), password, ip);
+    }
+
+    private void verify(User user, String normalized, String password, String ip) {
+        String ipKey = ip + "|" + normalized;
+        AtomicInteger byIp = failuresByIp.getIfPresent(ipKey);
+        AtomicInteger byEmail = failures.getIfPresent(normalized);
+        if ((byIp != null && byIp.get() >= MAX_FAILURES_PER_EMAIL_AND_IP)
+                || (byEmail != null && byEmail.get() >= MAX_FAILURES_PER_EMAIL)) {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS,
                     "Demasiados intentos con este correo. Espera unos minutos y vuelve a probar.");
         }
-        User user = users.findByEmail(normalized).orElse(null);
         String hash = user != null && user.getPasswordHash() != null ? user.getPasswordHash() : dummyHash;
         boolean tooLong = tooLong(password);
         // Una contraseña larga solo puede valer con un hash scrypt antiguo (sin prefijo): bcrypt no la admite.
@@ -80,15 +113,28 @@ public class PasswordAuthService {
             correct = passwordEncoder.matches(password, hash);
         }
         if (user == null || user.getPasswordHash() == null || !correct) {
+            failuresByIp.get(ipKey, k -> new AtomicInteger()).incrementAndGet();
             failures.get(normalized, k -> new AtomicInteger()).incrementAndGet();
             throw ApiException.unauthorized(BAD_CREDENTIALS);
         }
-        failures.invalidate(normalized);
-        if (!tooLong && passwordEncoder.upgradeEncoding(user.getPasswordHash())) {
-            user.setPasswordHash(passwordEncoder.encode(password));
-            log.info("Contraseña de {} guardada de nuevo con el algoritmo actual.", user.getId());
+        failuresByIp.invalidate(ipKey);
+    }
+
+    /** Guarda una contraseña nueva (ya comprobada la anterior). */
+    @Transactional
+    public void setPassword(User user, String newPassword) {
+        validateNew(newPassword);
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        users.save(user);
+    }
+
+    static void validateNew(String password) {
+        if (password.length() < MIN_PASSWORD_CHARS) {
+            throw ApiException.badRequest("La contraseña debe tener al menos " + MIN_PASSWORD_CHARS + " caracteres.");
         }
-        return user;
+        if (tooLong(password)) {
+            throw ApiException.badRequest("La contraseña es demasiado larga: como mucho 72 caracteres (menos si lleva tildes o emojis).");
+        }
     }
 
     @Transactional

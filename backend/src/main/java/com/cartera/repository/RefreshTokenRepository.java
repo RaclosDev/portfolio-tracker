@@ -22,6 +22,11 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
     @Query("DELETE FROM RefreshToken t WHERE t.familyId = :familyId")
     int deleteFamily(UUID familyId);
 
+    /** Cierra todas las sesiones del usuario. */
+    @Modifying
+    @Query("DELETE FROM RefreshToken t WHERE t.userId = :userId")
+    int deleteAllOf(UUID userId);
+
     @Modifying
     @Query("DELETE FROM RefreshToken t WHERE t.expiresAt <= :now OR t.rotatedAt < :rotatedBefore")
     int deleteStale(Instant now, Instant rotatedBefore);
