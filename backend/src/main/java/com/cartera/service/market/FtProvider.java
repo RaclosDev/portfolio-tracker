@@ -3,6 +3,7 @@ package com.cartera.service.market;
 import com.cartera.dto.market.AnalystTargets;
 import com.cartera.dto.market.Candle;
 import com.cartera.dto.market.DailyHistory;
+import com.cartera.dto.market.Dividend;
 import com.cartera.dto.market.HistoryRange;
 import com.cartera.dto.market.PricePoint;
 import com.cartera.dto.market.Quote;
@@ -308,6 +309,14 @@ public class FtProvider implements MarketDataProvider {
         } catch (RuntimeException e) {
             return List.of(); // sin Yahoo no hay velas, el gráfico de línea sigue saliendo de FT
         }
+    }
+
+    /** Los dividendos de Yahoo de la misma cotización que da las velas (la de subasta). */
+    @Override
+    public List<Dividend> getDividends(String symbol) {
+        String ftSymbol = parseFtSymbol(symbol);
+        String ySymbol = ftSymbol != null ? yahooAuctionSymbol(ftSymbol) : null;
+        return ySymbol != null ? yahoo.getDividends(ySymbol) : null;
     }
 
     /**

@@ -304,6 +304,9 @@ export const api = {
   /** Velas diarias de toda la historia del valor (se piden al alejar el gráfico). */
   allCandles: (symbol: string) =>
     request<{ candles: Candle[]; stale: boolean }>('GET', `/api/market/candles/${encodeURIComponent(symbol)}?range=max`),
+  /** Dividendos del valor (fecha ex e importe), para el gráfico ajustado por dividendos. */
+  dividends: (symbol: string) =>
+    request<{ dividends: { date: string; amount: number }[]; stale: boolean }>('GET', `/api/market/dividends/${encodeURIComponent(symbol)}`),
   drawings: async (symbol: string) => {
     const { data, headers } = await requestWithHeaders<ChartDrawing[]>('GET', `/api/drawings/${encodeURIComponent(symbol)}`);
     rememberDrawingsVersion(symbol, headers);

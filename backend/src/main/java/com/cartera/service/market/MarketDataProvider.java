@@ -4,6 +4,7 @@ import com.cartera.dto.market.AnalystTargets;
 import com.cartera.dto.market.Candle;
 import com.cartera.dto.market.CompanyProfile;
 import com.cartera.dto.market.DailyHistory;
+import com.cartera.dto.market.Dividend;
 import com.cartera.dto.market.HistoryRange;
 import com.cartera.dto.market.IntradayInterval;
 import com.cartera.dto.market.PricePoint;
@@ -43,6 +44,11 @@ public interface MarketDataProvider {
     }
 
     default List<Candle> getIntradayCandles(String symbol, IntradayInterval interval) {
+        return null;
+    }
+
+    /** Dividendos de toda la historia (fecha ex e importe tras splits); null si la fuente no los tiene. */
+    default List<Dividend> getDividends(String symbol) {
         return null;
     }
 

@@ -52,6 +52,7 @@ import {
 import { ChartIcon, type IconName } from './chartIcons.tsx';
 import { DEFAULT_TEXT, DrawingsPrimitive } from './DrawingsPrimitive.ts';
 import { BandFillPrimitive } from './BandFillPrimitive.ts';
+import { adjustForDividends, type Dividend } from './dividendAdjust.ts';
 import {
   defaultParams,
   IND_COLORS,
@@ -74,6 +75,7 @@ type DrawTool = Exclude<Tool, 'cursor'>;
 
 const NO_DRAWINGS: ChartDrawing[] = [];
 const NO_CANDLES: Candle[] = [];
+const NO_DIVIDENDS: Dividend[] = [];
 const HIT_PX = 6;
 const HANDLE_PX = 8;
 const RIGHT_OFFSET = 8;
@@ -332,11 +334,23 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
   const [full, setFull] = useState(false);
   const [, rerender] = useReducer((n: number) => n + 1, 0);
 
+  /** Precios ajustados por dividendos (hacia atrás, como Yahoo o TradingView): lo de hoy no cambia. */
+  const [adjustDiv, setAdjustDiv] = usePersisted<boolean>('watchlist.velas.dividendos', false, (v) => typeof v === 'boolean');
+  const dividendsQ = useQuery({
+    queryKey: ['dividends', symbol],
+    queryFn: () => api.dividends(symbol),
+    enabled: adjustDiv && !flat,
+    staleTime: 6 * 3_600_000,
+    retry: false,
+  });
+  const dividends = adjustDiv && !flat ? dividendsQ.data?.dividends ?? NO_DIVIDENDS : NO_DIVIDENDS;
+  const adjCandles = useMemo(() => adjustForDividends(candles, dividends), [candles, dividends]);
   const kind: ChartType = flat && chartType === 'candles' ? 'line' : chartType;
-  const intradayBars = intradayQ.data?.candles ?? NO_CANDLES;
+  const rawIntraday = intradayQ.data?.candles ?? NO_CANDLES;
+  const intradayBars = useMemo(() => adjustForDividends(rawIntraday, dividends), [rawIntraday, dividends]);
   /** Intervalo de lo que se pinta (un fondo en intradía se ve en diario). */
   const shown: Step = intraday || !isIntraday(step) ? step : 'D';
-  const bars = useMemo(() => (intraday ? intradayBars : aggregate(candles, shown)), [candles, intradayBars, intraday, shown]);
+  const bars = useMemo(() => (intraday ? intradayBars : aggregate(adjCandles, shown)), [adjCandles, intradayBars, intraday, shown]);
   // Todos los decimales que trae el precio: si cotiza a 14,6083, el gráfico no lo redondea a 14,61.
   const precision = useMemo(() => pricePrecision(bars, quoted, liveQuote?.price), [bars, quoted, liveQuote?.price]);
   // Sin volumen (fondos, datos sin él) su panel no sale vacío.
@@ -352,7 +366,7 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
   );
   // Las series y los paneles se rehacen solo si cambia qué se ve o su color; los parámetros solo cambian datos.
   const indKey = visibleInd.map((i) => `${i.id}:${i.kind}:${i.color}`).join('|');
-  const returns = useMemo(() => new Map(PERIODS.map(([id]) => [id, periodReturn(candles, id)])), [candles]);
+  const returns = useMemo(() => new Map(PERIODS.map(([id]) => [id, periodReturn(adjCandles, id)])), [adjCandles]);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -1080,6 +1094,7 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
   const notes = [
     (intraday ? intradayQ.data?.stale : candlesQ.data?.stale) && 'Datos guardados: la fuente no responde',
     save.isError && 'No se pudo guardar el dibujo',
+    adjustDiv && !flat && dividendsQ.isError && 'No se pudieron cargar los dividendos: precios sin ajustar',
   ].filter((n): n is string => !!n);
   const toggle = (icon: IconName, label: string, on: boolean, onClick: () => void, disabled = false) => (
     <button type="button" className={on ? 'on' : ''} aria-pressed={on} title={label} aria-label={label} disabled={disabled} onClick={onClick}>
@@ -1124,6 +1139,21 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
         <button type="button" className="btn btn--small" data-popover aria-expanded={indOpen} onClick={() => setIndOpen(!indOpen)}>
           <ChartIcon name="indicators" /> Indicadores
         </button>
+        <div className="segmented segmented--small" role="group" aria-label="Dividendos">
+          <button
+            type="button"
+            className={adjustDiv && !flat ? 'on' : ''}
+            aria-pressed={adjustDiv && !flat}
+            disabled={flat}
+            title={flat ? 'Los fondos ya reinvierten o reparten en su valor liquidativo'
+              : adjustDiv && dividendsQ.isSuccess && !dividends.length ? 'Ajustado por dividendos: este valor no tiene dividendos en las fuentes'
+              : adjustDiv ? 'Precios ajustados por dividendos (rentabilidad total). Pulsa para ver los precios tal cual cotizaron'
+              : 'Ajustar por dividendos: baja lo anterior a cada fecha ex para ver la rentabilidad total, sin los saltos del cobro'}
+            onClick={() => setAdjustDiv(!adjustDiv)}
+          >
+            Div.
+          </button>
+        </div>
         <div className="xp-candles__icons">
           <button type="button" title="Deshacer (Ctrl+Z)" aria-label="Deshacer" disabled={!undoRef.current.length} onClick={undo}><ChartIcon name="undo" /></button>
           <button type="button" title="Rehacer (Ctrl+Y)" aria-label="Rehacer" disabled={!redoRef.current.length} onClick={redo}><ChartIcon name="redo" /></button>

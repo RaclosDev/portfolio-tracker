@@ -4,6 +4,7 @@ import com.cartera.dto.market.AnalystTargets;
 import com.cartera.dto.market.Candle;
 import com.cartera.dto.market.CompanyProfile;
 import com.cartera.dto.market.DailyHistory;
+import com.cartera.dto.market.Dividend;
 import com.cartera.dto.market.HistoryRange;
 import com.cartera.dto.market.IntradayInterval;
 import com.cartera.dto.market.PricePoint;
@@ -166,6 +167,11 @@ public class FallbackProvider implements MarketDataProvider {
     public List<Candle> getCandles(String symbol, LocalDate from) {
         List<Candle> out = first(symbol, p -> p.getCandles(symbol, from), c -> !c.isEmpty());
         return out != null ? out : List.of();
+    }
+
+    @Override
+    public List<Dividend> getDividends(String symbol) {
+        return first(symbol, p -> p.getDividends(symbol), d -> true);
     }
 
     @Override
