@@ -24,19 +24,23 @@
 
 <table>
   <tr>
-    <td align="center" width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/watchlist-dark.png"><img src="docs/screenshots/watchlist-light.png" alt="Lista de vigilancia con precios, niveles de compra y distancia a cada nivel" width="440"></picture><br><sub><b>Lista de vigilancia</b> · niveles de compra y distancia</sub></td>
-    <td align="center" width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/portfolio-dark.png"><img src="docs/screenshots/portfolio-light.png" alt="Resumen de una cartera de ejemplo con su evolución y totales" width="440"></picture><br><sub><b>Cartera</b> · evolución, rentabilidad y totales</sub></td>
+    <td align="center" width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/watchlist-dark.png"><img src="docs/screenshots/watchlist-light.png" alt="Lista de vigilancia con precios, mapa de precios, niveles de compra y distancia a cada nivel" width="440"></picture><br><sub><b>Lista de vigilancia</b> · niveles de compra y distancia</sub></td>
+    <td align="center" width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/chart-dark.png"><img src="docs/screenshots/chart-light.png" alt="Detalle de un valor con gráfico de velas, medias exponenciales, volumen, RSI y los niveles de compra sobre el gráfico" width="440"></picture><br><sub><b>Gráfico de velas</b> · indicadores y tus niveles</sub></td>
   </tr>
   <tr>
-    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/positions-dark.png"><img src="docs/screenshots/positions-light.png" alt="Posiciones abiertas de la cartera con precio medio, valor y resultado" width="440"></picture><br><sub><b>Posiciones</b> · precio medio, valor y resultado</sub></td>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/portfolio-dark.png"><img src="docs/screenshots/portfolio-light.png" alt="Resumen de una cartera de ejemplo con ganancia total, TIR y curva de evolución" width="440"></picture><br><sub><b>Cartera</b> · evolución, rentabilidad y totales</sub></td>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/positions-dark.png"><img src="docs/screenshots/positions-light.png" alt="Posiciones abiertas de la cartera con precio medio, valoración y resultado latente" width="440"></picture><br><sub><b>Posiciones</b> · precio medio, valor y resultado</sub></td>
+  </tr>
+  <tr>
     <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/exposure-dark.png"><img src="docs/screenshots/exposure-light.png" alt="Exposición real de la cartera por empresa, con los fondos y ETF desglosados" width="440"></picture><br><sub><b>Exposición</b> · empresa a empresa, fondos y ETF incluidos</sub></td>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/operations-dark.png"><img src="docs/screenshots/operations-light.png" alt="Registro filtrable de compras, ventas y dividendos con retenciones y bróker" width="440"></picture><br><sub><b>Registro</b> · compras, ventas y dividendos</sub></td>
   </tr>
   <tr>
-    <td align="center" colspan="2"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/operations-dark.png"><img src="docs/screenshots/operations-light.png" alt="Registro filtrable de compras, ventas y dividendos" width="440"></picture><br><sub><b>Registro</b> · compras, ventas y dividendos</sub></td>
+    <td align="center" colspan="2"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/renta-dark.png"><img src="docs/screenshots/renta-light.png" alt="Calculadora de la renta con la cuota estimada, las transmisiones del ejercicio y los dividendos" width="440"></picture><br><sub><b>Renta</b> · ganancias, dividendos y cuota estimada</sub></td>
   </tr>
 </table>
 
-Capturas de la interfaz real en escritorio, tomadas de la [demo pública](https://cartera.raclos.es/demo) en noviembre de 2026; se muestran en claro u oscuro según el tema de GitHub. Los datos son ficticios y reproducibles: no representan una cuenta, cotizaciones actuales ni resultados de inversión. Cada usuario dispone de listas, cartera y ajustes privados.
+Capturas de la interfaz real en escritorio, tomadas de la [demo pública](https://cartera.raclos.es/demo) el 27 de noviembre de 2026; se muestran en claro u oscuro según el tema de GitHub. Las cotizaciones y las velas son las reales de ese día, pero la cartera, las operaciones y los niveles son ficticios: no representan una cuenta ni resultados de inversión. Cada usuario dispone de listas, cartera y ajustes privados.
 
 ## Decisiones técnicas que puedes revisar
 
