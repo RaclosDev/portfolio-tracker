@@ -3,6 +3,7 @@ package com.cartera.controller;
 import com.cartera.config.CurrentUser;
 import com.cartera.dto.market.AnalystTargets;
 import com.cartera.dto.market.CandlesResult;
+import com.cartera.dto.market.DividendsResult;
 import com.cartera.dto.market.HistoryRange;
 import com.cartera.dto.market.HistoryResult;
 import com.cartera.dto.market.InstrumentHit;
@@ -122,6 +123,12 @@ public class MarketController {
         // Toda la historia (solo diaria) se pide aparte, cuando el gráfico se aleja más allá de los cinco años.
         if (daily && range.equals("max")) return market.getAllCandles(sym);
         return market.getCandles(sym, daily ? null : IntradayInterval.of(interval));
+    }
+
+    /** Dividendos del valor (fecha ex e importe), para ajustar las velas del gráfico si se pide. */
+    @GetMapping("/dividends/{symbol}")
+    public DividendsResult dividends(@PathVariable @Size(min = 1, max = 32) String symbol) {
+        return market.getDividends(symbol.toUpperCase(Locale.ROOT));
     }
 
     @GetMapping("/sparklines")

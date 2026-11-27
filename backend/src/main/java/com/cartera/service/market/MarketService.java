@@ -3,6 +3,8 @@ package com.cartera.service.market;
 import com.cartera.dto.market.AnalystTargets;
 import com.cartera.dto.market.Candle;
 import com.cartera.dto.market.CandlesResult;
+import com.cartera.dto.market.Dividend;
+import com.cartera.dto.market.DividendsResult;
 import com.cartera.dto.market.CompanyProfile;
 import com.cartera.dto.market.DailyHistory;
 import com.cartera.dto.market.DailyHistoryResult;
@@ -77,6 +79,7 @@ public class MarketService {
      * velas en cada vuelta impedía que la base de datos se durmiera.
      */
     private static final long CANDLES_PERSIST_MS = 6 * 60 * 60_000L;
+    private static final long DIVIDENDS_TTL_MS = 12 * 60 * 60_000L;
     /** Los minigráficos usan observaciones diarias o mensuales: se renuevan cada 3 h. */
     private static final long SPARK_TTL_MS = 3 * 60 * 60_000L;
     /** Pausa entre históricos renovados en segundo plano, para no ir a ráfagas. */
@@ -108,6 +111,8 @@ public class MarketService {
     };
     private static final TypeReference<List<Candle>> CANDLES = new TypeReference<>() {
     };
+    private static final TypeReference<List<Dividend>> DIVIDENDS = new TypeReference<>() {
+    };
 
     private final MarketDataProvider provider;
     private final MarketCacheRepository cache;
@@ -133,6 +138,7 @@ public class MarketService {
     private final Map<String, CompletableFuture<CandlesResult>> allCandlesPending = new ConcurrentHashMap<>();
     /** Cuándo se guardaron por última vez las velas diarias de cada valor en la base de datos. */
     private final Map<String, Long> candlesPersistedAt = new ConcurrentHashMap<>();
+    private final Map<String, CompletableFuture<DividendsResult>> dividendsPending = new ConcurrentHashMap<>();
     private final Map<String, HistoryRange> refreshQueue = new ConcurrentHashMap<>();
     private final AtomicBoolean refreshing = new AtomicBoolean();
     private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
@@ -797,6 +803,36 @@ public class MarketService {
         }
         Entry<List<Candle>> stored = hit != null ? hit : load(kind, symbol, CANDLES);
         return new CandlesResult(stored != null && stored.value() != null ? stored.value() : List.of(), true);
+    }
+
+    /**
+     * Dividendos de toda la historia, para ajustar las velas del gráfico. Cambian pocas veces al año: caché de doce
+     * horas y, sin conexión, lo último guardado. Lista vacía si la fuente no los tiene.
+     */
+    public DividendsResult getDividends(String symbol) {
+        return once(dividendsPending, symbol, () -> loadDividends(symbol));
+    }
+
+    private DividendsResult loadDividends(String symbol) {
+        String kind = "dividends";
+        String key = kind + ":" + symbol;
+        Entry<List<Dividend>> hit = memGet(key);
+        if (hit != null && System.currentTimeMillis() - hit.fetchedAt() < DIVIDENDS_TTL_MS) {
+            return new DividendsResult(hit.value(), false);
+        }
+        if (!throttled()) {
+            try {
+                List<Dividend> dividends = provider.getDividends(symbol);
+                List<Dividend> value = dividends != null ? dividends : List.of();
+                mem.put(key, new Entry<>(value, System.currentTimeMillis()));
+                if (!value.isEmpty()) cache.save(kind, symbol, value);
+                return new DividendsResult(value, false);
+            } catch (RuntimeException e) {
+                onProviderError(e, "Sin dividendos de " + symbol);
+            }
+        }
+        Entry<List<Dividend>> stored = hit != null ? hit : load(kind, symbol, DIVIDENDS);
+        return new DividendsResult(stored != null && stored.value() != null ? stored.value() : List.of(), true);
     }
 
     // ---------------------------------------------------------------- ficha

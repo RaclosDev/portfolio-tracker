@@ -4,6 +4,7 @@ import com.cartera.dto.market.AnalystTargets;
 import com.cartera.dto.market.Candle;
 import com.cartera.dto.market.CompanyProfile;
 import com.cartera.dto.market.DailyHistory;
+import com.cartera.dto.market.Dividend;
 import com.cartera.dto.market.HistoryRange;
 import com.cartera.dto.market.IntradayInterval;
 import com.cartera.dto.market.PricePoint;
@@ -202,9 +203,13 @@ public class YahooProvider implements MarketDataProvider {
     // ---------------------------------------------------------------- gráfico
 
     private JsonNode chart(String symbol, long period1Sec, String interval) {
+        return chart(symbol, period1Sec, interval, null);
+    }
+
+    private JsonNode chart(String symbol, long period1Sec, String interval, String events) {
         String url = Q1 + "/v8/finance/chart/" + MarketHttp.enc(symbol) + "?period1=" + period1Sec
                 + "&period2=" + Instant.now().getEpochSecond() + "&interval=" + interval
-                + "&includePrePost=false";
+                + (events != null ? "&events=" + events : "") + "&includePrePost=false";
         JsonNode res = http.getJson(client, url, Map.of());
         JsonNode result = res.path("chart").path("result").path(0);
         if (result.isMissingNode() || result.isNull()) {
@@ -256,6 +261,19 @@ public class YahooProvider implements MarketDataProvider {
         return new DailyHistory(str(chart.path("meta").path("currency")), points);
     }
 
+    /** Dividendos del gráfico, por fecha ex en el día de la bolsa (Yahoo ya da el importe tras splits). */
+    static List<Dividend> dividendsFromChart(JsonNode chart) {
+        ZoneId zone = zone(chart);
+        TreeMap<String, Double> byDay = new TreeMap<>();
+        for (JsonNode d : chart.path("events").path("dividends")) {
+            double amount = d.path("amount").asDouble(0);
+            long date = d.path("date").asLong(0);
+            if (amount <= 0 || date <= 0) continue;
+            byDay.merge(Instant.ofEpochSecond(date).atZone(zone).toLocalDate().toString(), amount, Double::sum);
+        }
+        return byDay.entrySet().stream().map(e -> new Dividend(e.getKey(), e.getValue())).toList();
+    }
+
     static List<Candle> candlesFromChart(JsonNode chart) {
         ZoneId zone = zone(chart);
         TreeMap<String, Candle> byDay = new TreeMap<>();
@@ -293,6 +311,12 @@ public class YahooProvider implements MarketDataProvider {
     @Override
     public List<Candle> getCandles(String symbol, LocalDate from) {
         return candlesFromChart(chart(symbol, epoch(from), "1d"));
+    }
+
+    @Override
+    public List<Dividend> getDividends(String symbol) {
+        // Barras trimestrales de toda la historia: los dividendos salen igual y la respuesta es pequeña.
+        return dividendsFromChart(chart(symbol, 0, "3mo", "div"));
     }
 
     @Override

@@ -604,6 +604,8 @@ function handle(method: string, url: URL, body: unknown): unknown {
   if (method === 'GET' && path.startsWith('/api/market/history/')) {
     return history(path.slice('/api/market/history/'.length).toUpperCase(), query.range ?? '1y');
   }
+  // La demo no tiene dividendos: el ajuste deja las velas como están.
+  if (method === 'GET' && path.startsWith('/api/market/dividends/')) return { dividends: [], stale: false };
   if (method === 'GET' && path.startsWith('/api/market/candles/')) {
     const symbol = path.slice('/api/market/candles/'.length).toUpperCase();
     return query.interval && query.interval !== '1d' ? intradayCandles(symbol, query.interval) : candles(symbol);
