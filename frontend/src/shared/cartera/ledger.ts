@@ -12,8 +12,10 @@
  *    así que se reparten entre los lotes abiertos en proporción a sus acciones.
  *  - Venta de derechos: desde 2017, ganancia patrimonial; antes, reducía el coste de las acciones.
  *  - Prima de emisión: reduce el coste fiscal hasta cero; lo que pase de cero es rendimiento del capital.
- *  - Regla de los dos meses (art. 33.5.f): una pérdida no se computa si se compran acciones del mismo
- *    valor en los dos meses anteriores o posteriores y siguen en cartera; se integra al venderlas.
+ *  - Regla de recompra (art. 33.5.f y g): una pérdida no se computa si se compran valores homogéneos en los
+ *    dos meses anteriores o posteriores (admitidos a negociación) o en el año anterior o posterior (no admitidos:
+ *    los fondos de inversión) y siguen en cartera; se integra al venderlos.
+ *  - Traspaso con diferimiento (art. 94.1.a LIRPF): solo entre fondos de inversión que no son ETF ni acciones.
  *
  * Identidad del valor: el ISIN. Los tickers con el mismo ISIN (un ETF comprado en dos bolsas) forman una
  * sola posición, con un único FIFO y una única regla de los dos meses. Se agrupa al calcular, sin tocar el
@@ -22,10 +24,14 @@
  */
 import { isIncome, type Instrument, type Operation, type OperationType } from './schemas.ts';
 import { cents, splitCents } from './money.ts';
+import { instrumentKind, type InstrumentKind } from './kind.ts';
 
 const EPS = 1e-6;
 /** Parte de un importe del lote: entero si se toma todo, si no en céntimos (los importes se guardan con céntimos). */
 const portion = (amount: number, f: number, whole: boolean) => (whole ? amount : cents(amount * f));
+/** Meses de la regla de recompra: dos para lo que cotiza en bolsa, doce para lo que no (fondos de inversión). */
+export const REPURCHASE_MONTHS_LISTED = 2;
+export const REPURCHASE_MONTHS_UNLISTED = 12;
 /** Cambio de normativa de la venta de derechos (Ley 26/2014). */
 export const RIGHTS_GAIN_FROM = '2017-01-01';
 
@@ -207,6 +213,17 @@ export function sortOperations<T extends Pick<Operation, 'date' | 'type' | 'id'>
   );
 }
 
+/** Lo que el motor necesita de un valor: su ISIN para agrupar y su tipo para la recompra y los traspasos. */
+export type LedgerInstrument = Pick<Instrument, 'ticker' | 'symbol' | 'isin'> & { name?: string | null; kind?: InstrumentKind };
+
+/** Valores con su tipo, que sale de la cotización si la hay y, si no, del símbolo y el nombre. */
+export function withKinds(
+  instruments: readonly Instrument[],
+  quotes: Record<string, { quoteType?: string | null } | undefined>,
+): LedgerInstrument[] {
+  return instruments.map((i) => ({ ...i, kind: instrumentKind(i, i.symbol ? quotes[i.symbol]?.quoteType : null) }));
+}
+
 interface Pending {
   saleId: number;
   until: string;
@@ -217,6 +234,9 @@ interface Pending {
 interface TickerState {
   t: TickerLedger;
   pending: Pending[];
+  /** Plazo de la regla de recompra de este valor, en meses. */
+  repurchaseMonths: number;
+  fund: boolean;
 }
 
 function newTicker(ticker: string, isin: string | null, date: string): TickerLedger {
@@ -319,9 +339,12 @@ export function identityByTicker(instruments: readonly Pick<Instrument, 'ticker'
 }
 
 /** `instruments` da el ISIN de cada ticker: sin él (o sin ISIN), cada ticker es una posición aparte. */
-export function computeLedger(operations: Operation[], instruments: readonly Pick<Instrument, 'ticker' | 'symbol' | 'isin'>[] = []): Ledger {
+export function computeLedger(operations: Operation[], instruments: readonly LedgerInstrument[] = []): Ledger {
   const identity = identityByTicker(instruments);
   const keyOf = (ticker: string) => identity.get(ticker)?.key ?? ticker;
+  const kinds = new Map(instruments.map((i) => [i.ticker, i.kind ?? instrumentKind(i)]));
+  // El tipo de la posición es el de su ticker canónico; sin datos del valor, lo que no parece un fondo es una acción.
+  const kindOfKey = (key: string) => kinds.get(key) ?? instrumentKind({ ticker: key });
   const states = new Map<string, TickerState>();
   const sales: Sale[] = [];
   const income: IncomeItem[] = [];
@@ -339,7 +362,11 @@ export function computeLedger(operations: Operation[], instruments: readonly Pic
   for (const op of sortOperations(operations)) {
     const key = keyOf(op.ticker);
     let st = states.get(key);
-    if (!st) states.set(key, (st = { t: newTicker(key, identity.get(op.ticker)?.isin ?? null, op.date), pending: [] }));
+    if (!st) {
+      const fund = kindOfKey(key) === 'FUND';
+      states.set(key, (st = { t: newTicker(key, identity.get(op.ticker)?.isin ?? null, op.date), pending: [], fund,
+        repurchaseMonths: fund ? REPURCHASE_MONTHS_UNLISTED : REPURCHASE_MONTHS_LISTED }));
+    }
     const t = st.t;
     if (!t.members.includes(op.ticker)) t.members.push(op.ticker);
     t.lastDate = op.date;
@@ -352,6 +379,10 @@ export function computeLedger(operations: Operation[], instruments: readonly Pic
       case 'transfer_out': {
         if (!op.transferRef || transfers.has(op.transferRef)) {
           issue('La salida necesita una referencia de traspaso única.');
+          break;
+        }
+        if (!st.fund) {
+          issue('Solo los fondos de inversión pueden traspasarse con diferimiento; un ETF o una acción se vende y se compra.');
           break;
         }
         if (shares > held(t) + EPS) {
@@ -389,6 +420,10 @@ export function computeLedger(operations: Operation[], instruments: readonly Pic
         const transfer = op.transferRef ? transfers.get(op.transferRef) : undefined;
         if (!transfer || transfer.received) {
           issue('Falta una salida anterior disponible con la misma referencia de traspaso.');
+          break;
+        }
+        if (!st.fund || !states.get(keyOf(transfer.operation.ticker))?.fund) {
+          issue('El traspaso con diferimiento solo existe entre fondos de inversión.');
           break;
         }
         if (keyOf(transfer.operation.ticker) === key || Math.abs(transfer.operation.amountEur - op.amountEur) > 0.005) {
@@ -430,7 +465,7 @@ export function computeLedger(operations: Operation[], instruments: readonly Pic
           deferredLossEur: 0,
           matches: [],
         };
-        // Regla de los dos meses (compra posterior a una venta con pérdida).
+        // Regla de recompra (compra posterior a una venta con pérdida).
         let room = lot.shares;
         for (const p of st.pending) {
           if (room <= EPS) break;
@@ -555,11 +590,11 @@ export function computeLedger(operations: Operation[], instruments: readonly Pic
         sale.gainEur = cents(sale.proceedsEur - sale.costEur);
         sale.taxGainEur = cents(sale.proceedsEur - sale.taxCostEur);
         sale.computableEur = sale.taxGainEur;
-        // Regla de los dos meses: compras del mismo valor en los dos meses anteriores que siguen en cartera…
+        // Regla de recompra: compras del mismo valor en los 2 meses (12 si es un fondo) anteriores que siguen en cartera…
         if (sale.taxGainEur < -0.005 && want > EPS) {
           const lossPerShare = -sale.taxGainEur / want;
           let unassigned = want;
-          const from = addMonths(op.date, -2);
+          const from = addMonths(op.date, -st.repurchaseMonths);
           for (const lot of t.openLots) {
             if (unassigned <= EPS) break;
             if (lot.date < from || lot.sharesBought <= 0) continue;
@@ -575,8 +610,8 @@ export function computeLedger(operations: Operation[], instruments: readonly Pic
           }
           sale.deferredLossEur = cents(sale.deferredLossEur);
           sale.computableEur = cents(sale.taxGainEur + sale.deferredLossEur);
-          // …y las que se compren en los dos meses siguientes.
-          if (unassigned > EPS) st.pending.push({ saleId: op.id, until: addMonths(op.date, 2), lossPerShare, sharesLeft: unassigned });
+          // …y las que se compren en el mismo plazo siguiente.
+          if (unassigned > EPS) st.pending.push({ saleId: op.id, until: addMonths(op.date, st.repurchaseMonths), lossPerShare, sharesLeft: unassigned });
         }
         t.realizedEur += sale.gainEur;
         t.soldShares += want;

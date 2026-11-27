@@ -3,6 +3,7 @@ import {
   computeTaxYears,
   localToday,
   valueCartera,
+  withKinds,
   type CarteraValuation,
   type CarteraView,
   type Ledger,
@@ -22,7 +23,7 @@ export interface CarteraModel {
 
 /** Libro FIFO, valoración y Renta a partir del registro (todo en el navegador, con el motor compartido). */
 export function buildModel(view: CarteraView): CarteraModel {
-  const ledger = computeLedger(view.operations, view.instruments);
+  const ledger = computeLedger(view.operations, withKinds(view.instruments, view.quotes));
   const valuation = valueCartera({
     ledger,
     instruments: view.instruments,

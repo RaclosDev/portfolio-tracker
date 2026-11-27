@@ -58,7 +58,7 @@ describe('valor histórico de cartera', () => {
   it('reconstruye compras, ventas, scrip y splits, incluyendo posiciones cerradas y excluyendo cobros', () => {
     const result = computePortfolioHistory({ from: '2026-01-01', to: '2026-01-05',
       instruments: [instrument('AAA')], fx: {}, prices: { AAA: { currency: 'EUR', points: points(
-        ['2025-12-31', 10], ['2026-01-01', 10], ['2026-01-02', 12], ['2026-01-03', 10], ['2026-01-04', 5], ['2026-01-05', 6]) } },
+        ['2025-12-31', 5], ['2026-01-01', 5], ['2026-01-02', 6], ['2026-01-03', 5], ['2026-01-04', 5], ['2026-01-05', 6]) } },
       operations: [
         op({ ticker: 'AAA', date: '2025-12-30', type: 'buy', shares: 10, amountEur: 100 }),
         op({ ticker: 'AAA', date: '2026-01-02', type: 'sell', shares: 2, amountEur: 24 }, 2),
@@ -112,13 +112,44 @@ describe('valor histórico de cartera', () => {
     expect(result[1]).toMatchObject({ valueEur: 50, constantFxEur: null, fxEffectEur: null });
   });
 
-  it('no multiplica por acciones nuevas el cierre anterior a un split sin cotización', () => {
-    const result = computePortfolioHistory({ from: '2026-01-01', to: '2026-01-02', instruments: [instrument('AAA')], fx: {},
-      prices: { AAA: { currency: 'EUR', points: points(['2026-01-01', 100]) } }, operations: [
-        op({ ticker: 'AAA', date: '2026-01-01', type: 'buy', shares: 2, amountEur: 200 }),
-        op({ ticker: 'AAA', date: '2026-01-02', type: 'split', splitRatio: 4, amountEur: 0 }, 2),
+  it('un split 2:1 no deja un salto: los cierres ya vienen ajustados y las acciones se pasan a la escala de hoy', () => {
+    // Cierre real de 100 antes del split, 50 después: el proveedor da 50 en toda la serie (escala de hoy).
+    const result = computePortfolioHistory({ from: '2026-01-01', to: '2026-01-04', instruments: [instrument('AAA')], fx: {},
+      prices: { AAA: { currency: 'EUR', points: points(['2025-12-31', 50], ['2026-01-01', 50], ['2026-01-02', 50], ['2026-01-03', 50], ['2026-01-04', 55]) } },
+      operations: [
+        op({ ticker: 'AAA', date: '2025-12-30', type: 'buy', shares: 2, amountEur: 200 }),
+        op({ ticker: 'AAA', date: '2026-01-03', type: 'split', splitRatio: 2, amountEur: 0 }, 2),
       ] });
-    expect(result.map((p) => p.valueEur)).toEqual([200, null]);
+    expect(result.map((p) => p.valueEur)).toEqual([200, 200, 200, 220]);
+    expect(result.map((p) => p.resultEur)).toEqual([0, 0, 0, 20]);
+  });
+
+  it('con varios splits cada fecha usa solo los posteriores a ella', () => {
+    const result = computePortfolioHistory({ from: '2026-01-01', to: '2026-01-03', instruments: [instrument('AAA')], fx: {},
+      prices: { AAA: { currency: 'EUR', points: points(['2026-01-01', 10], ['2026-01-02', 10], ['2026-01-03', 10]) } },
+      operations: [
+        op({ ticker: 'AAA', date: '2025-12-30', type: 'buy', shares: 1, amountEur: 40 }),
+        op({ ticker: 'AAA', date: '2026-01-02', type: 'split', splitRatio: 2, amountEur: 0 }, 2),
+        op({ ticker: 'AAA', date: '2026-01-03', type: 'split', splitRatio: 2, amountEur: 0 }, 3),
+      ] });
+    expect(result.map((p) => p.valueEur)).toEqual([40, 40, 40]);
+  });
+
+  it('agrupa por ISIN: comprar con un ticker y vender con otro del mismo ISIN cierra la posición', () => {
+    const isin = 'ES0113900J37';
+    const instruments = [
+      instrumentInputSchema.parse({ ticker: 'SAN', symbol: 'SAN.MC', currency: 'EUR', isin }),
+      instrumentInputSchema.parse({ ticker: 'SANX', symbol: 'SAN.DE', currency: 'EUR', isin }),
+    ];
+    const result = computePortfolioHistory({ from: '2026-01-01', to: '2026-01-03', instruments, fx: {},
+      prices: { 'SAN.MC': { currency: 'EUR', points: points(['2025-12-31', 10], ['2026-01-01', 10], ['2026-01-02', 10], ['2026-01-03', 10]) },
+        'SAN.DE': { currency: 'EUR', points: points(['2025-12-31', 10], ['2026-01-01', 10], ['2026-01-02', 10], ['2026-01-03', 10]) } },
+      operations: [
+        op({ ticker: 'SAN', date: '2025-12-30', type: 'buy', shares: 10, amountEur: 90 }),
+        op({ ticker: 'SANX', date: '2026-01-02', type: 'sell', shares: 10, amountEur: 110 }, 2),
+      ] });
+    expect(result.map((p) => p.valueEur)).toEqual([100, 0, 0]);
+    expect(result[2]).toMatchObject({ salesEur: 110, resultEur: 10 });
   });
 
   it('devuelve cero antes de invertir y al cerrar todo, y valida fechas reales y límites', () => {

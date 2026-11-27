@@ -69,7 +69,19 @@ describe('fechas y números de exportaciones', () => {
   it('conserva el día en fechas Excel y fechas con hora del extracto', () => {
     expect(importDate(46387, 'auto')).toBe('2026-12-31');
     expect(importDate(new Date('2026-01-10T00:00:00Z'), 'auto')).toBe('2026-01-10');
-    expect(importDate('2026-01-10T23:00:00-05:00', 'auto')).toBe('2026-01-10');
+    // Sin zona horaria, el día escrito manda.
+    expect(importDate('2026-01-10 23:30', 'auto')).toBe('2026-01-10');
+    expect(importDate('2026-01-10T23:30:00', 'auto')).toBe('2026-01-10');
+  });
+
+  it('pasa a la hora de Madrid las fechas con zona horaria', () => {
+    // 23:30 UTC del 31/12 ya es el 1/1 en Madrid (UTC+1); en verano, 22:30 UTC del 30/6 es el 1/7 (UTC+2).
+    expect(importDate('2026-12-31T23:30:00Z', 'auto')).toBe('2027-01-01');
+    expect(importDate('2026-06-30T22:30:00Z', 'auto')).toBe('2026-07-01');
+    expect(importDate('2026-06-30T21:30:00Z', 'auto')).toBe('2026-06-30');
+    expect(importDate('2026-01-10T23:00:00-05:00', 'auto')).toBe('2026-01-11');
+    expect(importDate('2026-01-10T00:30:00+09:00', 'auto')).toBe('2026-01-09');
+    expect(importDate('2026-01-10 23:30:00+0000', 'auto')).toBe('2026-01-11');
   });
 
   it('distingue decimales, agrupaciones y cantidades ambiguas sin redondearlas', () => {

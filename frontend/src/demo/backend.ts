@@ -12,6 +12,7 @@ import {
   computeLedger,
   computeMetrics,
   computePortfolioHistory,
+  withKinds,
   DEFAULT_SETTINGS,
   importRequestSchema,
   instrumentInputSchema,
@@ -412,7 +413,7 @@ const matches = (q: string) => {
 const asResult = (s: Security) => ({ symbol: s.symbol, name: s.name, exchange: s.exchange, type: s.kind });
 
 function assertLedger(next: Operation[]) {
-  const { issues } = computeLedger(next, instruments);
+  const { issues } = computeLedger(next, withKinds(instruments, Object.fromEntries([...CATALOG].map(([symbol, s]) => [symbol, { quoteType: s.kind }]))));
   if (issues.length) throw new DemoError(400, issues.map((i) => i.message).join(' '));
 }
 function ensureInstrument(ticker: string, patch?: unknown) {

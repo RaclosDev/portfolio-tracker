@@ -516,7 +516,7 @@ export function HoldingExpanded({ model, ticker, onClose, onEditOperation, onAdd
                         {st.deferredEur > 0 && (
                           <Row label="Pérdida aplazada">
                             {money(st.deferredEur, 'EUR', 2)}
-                            <span className="sheet__sub">regla de los dos meses</span>
+                            <span className="sheet__sub">regla de recompra</span>
                           </Row>
                         )}
                         <Row label="A declarar" tone={signed(st.computableEur)}>

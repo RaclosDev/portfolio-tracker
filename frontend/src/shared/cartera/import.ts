@@ -109,7 +109,14 @@ export function importDate(value: Cell, format: ImportOptions['dateFormat']): st
     const s = text(value);
     const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/);
     const local = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?: \d{2}:\d{2}(?::\d{2})?)?$/);
-    if (iso) { y = +iso[1]!; m = +iso[2]!; d = +iso[3]!; }
+    if (iso && /(?:Z|[+-]\d{2}:?\d{2})$/.test(s) && /\d{2}:\d{2}/.test(s)) {
+      // Con zona horaria (23:30 UTC del 31/12 ya es el 1/1 en Madrid): el día fiscal es el de Madrid.
+      const instant = new Date(s.replace(' ', 'T').replace(/([+-]\d{2})(\d{2})$/, '$1:$2'));
+      if (Number.isNaN(instant.getTime())) throw new Error('Fecha no reconocida. Usa AAAA-MM-DD o indica el orden de día y mes.');
+      const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(instant);
+      const part = (type: string) => +parts.find((p) => p.type === type)!.value;
+      y = part('year'); m = part('month'); d = part('day');
+    } else if (iso) { y = +iso[1]!; m = +iso[2]!; d = +iso[3]!; }
     else if (local) {
       const a = +local[1]!, b = +local[2]!;
       if (format === 'auto' && a <= 12 && b <= 12 && a !== b) throw new Error(`Fecha «${s}» ambigua: elige día/mes o mes/día.`);

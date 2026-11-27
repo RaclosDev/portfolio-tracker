@@ -8,12 +8,34 @@
  *
  * Es una ayuda para preparar la declaración, no un cálculo oficial.
  */
-import type { IncomeItem, Ledger, Sale } from './ledger.ts';
+import { addMonths, type IncomeItem, type Ledger, type Sale } from './ledger.ts';
 
 /** Retención española general sobre dividendos y demás RCM. */
 export const ES_WITHHOLDING_RATE = 0.19;
 /** Desde este año, los dividendos importados sin retención se estiman al 19 % (la Renta de esos años está pendiente). */
 export const ESTIMATE_WITHHOLDING_FROM = 2026;
+
+/**
+ * Bróker o banco depositario con sede en España: retiene el 19 % al pagar el dividendo a un residente. Un bróker
+ * extranjero (Interactive Brokers, Degiro, Trade Republic…) no retiene en España, y el cliente lo declara y lo
+ * paga él. Solo se estima retención si el bróker apuntado es uno de estos; sin bróker o con otro, no se estima
+ * (la opción prudente: la cuota a pagar no sale menor de lo real).
+ */
+const ES_WITHHOLDING_BROKERS = [
+  'ing', 'myinvestor', 'renta 4', 'bankinter', 'santander', 'bbva', 'caixabank', 'openbank', 'selfbank', 'self bank',
+  'inversis', 'andbank', 'abanca', 'sabadell', 'kutxabank', 'ibercaja', 'unicaja', 'cajamar', 'cecabank', 'bankia',
+  'banco mediolanum', 'arquia', 'laboral kutxa', 'cajasur', 'targobank',
+];
+
+const normalizeBroker = (broker: string) =>
+  broker.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/** ¿El bróker apuntado es un depositario español que retiene el 19 %? */
+export function brokerWithholdsInSpain(broker: string | null | undefined): boolean {
+  if (!broker) return false;
+  const name = ` ${normalizeBroker(broker)} `;
+  return ES_WITHHOLDING_BROKERS.some((b) => name.includes(` ${b} `));
+}
 
 /**
  * Tipo máximo de retención en origen que el convenio de doble imposición con España permite a cada país
@@ -59,14 +81,49 @@ export function treatyRate(isin: string | null | undefined): number {
   return DEFAULT_TREATY_RATE;
 }
 
-/** Escala del ahorro (estatal + autonómica) vigente desde 2025. */
-export const SAVINGS_BRACKETS: { upTo: number; rate: number }[] = [
-  { upTo: 6_000, rate: 0.19 },
-  { upTo: 50_000, rate: 0.21 },
-  { upTo: 200_000, rate: 0.23 },
-  { upTo: 300_000, rate: 0.27 },
-  { upTo: Infinity, rate: 0.3 },
+export interface SavingsBracket {
+  upTo: number;
+  rate: number;
+}
+
+/**
+ * Escala de la base del ahorro (estatal + autonómica, tipos medios de la escala general) por ejercicio. Cada
+ * entrada vale desde su año hasta la siguiente. Fuente: art. 66 y 76 de la Ley 35/2006 (LIRPF) y sus reformas
+ * (RDL 20/2011, Ley 16/2012, Ley 26/2014, RDL 3/2016, Ley 31/2022, Ley 7/2024).
+ *
+ *  - 2007–2009: 18 % fijo.   - 2010–2011: 19 % hasta 6.000 €, 21 % el resto.
+ *  - 2012–2014: 21 % hasta 6.000 €, 25 % hasta 24.000 €, 27 % el resto (con el recargo de solidaridad de 2012–2014).
+ *  - 2015: 19,5 / 21,5 / 23,5 % (6.000 / 50.000 €).   - 2016–2020: 19 / 21 / 23 %.
+ *  - 2021–2022: se añade el 26 % desde 200.000 €.   - 2023–2024: 27 % hasta 300.000 €, 28 % más allá.
+ *  - 2025 en adelante: 19 / 21 / 23 / 27 / 30 % (tramos en 6.000 / 50.000 / 200.000 / 300.000 €).
+ * Antes de 2007 (régimen anterior) no se modela: se usa la escala de 2007. Un año posterior al último de la
+ * tabla usa la última.
+ */
+export const SAVINGS_SCALES: readonly { from: number; brackets: readonly SavingsBracket[] }[] = [
+  { from: 2007, brackets: [{ upTo: Infinity, rate: 0.18 }] },
+  { from: 2010, brackets: [{ upTo: 6_000, rate: 0.19 }, { upTo: Infinity, rate: 0.21 }] },
+  { from: 2012, brackets: [{ upTo: 6_000, rate: 0.21 }, { upTo: 24_000, rate: 0.25 }, { upTo: Infinity, rate: 0.27 }] },
+  { from: 2015, brackets: [{ upTo: 6_000, rate: 0.195 }, { upTo: 50_000, rate: 0.215 }, { upTo: Infinity, rate: 0.235 }] },
+  { from: 2016, brackets: [{ upTo: 6_000, rate: 0.19 }, { upTo: 50_000, rate: 0.21 }, { upTo: Infinity, rate: 0.23 }] },
+  { from: 2021, brackets: [{ upTo: 6_000, rate: 0.19 }, { upTo: 50_000, rate: 0.21 }, { upTo: 200_000, rate: 0.23 }, { upTo: Infinity, rate: 0.26 }] },
+  { from: 2023, brackets: [{ upTo: 6_000, rate: 0.19 }, { upTo: 50_000, rate: 0.21 }, { upTo: 200_000, rate: 0.23 }, { upTo: 300_000, rate: 0.27 }, { upTo: Infinity, rate: 0.28 }] },
+  { from: 2025, brackets: [{ upTo: 6_000, rate: 0.19 }, { upTo: 50_000, rate: 0.21 }, { upTo: 200_000, rate: 0.23 }, { upTo: 300_000, rate: 0.27 }, { upTo: Infinity, rate: 0.3 }] },
 ];
+
+/** Escala del ahorro vigente en un año. */
+export function savingsBrackets(year: number): readonly SavingsBracket[] {
+  let found = SAVINGS_SCALES[0]!;
+  for (const scale of SAVINGS_SCALES) if (scale.from <= year) found = scale;
+  return found.brackets;
+}
+
+/** Escala del ahorro vigente desde 2025. */
+export const SAVINGS_BRACKETS: readonly SavingsBracket[] = savingsBrackets(2025);
+
+/** Años en que las ganancias de un año o menos de antigüedad iban a la base general (Ley 16/2012; derogado en 2015). */
+export function shortTermGoesToGeneralBase(year: number) {
+  return year === 2013 || year === 2014;
+}
 
 /** Porcentaje de compensación cruzada entre ganancias y RCM según el año. */
 export function crossCompensationPct(year: number) {
@@ -77,10 +134,11 @@ export function crossCompensationPct(year: number) {
   return 0.25;
 }
 
-export function savingsTax(base: number): number {
+/** Cuota de la base del ahorro de un año (por defecto, la escala actual). */
+export function savingsTax(base: number, year = 2025): number {
   let tax = 0;
   let prev = 0;
-  for (const b of SAVINGS_BRACKETS) {
+  for (const b of savingsBrackets(year)) {
     if (base <= prev) break;
     tax += (Math.min(base, b.upTo) - prev) * b.rate;
     prev = b.upTo;
@@ -110,7 +168,13 @@ export interface TaxYear {
   /** Ganancias y pérdidas patrimoniales declarables (ventas + derechos). */
   gains: number;
   losses: number;
-  /** Pérdidas de este año aplazadas por la regla de los dos meses. */
+  /**
+   * Resultado de las ventas de un año o menos de antigüedad, que en 2013 y 2014 va a la base general y no a la
+   * del ahorro (0 en los demás años). No entra en `gains`, `losses` ni `gpBalance`, y no se estima su cuota
+   * (depende del resto de rentas); un saldo negativo tampoco se compensa ni se arrastra, que es lo prudente.
+   */
+  shortTermBalance: number;
+  /** Pérdidas de este año aplazadas por la regla de recompra. */
   deferred: number;
   /** Pérdidas aplazadas antes que se integran este año. */
   released: number;
@@ -144,9 +208,26 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 function withholdingFor(item: IncomeItem): { value: number; estimated: boolean } {
   if (item.withholdingEs != null) return { value: item.withholdingEs, estimated: false };
-  if (item.source === 'excel' && item.year >= ESTIMATE_WITHHOLDING_FROM && item.rcmEur > 0)
+  if (item.source === 'excel' && item.year >= ESTIMATE_WITHHOLDING_FROM && item.rcmEur > 0 && brokerWithholdsInSpain(item.broker))
     return { value: round2(item.rcmEur * ES_WITHHOLDING_RATE), estimated: true };
   return { value: 0, estimated: false };
+}
+
+/**
+ * Parte de lo declarable de una venta que corresponde a lotes con un año o menos de antigüedad (para la base
+ * general en 2013 y 2014). El resultado de cada tramo es lo cobrado en proporción a sus acciones menos su coste
+ * fiscal; la pérdida aplazada se reparte por acciones.
+ */
+export function shortTermPart(sale: Sale): number {
+  const total = sale.matches.reduce((s, m) => s + m.shares, 0);
+  if (total <= 0) return 0;
+  let part = 0;
+  for (const m of sale.matches) {
+    if (sale.date > addMonths(m.buyDate, 12)) continue;
+    const share = m.shares / total;
+    part += sale.proceedsEur * share - m.taxCostEur + sale.deferredLossEur * share;
+  }
+  return round2(part);
 }
 
 /** Un informe por año, desde el primer año con operaciones hasta `lastYear`. */
@@ -167,7 +248,10 @@ export function computeTaxYears(ledger: Ledger, lastYear = new Date().getFullYea
       return { item, withholdingEs: w.value, estimated: w.estimated };
     });
 
-    const gpValues = [...sales.map((s) => s.computableEur), ...rights.map((r) => r.gainEur)];
+    // En 2013 y 2014 el resultado de lo vendido con un año o menos va a la base general, no a la del ahorro.
+    const shortParts = shortTermGoesToGeneralBase(year) ? sales.map(shortTermPart) : sales.map(() => 0);
+    const shortTermBalance = round2(shortParts.reduce((a, b) => a + b, 0));
+    const gpValues = [...sales.map((s, i) => s.computableEur - shortParts[i]!), ...rights.map((r) => r.gainEur)];
     const gains = gpValues.filter((v) => v > 0).reduce((a, b) => a + b, 0);
     const losses = gpValues.filter((v) => v < 0).reduce((a, b) => a + b, 0);
     const gpBalance = gains + losses;
@@ -254,7 +338,7 @@ export function computeTaxYears(ledger: Ledger, lastYear = new Date().getFullYea
     const gpBase = Math.max(0, gp);
     const rcmBase = Math.max(0, rcm);
     const taxBase = gpBase + rcmBase;
-    const taxEstimate = savingsTax(taxBase);
+    const taxEstimate = savingsTax(taxBase, year);
     // Doble imposición: lo retenido fuera hasta el tipo del convenio y hasta el impuesto español de esa renta
     // (al tipo medio); y la suma, sin pasar de la cuota.
     const averageRate = taxBase > 0 ? taxEstimate / taxBase : 0;
@@ -281,6 +365,7 @@ export function computeTaxYears(ledger: Ledger, lastYear = new Date().getFullYea
       deferred: sales.reduce((s, x) => s + x.deferredLossEur, 0),
       released: sales.reduce((s, x) => s + x.releasedLossEur, 0),
       gpBalance,
+      shortTermBalance,
       rcmGross,
       rcmFees,
       rcmBalance,
