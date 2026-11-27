@@ -2,7 +2,7 @@ import {
   computeLedger, detectImportColumns, detectImportHeader, discoverImportInstruments, IMPORT_FIELDS,
   importMappingProblems, importOperationType, importOptionsSchema, instrumentInputSchema,
   normalizeImportText, operationFingerprint, tickerFromSymbol, OPERATION_LABELS, OPERATION_TYPES, previewImport,
-  type CarteraView, type ImportField, type ImportInstrument, type ImportOptions, type OperationType,
+  type CarteraView, type ImportField, type ImportInstrument, type ImportOptions, type OperationType, withKinds,
 } from '@/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useOperationMutations } from '../../api/hooks.ts';
@@ -115,8 +115,8 @@ export function CarteraImportDialog({ view, onClose }: { view: CarteraView; onCl
   const combined = useMemo(() => {
     const firstId = view.operations.reduce((max, o) => Math.max(max, o.id), 0) + 1;
     return computeLedger([...view.operations, ...additions.map((o, i) => ({ ...o, id: firstId + i }))],
-      [...view.instruments, ...instruments.filter((i) => !view.instruments.some((k) => k.ticker === i.ticker))]);
-  }, [view.operations, view.instruments, additions, instruments]);
+      withKinds([...view.instruments, ...instruments.filter((i) => !view.instruments.some((k) => k.ticker === i.ticker))], view.quotes));
+  }, [view.operations, view.instruments, view.quotes, additions, instruments]);
   const issues = [...instrumentProblems, ...combined.issues.map((i) => `${i.ticker} · ${i.date}: ${i.message}`)];
   const ready = additions.length > 0 && additions.length <= 20_000 && usedInstruments.length <= 500 && invalid === 0 && issues.length === 0 && mappingProblems.length === 0 && confirmed;
   const busy = loading || importCartera.isPending;

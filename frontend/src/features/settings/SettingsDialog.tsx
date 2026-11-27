@@ -27,6 +27,7 @@ import { parseDecimal } from '../../lib/format.ts';
 import { disablePush } from '../../lib/push.ts';
 import { ImportDialog } from '../import/ImportDialog.tsx';
 import { BandsEditor } from './BandsEditor.tsx';
+import { deleteListMessage } from './deleteListMessage.ts';
 import { NotificationsPanel } from './NotificationsPanel.tsx';
 import { applyAppearance, applyColors } from '../../lib/theme.ts';
 import { COLUMN_OPTIONS } from '../watchlist/WatchlistTable.tsx';
@@ -558,7 +559,7 @@ export function SettingsDialog({ settings, lists, onClose, onStartTour }: Props)
                   onClick={async () => {
                     const ok = await confirmAction({
                       title: 'Borrar lista',
-                      message: `Se borrará la lista «${l.name}» con sus ${l.itemCount} valores. Si te equivocas, puedes recuperarla desde una copia automática.`,
+                      message: deleteListMessage(l.name, l.itemCount),
                       confirmLabel: 'Borrar lista',
                       danger: true,
                     });

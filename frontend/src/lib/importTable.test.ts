@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseCsv, parseTable, symbolCandidates, toIsoDate } from './importTable.ts';
+import { decodeCsv, parseCsv, parseTable, symbolCandidates, toIsoDate } from './importTable.ts';
 
 describe('parseTable', () => {
   it('entiende el Excel original («Vigilar nuevas»)', () => {
@@ -78,5 +78,29 @@ describe('symbolCandidates', () => {
     expect(symbolCandidates('0P0001OJNQ', '.MC')).toEqual(['0P0001OJNQ']);
     expect(symbolCandidates('IE00B3VXGD32', '.MC')).toEqual(['IE00B3VXGD32']);
     expect(symbolCandidates('MCD', '')).toEqual(['MCD']);
+  });
+});
+
+describe('importar números y codificación', () => {
+  it('«1.500» de un CSV entra como 1500, no como 1,5', () => {
+    const t = parseTable(parseCsv('Ticker;Importe a invertir;Compra 1\nAAA;1.500;12,5\nBBB;2.500,50;0.500'))!;
+    expect(t.rows.map((r) => [r.investAmount, r.buyPrices])).toEqual([
+      [1500, [12.5]],
+      [2500.5, [0.5]],
+    ]);
+  });
+
+  it('un CSV en Windows-1252 conserva los acentos y reconoce las columnas', () => {
+    // «Acción» con la «ó» como el byte 0xF3 de Windows-1252, que no es UTF-8 válido.
+    const bytes = Uint8Array.from('Acción;Ticker;Importe a invertir\nIberdrola;IBE.MC;1.500'.split('').map((c) => c.charCodeAt(0)));
+    const text = decodeCsv(bytes);
+    expect(text).toContain('Acción');
+    const t = parseTable(parseCsv(text))!;
+    expect(t.columns.name).toBe(0);
+    expect(t.rows[0]).toMatchObject({ symbol: 'IBE.MC', name: 'Iberdrola', investAmount: 1500 });
+  });
+
+  it('un CSV en UTF-8 no se toca', () => {
+    expect(decodeCsv(new TextEncoder().encode('Cotización;€'))).toBe('Cotización;€');
   });
 });

@@ -5,6 +5,7 @@ import { ApiError, api } from '../../api/client.ts';
 import { Dialog } from '../../components/Dialog.tsx';
 import type { ReadSheet } from '../../lib/excel.ts';
 import { price, shortDate } from '../../lib/format.ts';
+import { listCreator } from './ensureList.ts';
 import { FIELD_LABEL, parseTable, symbolCandidates, type Field } from '../../lib/importTable.ts';
 
 /** Sufijos de Yahoo para tickers que vienen sin mercado (como en el Excel con datos de Microsoft). */
@@ -72,6 +73,8 @@ export function ImportDialog({ fileName, sheets, lists, defaultListId, defaultIn
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const qc = useQueryClient();
+  /** Lista nueva ya creada en un intento que falló: el reintento la reutiliza en vez de crear otra. */
+  const ensureNewList = useMemo(() => listCreator(api.createList), []);
 
   const rows = table?.rows ?? [];
   // Para cada fila, los símbolos a probar en orden: el editado, o el del fichero con el sufijo y sin él.
@@ -105,8 +108,9 @@ export function ImportDialog({ fileName, sheets, lists, defaultListId, defaultIn
     try {
       let target = listId;
       if (target === NEW_LIST) {
-        if (!newName.trim()) throw new Error('Pon un nombre a la lista nueva.');
-        target = (await api.createList(newName.trim())).id;
+        const name = newName.trim();
+        if (!name) throw new Error('Pon un nombre a la lista nueva.');
+        target = await ensureNewList(name);
       }
       const res = await api.importRows(target, toImport);
       await qc.invalidateQueries();

@@ -94,7 +94,7 @@ const text = (v: Cell): string | null => {
 const number = (v: Cell): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   const s = text(v);
-  return s ? parseDecimal(s.replace(/[€$£\s]/g, '')) : null;
+  return s ? parseDecimal(s.replace(/[€$£\s]/g, ''), { thousandsDot: true }) : null;
 };
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -189,6 +189,18 @@ export function parseTable(data: Cell[][]): ParsedTable | null {
     rows.push(row);
   }
   return { columns, headerRow, rows, skipped };
+}
+
+/**
+ * Texto de un CSV: UTF-8 y, si los bytes no lo son (Excel en Windows guarda en Windows-1252),
+ * Windows-1252, para que «Cotización» no llegue como «Cotizaci?n».
+ */
+export function decodeCsv(bytes: ArrayBuffer | Uint8Array): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder('windows-1252').decode(bytes);
+  }
 }
 
 /** CSV con «;» (Excel en español), «,» o tabuladores, con comillas. */

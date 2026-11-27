@@ -36,7 +36,7 @@ export function RentaView({ model }: { model: CarteraModel }) {
   const carriedUsed = y.carriedUsed.reduce((s, c) => s + c.amount, 0);
   const pays = y.balanceEstimate >= 0;
   const sales = y.sales.length + y.rights.length;
-  // «Computable» solo aporta si la regla de los dos meses cambia algún resultado.
+  // «Computable» solo aporta si la regla de recompra cambia algún resultado.
   const showComputable = y.sales.some((s) => Math.abs(s.computableEur - s.taxGainEur) > 0.005);
   const hasFees = y.rcmLines.some((l) => l.item.feesEur);
   const hasForeign = y.rcmLines.some((l) => l.item.withholdingForeign);
@@ -103,13 +103,20 @@ export function RentaView({ model }: { model: CarteraModel }) {
               {y.losses !== 0 && <Line label="Ganancias" value={y.gains} />}
               {y.losses !== 0 && <Line label="Pérdidas" value={y.losses} />}
               <Line label="Saldo" value={y.gpBalance} strong />
+              {y.shortTermBalance !== 0 && <Line label="De un año o menos (a la base general)" value={y.shortTermBalance} />}
             </tbody>
           </table>
+          {y.shortTermBalance !== 0 && (
+            <p className="pcard__note">
+              En {y.year} lo vendido con un año o menos de antigüedad tributaba en la base general, no en la del ahorro: no entra en el
+              saldo ni en la cuota estimada de abajo, y su impuesto depende del resto de tus rentas.
+            </p>
+          )}
           {(y.deferred > 0 || y.released > 0) && (
             <p className="pcard__note">
-              Regla de los dos meses:{' '}
+              Regla de recompra:{' '}
               {[
-                y.deferred > 0 && `${eur(y.deferred)} de pérdidas no cuentan este año porque recompraste en los dos meses (contarán al vender lo recomprado)`,
+                y.deferred > 0 && `${eur(y.deferred)} de pérdidas no cuentan este año porque recompraste dentro del plazo (dos meses; un año en los fondos) y contarán al vender lo recomprado`,
                 y.released > 0 && `${eur(y.released)} de pérdidas aplazadas antes cuentan ya en las ventas de este año`,
               ]
                 .filter(Boolean)
@@ -128,7 +135,7 @@ export function RentaView({ model }: { model: CarteraModel }) {
             </tbody>
           </table>
           {y.withholdingEsEstimated > 0 && (
-            <p className="pcard__note">{eur(y.withholdingEsEstimated)} de retenciones no estaban apuntadas: se estiman al 19 %.</p>
+            <p className="pcard__note">{eur(y.withholdingEsEstimated)} de retenciones no estaban apuntadas: se estiman al 19 % porque el bróker es español y retiene. Con un bróker extranjero no se estima nada.</p>
           )}
         </section>
         <section className="pcard">
@@ -175,7 +182,7 @@ export function RentaView({ model }: { model: CarteraModel }) {
                   <th className="al-right">Transmisión</th>
                   <th className="al-right">Adquisición</th>
                   <th className="al-right">Resultado</th>
-                  {showComputable && <th className="al-right" title="Lo que se declara tras aplicar la regla de los dos meses">Computable</th>}
+                  {showComputable && <th className="al-right" title="Lo que se declara tras aplicar la regla de recompra">Computable</th>}
                 </tr>
               </thead>
               <tbody>
@@ -194,8 +201,8 @@ export function RentaView({ model }: { model: CarteraModel }) {
                     <td className="al-right num">{eur(s.taxCostEur)}</td>
                     <td className={`al-right num delta ${signed(s.taxGainEur)}`}>{eur(s.taxGainEur)}</td>
                     {showComputable && (
-                      <td className={`al-right num delta ${signed(s.computableEur)}`} title={s.deferredLossEur ? `Aplazados ${eur(s.deferredLossEur)} por recompra en dos meses` : undefined}>
-                        {s.deferredLossEur > 0 && <span className="badge badge--danger">2 meses</span>} {eur(s.computableEur)}
+                      <td className={`al-right num delta ${signed(s.computableEur)}`} title={s.deferredLossEur ? `Aplazados ${eur(s.deferredLossEur)} por recompra dentro del plazo` : undefined}>
+                        {s.deferredLossEur > 0 && <span className="badge badge--danger">recompra</span>} {eur(s.computableEur)}
                       </td>
                     )}
                   </tr>
@@ -288,9 +295,9 @@ export function RentaView({ model }: { model: CarteraModel }) {
       </section>
 
       <p className="footnote">
-        Ayuda para preparar la declaración, no un cálculo oficial: FIFO por valor (todos los brókers juntos), regla de los dos
-        meses, compensación del 25 % y arrastre de pérdidas cuatro años. La cuota usa la escala del ahorro estatal + autonómica
-        general; compruébalo con los datos fiscales de la Agencia Tributaria.
+        Ayuda para preparar la declaración, no un cálculo oficial: FIFO por valor (todos los brókers juntos), regla de recompra
+        (dos meses; un año en los fondos), compensación del 25 % y arrastre de pérdidas cuatro años. La cuota usa la escala del
+        ahorro estatal + autonómica general de ese año; compruébalo con los datos fiscales de la Agencia Tributaria.
       </p>
     </div>
   );

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { addMonths, computeLedger, sortOperations } from './ledger.ts';
 import { operationInputSchema, type Operation, type OperationInput } from './schemas.ts';
-import { computeTaxYears, savingsTax, treatyRate } from './tax.ts';
+import { brokerWithholdsInSpain, computeTaxYears, savingsBrackets, savingsTax, treatyRate } from './tax.ts';
 import { valueCartera, xirr } from './view.ts';
 
 let nextId = 1;
@@ -244,6 +244,36 @@ describe('regla de los dos meses', () => {
     expect(fwd('2026-08-13')).toBe(0);
   });
 
+  describe('plazo según el tipo de valor (art. 33.5.f y g)', () => {
+    const fundOf = (ticker: string) => [{ ticker, symbol: ticker, isin: null, kind: 'FUND' as const }];
+    // Pérdida de 20 € el 1/3/2026 y recompra posterior de las mismas participaciones.
+    const rebuy = (rebuyDate: string, instruments: Parameters<typeof computeLedger>[1]) =>
+      computeLedger([buy('2026-01-10', 'F', 10, 100), sell('2026-03-01', 'F', 10, 80), buy(rebuyDate, 'F', 10, 80)], instruments).sales[0]!.deferredLossEur;
+
+    it('en un fondo la recompra cuenta hasta un año después, con el límite exacto', () => {
+      expect(r2(rebuy('2026-12-01', fundOf('F')))).toBe(20);
+      expect(r2(rebuy('2027-03-01', fundOf('F')))).toBe(20);
+      expect(rebuy('2027-03-02', fundOf('F'))).toBe(0);
+    });
+
+    it('en una acción o un ETF sigue siendo de dos meses', () => {
+      expect(rebuy('2026-12-01', [])).toBe(0);
+      expect(rebuy('2026-12-01', [{ ticker: 'F', symbol: 'F', isin: null, kind: 'ETF' }])).toBe(0);
+      expect(r2(rebuy('2026-04-30', []))).toBe(20);
+    });
+
+    it('en un fondo la compra de hasta un año antes también aplaza la pérdida', () => {
+      const back = (buyDate: string) =>
+        computeLedger([buy('2025-02-01', 'F', 100, 2000), buy(buyDate, 'F', 50, 900), sell('2026-03-01', 'F', 100, 1800)], fundOf('F')).sales[0]!.deferredLossEur;
+      expect(r2(back('2025-03-01'))).toBe(100);
+      expect(back('2025-02-28')).toBe(0);
+    });
+
+    it('reconoce un fondo por su símbolo (ISIN) cuando no se indica el tipo', () => {
+      expect(r2(rebuy('2026-12-01', [{ ticker: 'F', symbol: 'IE00B4L5Y983', isin: null }]))).toBe(20);
+    });
+  });
+
   it('addMonths ajusta al último día del mes y cruza de año', () => {
     expect(addMonths('2026-12-31', 2)).toBe('2027-02-28');
     expect(addMonths('2027-12-31', 2)).toBe('2028-02-29');
@@ -256,6 +286,53 @@ describe('Renta', () => {
   it('escala del ahorro', () => {
     expect(savingsTax(6000)).toBeCloseTo(1140);
     expect(savingsTax(10_000)).toBeCloseTo(1140 + 840);
+  });
+
+  it('usa la escala de cada año: una base de 10.000 € da 2.030 € en 2015', () => {
+    expect(savingsTax(10_000, 2015)).toBeCloseTo(2030);
+    expect(savingsTax(10_000, 2007)).toBeCloseTo(1800);
+    expect(savingsTax(10_000, 2010)).toBeCloseTo(1980);
+    expect(savingsTax(10_000, 2013)).toBeCloseTo(2260);
+    expect(savingsTax(10_000, 2018)).toBeCloseTo(1980);
+    expect(savingsTax(250_000, 2021)).toBeCloseTo(57_880);
+    expect(savingsTax(350_000, 2023)).toBeCloseTo(85_880);
+    expect(savingsTax(350_000, 2025)).toBeCloseTo(86_880);
+    // Sin año se usa la escala vigente, y un año futuro mantiene la última.
+    expect(savingsTax(350_000)).toBeCloseTo(86_880);
+    expect(savingsTax(350_000, 2031)).toBeCloseTo(86_880);
+    expect(savingsBrackets(2015)).toHaveLength(3);
+  });
+
+  it('la cuota estimada de cada informe anual usa la escala de su año', () => {
+    const l = computeLedger([buy('2014-01-01', 'H', 10, 1000), sell('2015-06-01', 'H', 10, 11_000)]);
+    const y = computeTaxYears(l, 2015).find((x) => x.year === 2015)!;
+    expect(r2(y.taxBase)).toBe(10_000);
+    expect(r2(y.taxEstimate)).toBe(2030);
+    const l2 = computeLedger([buy('2024-01-01', 'H', 10, 1000), sell('2025-06-01', 'H', 10, 11_000)]);
+    expect(r2(computeTaxYears(l2, 2025).find((x) => x.year === 2025)!.taxEstimate)).toBe(1980);
+  });
+
+  it('en 2013 y 2014 lo vendido con un año o menos va a la base general, no a la del ahorro', () => {
+    const l = computeLedger([buy('2012-01-01', 'S', 10, 1000), buy('2013-03-01', 'S', 10, 1000), sell('2013-09-01', 'S', 15, 3000)]);
+    const y = computeTaxYears(l, 2013).find((x) => x.year === 2013)!;
+    // 10 acciones de 2012: +1.000 € al ahorro. 5 de 2013 (menos de un año): +500 € a la base general.
+    expect(r2(y.gpBalance)).toBe(1000);
+    expect(r2(y.shortTermBalance)).toBe(500);
+    expect(r2(y.gpBase)).toBe(1000);
+    expect(r2(y.taxEstimate)).toBe(210);
+    // La misma venta en 2015 ya iba entera a la base del ahorro.
+    const l15 = computeLedger([buy('2014-01-01', 'S', 10, 1000), buy('2015-03-01', 'S', 10, 1000), sell('2015-09-01', 'S', 15, 3000)]);
+    const y15 = computeTaxYears(l15, 2015).find((x) => x.year === 2015)!;
+    expect(y15.shortTermBalance).toBe(0);
+    expect(r2(y15.gpBase)).toBe(1500);
+  });
+
+  it('un año de antigüedad exacto sigue siendo corto; un día más, largo', () => {
+    const at = (sellDate: string) => computeTaxYears(computeLedger([buy('2013-09-01', 'S', 10, 1000), sell(sellDate, 'S', 10, 1500)]), 2014).find((x) => x.year === 2014)!;
+    expect(r2(at('2014-09-01').shortTermBalance)).toBe(500);
+    expect(at('2014-09-01').gpBase).toBe(0);
+    expect(at('2014-09-02').shortTermBalance).toBe(0);
+    expect(r2(at('2014-09-02').gpBase)).toBe(500);
   });
 
   it('compensa con el 25 % de los dividendos y arrastra el resto cuatro años', () => {
@@ -292,17 +369,47 @@ describe('Renta', () => {
     expect(y23.carriedPending).toEqual([]);
   });
 
-  it('estima la retención del 19 % de los dividendos importados desde 2026', () => {
+  it('estima la retención del 19 % de los dividendos importados desde 2026 si el bróker es español', () => {
     const l = computeLedger([
       buy('2025-01-01', 'TEF', 1000, 4000),
-      op({ date: '2025-06-01', ticker: 'TEF', type: 'dividend', amountEur: 150, source: 'excel' }),
-      op({ date: '2026-06-18', ticker: 'TEF', type: 'dividend', amountEur: 150, source: 'excel' }),
+      op({ date: '2025-06-01', ticker: 'TEF', type: 'dividend', amountEur: 150, source: 'excel', broker: 'ING' }),
+      op({ date: '2026-06-18', ticker: 'TEF', type: 'dividend', amountEur: 150, source: 'excel', broker: 'ING' }),
     ]);
     const years = computeTaxYears(l, 2026);
     expect(years.find((y) => y.year === 2025)!.withholdingEs).toBe(0);
     const y26 = years.find((y) => y.year === 2026)!;
     expect(y26.withholdingEsEstimated).toBe(28.5);
     expect(y26.rcmLines[0]!.estimated).toBe(true);
+  });
+
+  it('no estima retención si el bróker es extranjero o no se sabe cuál es', () => {
+    for (const broker of ['Interactive Brokers', 'Trade Republic', 'Degiro', undefined]) {
+      const l = computeLedger([
+        buy('2025-01-01', 'TEF', 1000, 4000),
+        op({ date: '2026-06-18', ticker: 'TEF', type: 'dividend', amountEur: 150, source: 'excel', broker }),
+      ]);
+      const y26 = computeTaxYears(l, 2026).find((y) => y.year === 2026)!;
+      expect(y26.withholdingEs, String(broker)).toBe(0);
+      expect(y26.withholdingEsEstimated).toBe(0);
+      expect(y26.rcmLines[0]!.estimated).toBe(false);
+    }
+  });
+
+  it('una retención apuntada manda sobre la estimación, también con un bróker español', () => {
+    const l = computeLedger([
+      buy('2025-01-01', 'TEF', 1000, 4000),
+      op({ date: '2026-06-18', ticker: 'TEF', type: 'dividend', amountEur: 150, source: 'excel', broker: 'ING', withholdingEs: 20 }),
+    ]);
+    const y26 = computeTaxYears(l, 2026).find((y) => y.year === 2026)!;
+    expect(y26.withholdingEs).toBe(20);
+    expect(y26.withholdingEsEstimated).toBe(0);
+  });
+
+  it('reconoce los depositarios españoles por su nombre, con tildes, mayúsculas y sufijos', () => {
+    for (const b of ['ING', 'ing direct', 'MyInvestor', 'Renta 4 Banco', 'Bankinter', 'Self Bank', 'Banco Santander', 'BBVA', 'Openbank'])
+      expect(brokerWithholdsInSpain(b), b).toBe(true);
+    for (const b of ['Interactive Brokers', 'Degiro', 'Trade Republic', 'Scalable', 'Revolut', 'Ping', '', null, undefined])
+      expect(brokerWithholdsInSpain(b), String(b)).toBe(false);
   });
 
   it('descuenta de la cuota la retención de la venta de derechos', () => {

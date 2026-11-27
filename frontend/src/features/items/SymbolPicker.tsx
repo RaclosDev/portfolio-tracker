@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useState } from 'react';
 import { api } from '../../api/client.ts';
 import { price } from '../../lib/format.ts';
+import { resultsMatchTyped } from './searchEnter.ts';
 
 function useDebounced<T>(value: T, ms: number) {
   const [v, setV] = useState(value);
@@ -96,6 +97,8 @@ export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'sy
   const fetching = product ? listings.isFetching : tickers.isFetching || products.isFetching;
   const noResults = searching && !fetching && tickers.isFetched && options.length === 0;
   const showList = open && (options.length > 0 || noResults);
+  // Enter solo elige si la lista es la de lo que está escrito (no la de la búsqueda anterior, aún en el retraso).
+  const listIsCurrent = resultsMatchTyped(value, q, { product: !!product, recent: showRecent });
   const noListings = !!product && !listings.isFetching && options.length === 1;
 
   const choose = (o: Option) => {
@@ -159,6 +162,7 @@ export function SymbolPicker({ value, onChange, onPick, autoFocus, inputId = 'sy
             setActive((a) => Math.max(a - 1, 0));
           } else if (e.key === 'Enter' && options.length) {
             e.preventDefault();
+            if (!listIsCurrent) return;
             choose(options[Math.min(active, options.length - 1)]!);
           } else if (e.key === 'Escape') {
             e.stopPropagation();
