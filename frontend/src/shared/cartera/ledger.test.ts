@@ -133,6 +133,28 @@ describe('scrip, splits, primas y derechos', () => {
     expect(r2(t.otherIncomeEur)).toBe(120);
   });
 
+  it('la prima de emisión se reparte por acción y no por coste, y el exceso de cada lote es rendimiento', () => {
+    const l = computeLedger([
+      buy('2020-01-01', 'COL', 10, 10),
+      buy('2020-06-01', 'COL', 10, 200),
+      op({ date: '2021-01-01', ticker: 'COL', type: 'issue_premium', amountEur: 60 }),
+    ]);
+    const t = l.byTicker.get('COL')!;
+    expect(t.openLots.map((x) => r2(x.taxCostEur))).toEqual([0, 170]);
+    expect(l.income.map((i) => [r2(i.costReductionEur), r2(i.rcmEur)])).toEqual([[40, 20]]);
+  });
+
+  it('la prima de emisión resta lo mismo por acción a lotes de distinto coste', () => {
+    const l = computeLedger([
+      buy('2020-01-01', 'COL', 10, 100),
+      buy('2020-06-01', 'COL', 10, 300),
+      op({ date: '2021-01-01', ticker: 'COL', type: 'issue_premium', amountEur: 20 }),
+    ]);
+    const t = l.byTicker.get('COL')!;
+    expect(t.openLots.map((x) => r2(x.taxCostEur))).toEqual([90, 290]);
+    expect(l.income.map((i) => [r2(i.costReductionEur), r2(i.rcmEur)])).toEqual([[20, 0]]);
+  });
+
   it('la venta de derechos es ganancia desde 2017 y reducía el coste antes', () => {
     const l = computeLedger([
       buy('2015-01-01', 'REP', 10, 100),
