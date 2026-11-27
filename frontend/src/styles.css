@@ -1422,6 +1422,7 @@ html[data-xp-switch='up'] { --xp-from: -14px; --xp-to: 10px; }
 .xp-candles__periods button:disabled { opacity: 0.45; cursor: default; }
 .xp-candles__msg { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; }
 .xp-candles__note { margin: 0; }
+.xp-candles__drawnote { position: absolute; left: 8px; bottom: 8px; z-index: 4; margin: 0; padding: 4px 8px; border-radius: 6px; background: var(--surface); border: 1px solid var(--border); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: calc(100% - 16px); }
 .xp-candles:fullscreen { background: var(--bg); padding: 12px; }
 .xp-candles:fullscreen .xp-candles__stage { min-height: 0; }
 .xp-candles.is-full:not(:fullscreen) {

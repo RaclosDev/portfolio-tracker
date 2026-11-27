@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { addMonths, computeLedger, sortOperations } from './ledger.ts';
 import { operationInputSchema, type Operation, type OperationInput } from './schemas.ts';
-import { computeTaxYears, savingsTax } from './tax.ts';
+import { computeTaxYears, savingsTax, treatyRate } from './tax.ts';
 import { valueCartera, xirr } from './view.ts';
 
 let nextId = 1;
@@ -131,6 +131,28 @@ describe('scrip, splits, primas y derechos', () => {
       [70, 20],
     ]);
     expect(r2(t.otherIncomeEur)).toBe(120);
+  });
+
+  it('la prima de emisión se reparte por acción y no por coste, y el exceso de cada lote es rendimiento', () => {
+    const l = computeLedger([
+      buy('2020-01-01', 'COL', 10, 10),
+      buy('2020-06-01', 'COL', 10, 200),
+      op({ date: '2021-01-01', ticker: 'COL', type: 'issue_premium', amountEur: 60 }),
+    ]);
+    const t = l.byTicker.get('COL')!;
+    expect(t.openLots.map((x) => r2(x.taxCostEur))).toEqual([0, 170]);
+    expect(l.income.map((i) => [r2(i.costReductionEur), r2(i.rcmEur)])).toEqual([[40, 20]]);
+  });
+
+  it('la prima de emisión resta lo mismo por acción a lotes de distinto coste', () => {
+    const l = computeLedger([
+      buy('2020-01-01', 'COL', 10, 100),
+      buy('2020-06-01', 'COL', 10, 300),
+      op({ date: '2021-01-01', ticker: 'COL', type: 'issue_premium', amountEur: 20 }),
+    ]);
+    const t = l.byTicker.get('COL')!;
+    expect(t.openLots.map((x) => r2(x.taxCostEur))).toEqual([90, 290]);
+    expect(l.income.map((i) => [r2(i.costReductionEur), r2(i.rcmEur)])).toEqual([[20, 0]]);
   });
 
   it('la venta de derechos es ganancia desde 2017 y reducía el coste antes', () => {
@@ -281,6 +303,80 @@ describe('Renta', () => {
     const y26 = years.find((y) => y.year === 2026)!;
     expect(y26.withholdingEsEstimated).toBe(28.5);
     expect(y26.rcmLines[0]!.estimated).toBe(true);
+  });
+
+  it('descuenta de la cuota la retención de la venta de derechos', () => {
+    const l = computeLedger([
+      buy('2022-01-01', 'REP', 10, 100),
+      op({ date: '2022-06-01', ticker: 'REP', type: 'rights_sale', amountEur: 100, withholdingEs: 19 }),
+    ]);
+    const y = computeTaxYears(l, 2022).find((x) => x.year === 2022)!;
+    expect(r2(y.gains)).toBe(100);
+    expect(r2(y.taxEstimate)).toBe(19);
+    expect(y.withholdingEs).toBe(19);
+    expect(r2(y.balanceEstimate)).toBe(0);
+  });
+
+  it('no estima retención en la venta de derechos importada sin retención', () => {
+    const l = computeLedger([
+      buy('2025-01-01', 'REP', 10, 100),
+      op({ date: '2026-06-01', ticker: 'REP', type: 'rights_sale', amountEur: 100, source: 'excel' }),
+    ]);
+    const y = computeTaxYears(l, 2026).find((x) => x.year === 2026)!;
+    expect(y.withholdingEs).toBe(0);
+    expect(y.withholdingEsEstimated).toBe(0);
+  });
+
+  it('la doble imposición solo deduce lo retenido hasta el tipo del convenio', () => {
+    // Alemania retiene el 26,375 % y el convenio permite el 15 %: se deducen 150 €, no 190 €.
+    const l = computeLedger(
+      [
+        buy('2022-01-01', 'SAP', 10, 1000),
+        op({ date: '2022-06-01', ticker: 'SAP', type: 'dividend', amountEur: 1000, withholdingForeign: 263.75 }),
+      ],
+      [{ ticker: 'SAP', symbol: null, isin: 'DE0007164600' }],
+    );
+    const y = computeTaxYears(l, 2022).find((x) => x.year === 2022)!;
+    expect(r2(y.taxEstimate)).toBe(190);
+    expect(r2(y.foreignDeduction)).toBe(150);
+    expect(r2(y.balanceEstimate)).toBe(40);
+  });
+
+  it('la deducción por doble imposición no deja la cuota por debajo de cero', () => {
+    // Dividendo de EE. UU. de 1.000 € (150 € retenidos) y 250 € de pérdidas: la cuota es 142,50 €.
+    const l = computeLedger(
+      [
+        buy('2022-01-01', 'KO', 10, 1000),
+        op({ date: '2022-06-01', ticker: 'KO', type: 'dividend', amountEur: 1000, withholdingForeign: 150 }),
+        buy('2022-01-01', 'XYZ', 10, 1000),
+        sell('2022-12-01', 'XYZ', 10, 750),
+      ],
+      [{ ticker: 'KO', symbol: null, isin: 'US1912161007' }],
+    );
+    const y = computeTaxYears(l, 2022).find((x) => x.year === 2022)!;
+    expect(r2(y.taxEstimate)).toBe(142.5);
+    expect(r2(y.foreignDeduction)).toBe(142.5);
+    expect(r2(y.balanceEstimate)).toBe(0);
+  });
+
+  it('sin ISIN se aplica el tipo general del convenio', () => {
+    const l = computeLedger([
+      buy('2022-01-01', 'SAP', 10, 1000),
+      op({ date: '2022-06-01', ticker: 'SAP', type: 'dividend', amountEur: 1000, withholdingForeign: 263.75 }),
+    ]);
+    const y = computeTaxYears(l, 2022).find((x) => x.year === 2022)!;
+    expect(r2(y.foreignDeduction)).toBe(150);
+  });
+
+  it('el tipo del convenio sale del prefijo del ISIN', () => {
+    expect(treatyRate('US0378331005')).toBe(0.15);
+    expect(treatyRate('CH0012005267')).toBe(0.15);
+    expect(treatyRate('NL0010273215')).toBe(0.15);
+    expect(treatyRate('GB0002634946')).toBe(0);
+    expect(treatyRate('IE00B4L5Y983')).toBe(0);
+    expect(treatyRate('fr0000120271')).toBe(0.15);
+    expect(treatyRate('ZZ0000000000')).toBe(0.15);
+    expect(treatyRate(null)).toBe(0.15);
   });
 });
 

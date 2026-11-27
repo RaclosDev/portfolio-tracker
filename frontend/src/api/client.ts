@@ -1,4 +1,5 @@
 import { VISITED_LIST_ID } from '@/shared';
+import { forgetPushAccount, rememberPushAccount } from '../lib/pushAccount.ts';
 import type {
   TouchedOrder,
   AlertRecord,
@@ -88,10 +89,14 @@ interface TokenResponse { accessToken: string; user?: SessionUser | null }
 function setAccessToken(token: string | null, user: SessionUser | null = null) {
   accessToken = token;
   tokenUser = token ? user : null;
-  if (token) localStorage.setItem(SESSION_HINT, '1');
-  else {
+  if (token) {
+    localStorage.setItem(SESSION_HINT, '1');
+    // El service worker solo enseña los avisos de la cuenta con la sesión abierta en este navegador.
+    if (user && !DEMO) void rememberPushAccount(user.id);
+  } else {
     localStorage.removeItem(SESSION_HINT);
     localStorage.removeItem(LS_SNAPSHOT);
+    if (!DEMO) void forgetPushAccount();
   }
 }
 
@@ -116,9 +121,9 @@ function refreshAccessToken(): Promise<boolean> {
 
 const isAuthRoute = (url: string) => url.startsWith('/api/auth/');
 
-async function send(method: string, url: string, body?: unknown, isForm = false): Promise<Response> {
+async function send(method: string, url: string, body?: unknown, isForm = false, extra?: Record<string, string>): Promise<Response> {
   if (DEMO) return (await import('../demo/backend.ts')).demoFetch(method, url, body);
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...extra };
   if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
   if (accessToken && !isAuthRoute(url)) headers.Authorization = `Bearer ${accessToken}`;
   return fetch(url, {
@@ -130,10 +135,10 @@ async function send(method: string, url: string, body?: unknown, isForm = false)
 }
 
 /** Petición autenticada que devuelve la respuesta tal cual (para descargas). */
-export async function authorizedFetch(method: string, url: string, body?: unknown): Promise<Response> {
+export async function authorizedFetch(method: string, url: string, body?: unknown, extra?: Record<string, string>): Promise<Response> {
   if (!DEMO && !accessToken && !isAuthRoute(url) && localStorage.getItem(SESSION_HINT)) await refreshAccessToken();
-  let res = await send(method, url, body);
-  if (!DEMO && res.status === 401 && !isAuthRoute(url) && await refreshAccessToken()) res = await send(method, url, body);
+  let res = await send(method, url, body, false, extra);
+  if (!DEMO && res.status === 401 && !isAuthRoute(url) && await refreshAccessToken()) res = await send(method, url, body, false, extra);
   // Sesión caducada o cerrada en otro sitio: la app vuelve a la pantalla de entrada.
   if (res.status === 401 && !isAuthRoute(url)) window.dispatchEvent(new Event(SESSION_LOST));
   return res;
@@ -152,12 +157,18 @@ export async function downloadFile(url: string, fallbackName: string): Promise<v
   setTimeout(() => URL.revokeObjectURL(href), 0);
 }
 
-async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
-  const res = await authorizedFetch(method, url, body);
-  if (res.status === 204) return undefined as T;
+async function requestWithHeaders<T>(
+  method: string, url: string, body?: unknown, extra?: Record<string, string>,
+): Promise<{ data: T; headers: Headers }> {
+  const res = await authorizedFetch(method, url, body, extra);
+  if (res.status === 204) return { data: undefined as T, headers: res.headers };
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, data.error ?? `Error ${res.status}`, data.issues);
-  return data as T;
+  return { data: data as T, headers: res.headers };
+}
+
+async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+  return (await requestWithHeaders<T>(method, url, body)).data;
 }
 
 export interface AuthConfig { googleClientId: string | null; registrationEnabled: boolean }
@@ -172,6 +183,14 @@ export interface Bootstrap {
   listId: number | null;
   watchlist: WatchlistView | null;
   portfolio: CarteraView;
+}
+
+/** Versión (ETag) con la que se leyeron o guardaron por última vez los dibujos de cada valor. */
+const drawingsVersion = new Map<string, string>();
+function rememberDrawingsVersion(symbol: string, headers: Headers) {
+  const version = headers.get('ETag');
+  if (version) drawingsVersion.set(symbol, version);
+  else drawingsVersion.delete(symbol);
 }
 
 async function loadSession(): Promise<Session> {
@@ -285,9 +304,20 @@ export const api = {
   /** Velas diarias de toda la historia del valor (se piden al alejar el gráfico). */
   allCandles: (symbol: string) =>
     request<{ candles: Candle[]; stale: boolean }>('GET', `/api/market/candles/${encodeURIComponent(symbol)}?range=max`),
-  drawings: (symbol: string) => request<ChartDrawing[]>('GET', `/api/drawings/${encodeURIComponent(symbol)}`),
-  saveDrawings: (symbol: string, drawings: ChartDrawing[]) =>
-    request<ChartDrawing[]>('PUT', `/api/drawings/${encodeURIComponent(symbol)}`, drawings),
+  drawings: async (symbol: string) => {
+    const { data, headers } = await requestWithHeaders<ChartDrawing[]>('GET', `/api/drawings/${encodeURIComponent(symbol)}`);
+    rememberDrawingsVersion(symbol, headers);
+    return data;
+  },
+  /** Sustituye todos los dibujos; el servidor responde 409 si desde que se leyeron los ha cambiado otro dispositivo. */
+  saveDrawings: async (symbol: string, drawings: ChartDrawing[]) => {
+    const version = drawingsVersion.get(symbol);
+    const { data, headers } = await requestWithHeaders<ChartDrawing[]>(
+      'PUT', `/api/drawings/${encodeURIComponent(symbol)}`, drawings, version ? { 'If-Match': version } : undefined,
+    );
+    rememberDrawingsVersion(symbol, headers);
+    return data;
+  },
   sparklines: (symbols: string[], range: '3m' | '1y' = '3m') =>
     request<Record<string, number[]>>(
       'GET',

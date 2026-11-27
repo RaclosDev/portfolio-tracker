@@ -99,6 +99,8 @@ export interface Sale {
 export interface IncomeItem {
   id: number;
   ticker: string;
+  /** ISIN del valor (null si no lo tiene): su prefijo da el país de origen y, con él, el tipo del convenio. */
+  isin: string | null;
   date: string;
   year: number;
   type: OperationType;
@@ -273,13 +275,22 @@ export function averageNativePrice(t: Pick<TickerLedger, 'openLots'>, currency: 
 const brokerKey = (b: string | null) => b?.trim() || 'Sin bróker';
 const held = (t: TickerLedger) => t.openLots.reduce((s, l) => s + l.shares, 0);
 
-/** Reparte `amount` de coste fiscal a restar entre los lotes abiertos (hasta dejarlos a cero). Devuelve lo que sobra. */
+/**
+ * Resta `amount` (prima de emisión o venta de derechos anterior a 2017) del coste fiscal de los lotes abiertos.
+ * Art. 33.3.a LIRPF: el importe se reparte POR ACCIÓN, de modo que cada lote baja lo mismo por acción; ningún lote
+ * baja de cero y lo que no cabe en un lote no pasa a otro: es el exceso, que tributa aparte (como rendimiento
+ * del capital mobiliario o, en los derechos, como ganancia). Devuelve ese exceso.
+ */
 function reduceTaxCost(t: TickerLedger, amount: number): number {
-  const total = t.openLots.reduce((s, l) => s + l.taxCostEur, 0);
-  if (amount <= 0 || total <= EPS) return Math.max(0, amount);
-  const applied = Math.min(amount, total);
-  const parts = splitCents(applied, t.openLots.map((l) => l.taxCostEur / total));
-  t.openLots.forEach((l, i) => (l.taxCostEur = cents(l.taxCostEur - parts[i]!)));
+  const shares = t.openLots.reduce((s, l) => s + l.shares, 0);
+  if (amount <= 0 || shares <= EPS) return Math.max(0, amount);
+  const parts = splitCents(amount, t.openLots.map((l) => l.shares / shares));
+  let applied = 0;
+  t.openLots.forEach((l, i) => {
+    const part = Math.min(parts[i]!, Math.max(0, l.taxCostEur));
+    l.taxCostEur = cents(l.taxCostEur - part);
+    applied += part;
+  });
   return cents(amount - applied);
 }
 
@@ -583,6 +594,7 @@ export function computeLedger(operations: Operation[], instruments: readonly Pic
         const item: IncomeItem = {
           id: op.id,
           ticker: op.ticker,
+          isin: t.isin,
           date: op.date,
           year: +op.date.slice(0, 4),
           type: op.type,
