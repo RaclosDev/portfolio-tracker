@@ -16,6 +16,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
+import java.util.stream.Stream;
 
 /**
  * Cotizaciones reales para la portada y la demo, que se ven sin sesión: solo una lista cerrada de valores conocidos y
@@ -32,6 +33,14 @@ public class PublicMarketService {
             "IBE.MC", "SAN.MC", "ITX.MC", "BBVA.MC", "REP.MC", "TEF.MC", "AENA.MC", "CABK.MC", "FER.MC", "AMS.MC",
             "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "BRK-B", "JPM", "LLY", "AVGO", "V", "KO",
             "VWCE.DE", "SXR8.DE");
+    /**
+     * Cambio euro-dólar (dólares por euro) con el que la demo valora en euros sus valores en dólares: el mismo par que
+     * usa {@link MarketService#getFxRates} con las carteras reales. Va en la copia de la demo con su cotización y sus
+     * velas, pero no es un valor del catálogo.
+     */
+    public static final String DEMO_FX = "EURUSD=X";
+    /** Lo que se pide para la copia de la demo: su catálogo y el cambio. */
+    static final List<String> DEMO_SNAPSHOT = Stream.concat(DEMO.stream(), Stream.of(DEMO_FX)).toList();
     private static final long TTL_MS = 5 * 60_000;
     /** Las velas intradía de la demo se renuevan cada minuto: la última vela está viva. */
     private static final long INTRADAY_TTL_MS = 60_000;
@@ -66,7 +75,7 @@ public class PublicMarketService {
     }
 
     /**
-     * Cotización y velas diarias de cinco años. Si la copia guardada ha caducado se devuelve igualmente y se renueva
+     * Cotización y velas diarias de cinco años, más el cambio euro-dólar ({@link #DEMO_FX}). Si la copia guardada ha caducado se devuelve igualmente y se renueva
      * por detrás: la visita no espera a las fuentes (unos segundos con 24 valores). Solo espera la primera de todas.
      */
     public Snapshot demo() {
@@ -90,7 +99,7 @@ public class PublicMarketService {
         demoLock.lock();
         try {
             if (fresh(demo)) return demo;
-            Snapshot built = build(DEMO, s -> market.getCandles(s, null).candles());
+            Snapshot built = build(DEMO_SNAPSHOT, s -> market.getCandles(s, null).candles());
             // Una renovación fallida (sin cotizaciones) no tapa la copia anterior.
             if (!built.quotes().isEmpty() || demo == null) demo = built;
             return demo;
