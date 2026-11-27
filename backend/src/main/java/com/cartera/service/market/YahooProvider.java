@@ -201,10 +201,10 @@ public class YahooProvider implements MarketDataProvider {
 
     // ---------------------------------------------------------------- gráfico
 
-    private JsonNode chart(String symbol, long period1Sec, String interval, boolean splits) {
+    private JsonNode chart(String symbol, long period1Sec, String interval) {
         String url = Q1 + "/v8/finance/chart/" + MarketHttp.enc(symbol) + "?period1=" + period1Sec
                 + "&period2=" + Instant.now().getEpochSecond() + "&interval=" + interval
-                + (splits ? "&events=split" : "") + "&includePrePost=false";
+                + "&includePrePost=false";
         JsonNode res = http.getJson(client, url, Map.of());
         JsonNode result = res.path("chart").path("result").path(0);
         if (result.isMissingNode() || result.isNull()) {
@@ -241,21 +241,16 @@ public class YahooProvider implements MarketDataProvider {
         }
     }
 
-    /** Cierres diarios en la fecha de la bolsa; los anteriores a un split se pasan a la escala de hoy. */
+    /**
+     * Cierres diarios en la fecha de la bolsa. Yahoo ya los entrega ajustados por splits (en la escala de hoy), así que
+     * no se tocan: ajustarlos otra vez dividiría dos veces los anteriores al split.
+     */
     static DailyHistory dailyHistoryFromChart(JsonNode chart) {
         ZoneId zone = zone(chart);
-        List<double[]> ratios = new ArrayList<>();
-        for (JsonNode s : chart.path("events").path("splits")) {
-            double num = s.path("numerator").asDouble(0);
-            double den = s.path("denominator").asDouble(0);
-            if (num > 0 && den > 0) ratios.add(new double[]{s.path("date").asLong() * 1000d, den / num});
-        }
         TreeMap<String, Double> byDay = new TreeMap<>();
         for (Bar b : bars(chart)) {
             if (b.c() == null || b.c() <= 0) continue;
-            double c = b.c();
-            for (double[] r : ratios) if (b.at() < r[0]) c *= r[1];
-            byDay.put(Instant.ofEpochMilli(b.at()).atZone(zone).toLocalDate().toString(), c);
+            byDay.put(Instant.ofEpochMilli(b.at()).atZone(zone).toLocalDate().toString(), b.c());
         }
         List<PricePoint> points = byDay.entrySet().stream().map(e -> new PricePoint(e.getKey(), e.getValue())).toList();
         return new DailyHistory(str(chart.path("meta").path("currency")), points);
@@ -292,12 +287,12 @@ public class YahooProvider implements MarketDataProvider {
 
     @Override
     public DailyHistory getDailyHistory(String symbol, LocalDate from) {
-        return dailyHistoryFromChart(chart(symbol, epoch(from), "1d", true));
+        return dailyHistoryFromChart(chart(symbol, epoch(from), "1d"));
     }
 
     @Override
     public List<Candle> getCandles(String symbol, LocalDate from) {
-        return candlesFromChart(chart(symbol, epoch(from), "1d", false));
+        return candlesFromChart(chart(symbol, epoch(from), "1d"));
     }
 
     @Override
@@ -305,14 +300,14 @@ public class YahooProvider implements MarketDataProvider {
         Spec spec = INTRADAY.get(interval);
         if (spec == null) return List.of();
         long from = Instant.now().minus(spec.days(), ChronoUnit.DAYS).getEpochSecond();
-        return intradayFromChart(chart(symbol, from, spec.interval(), false));
+        return intradayFromChart(chart(symbol, from, spec.interval()));
     }
 
     @Override
     public List<PricePoint> getHistory(String symbol, HistoryRange range) {
         Spec spec = RANGES.get(range);
         long from = Instant.now().minus(spec.days(), ChronoUnit.DAYS).getEpochSecond();
-        return bars(chart(symbol, from, spec.interval(), false)).stream()
+        return bars(chart(symbol, from, spec.interval())).stream()
                 .filter(b -> b.c() != null)
                 .map(b -> new PricePoint(ISO_MS.format(Instant.ofEpochMilli(b.at())), b.c()))
                 .toList();
@@ -399,7 +394,7 @@ public class YahooProvider implements MarketDataProvider {
                         }
                         try {
                             long from = Instant.now().minus(10, ChronoUnit.DAYS).getEpochSecond();
-                            Quote value = quoteFromChart(symbol, chart(symbol, from, "1d", false), Instant.now());
+                            Quote value = quoteFromChart(symbol, chart(symbol, from, "1d"), Instant.now());
                             if (value == null) continue;
                             synchronized (chartCache) {
                                 if (chartCache.size() >= 1024) chartCache.remove(chartCache.keySet().iterator().next());

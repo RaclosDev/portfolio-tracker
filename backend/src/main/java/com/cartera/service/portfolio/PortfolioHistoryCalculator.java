@@ -31,6 +31,9 @@ public final class PortfolioHistoryCalculator {
     private PortfolioHistoryCalculator() {
     }
 
+    private record Split(LocalDate date, double ratio) {
+    }
+
     /** Lee cierres en fechas crecientes, sin mirar al futuro. */
     private static final class Reader {
         private final List<LocalDate> dates = new ArrayList<>();
@@ -48,11 +51,10 @@ public final class PortfolioHistoryCalculator {
                     });
         }
 
-        Double at(LocalDate date, LocalDate notBefore) {
+        Double at(LocalDate date) {
             while (cursor + 1 < dates.size() && !dates.get(cursor + 1).isAfter(date)) cursor++;
             if (cursor < 0) return null;
             LocalDate d = dates.get(cursor);
-            if (notBefore != null && d.isBefore(notBefore)) return null;
             return ChronoUnit.DAYS.between(d, date) <= MAX_PRICE_AGE_DAYS ? closes.get(cursor) : null;
         }
     }
@@ -67,10 +69,19 @@ public final class PortfolioHistoryCalculator {
         Map<String, Reader> priceReaders = mapValues(prices, h -> new Reader(h.points()));
         Map<String, Reader> fxReaders = mapValues(fx, Reader::new);
         Map<String, Double> fixedFx = new HashMap<>();
-        fx.forEach((currency, series) -> fixedFx.put(currency, new Reader(series).at(from, null)));
+        fx.forEach((currency, series) -> fixedFx.put(currency, new Reader(series).at(from)));
 
+        // Las acciones van por valor (los tickers con el mismo ISIN suman) y en la escala de hoy: los cierres que
+        // llegan ya están ajustados por splits, así que el recuento de cada día se multiplica por los splits posteriores.
+        Map<String, String> canonical = Ledger.canonicalTickers(instruments);
+        Map<String, List<Split>> splits = new HashMap<>();
+        for (Operation op : ops) {
+            if (op.getType() == OperationType.SPLIT && op.getSplitRatio() != null) {
+                splits.computeIfAbsent(canonical.getOrDefault(op.getTicker(), op.getTicker()), k -> new ArrayList<>())
+                        .add(new Split(op.getDate(), op.getSplitRatio()));
+            }
+        }
         Map<String, Double> shares = new LinkedHashMap<>();
-        Map<String, LocalDate> lastSplit = new HashMap<>();
         Map<String, Double> transfers = new LinkedHashMap<>();
         List<HistoryPoint> points = new ArrayList<>();
         int cursor = 0;
@@ -83,7 +94,8 @@ public final class PortfolioHistoryCalculator {
         for (LocalDate date = from.minusDays(1); !date.isAfter(to); date = date.plusDays(1)) {
             while (cursor < ops.size() && !ops.get(cursor).getDate().isAfter(date)) {
                 Operation op = ops.get(cursor++);
-                double held = shares.getOrDefault(op.getTicker(), 0.0);
+                String key = canonical.getOrDefault(op.getTicker(), op.getTicker());
+                double held = shares.getOrDefault(key, 0.0);
                 double opShares = op.getShares() == null ? 0 : op.getShares();
                 OperationType type = op.getType();
                 if (!op.getDate().isBefore(from)) {
@@ -98,12 +110,9 @@ public final class PortfolioHistoryCalculator {
                     transfers.remove(op.getTransferRef());
                 }
                 switch (type) {
-                    case BUY, SCRIP, TRANSFER_IN -> shares.put(op.getTicker(), held + opShares);
-                    case SELL, TRANSFER_OUT -> shares.put(op.getTicker(), held - opShares);
-                    case SPLIT -> {
-                        shares.put(op.getTicker(), held * (op.getSplitRatio() == null ? 1 : op.getSplitRatio()));
-                        lastSplit.put(op.getTicker(), op.getDate());
-                    }
+                    case BUY, SCRIP, TRANSFER_IN -> shares.put(key, held + opShares);
+                    case SELL, TRANSFER_OUT -> shares.put(key, held - opShares);
+                    case SPLIT -> shares.put(key, held * (op.getSplitRatio() == null ? 1 : op.getSplitRatio()));
                     default -> {
                     }
                 }
@@ -120,10 +129,11 @@ public final class PortfolioHistoryCalculator {
                 String ticker = e.getKey();
                 double held = e.getValue();
                 if (held <= 1e-6) continue;
+                for (Split s : splits.getOrDefault(ticker, List.of())) if (s.date().isAfter(date)) held *= s.ratio();
                 Instrument instrument = byTicker.get(ticker);
                 String symbol = instrument == null ? null : instrument.getSymbol();
                 Reader reader = symbol == null ? null : priceReaders.get(symbol);
-                Double price = reader == null ? null : reader.at(date, lastSplit.get(ticker));
+                Double price = reader == null ? null : reader.at(date);
                 DailyHistoryResult history = symbol == null ? null : prices.get(symbol);
                 String currency = history != null && history.currency() != null ? history.currency()
                         : instrument == null ? null : instrument.getCurrency();
@@ -133,7 +143,7 @@ public final class PortfolioHistoryCalculator {
                     continue;
                 }
                 Double rate = "EUR".equals(currency) ? Double.valueOf(1)
-                        : fxReaders.containsKey(currency) ? fxReaders.get(currency).at(date, null) : null;
+                        : fxReaders.containsKey(currency) ? fxReaders.get(currency).at(date) : null;
                 Double fixed = "EUR".equals(currency) ? Double.valueOf(1) : fixedFx.get(currency);
                 if (rate == null) {
                     missingFx = true;
