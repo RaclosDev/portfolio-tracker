@@ -15,6 +15,50 @@ export const ES_WITHHOLDING_RATE = 0.19;
 /** Desde este año, los dividendos importados sin retención se estiman al 19 % (la Renta de esos años está pendiente). */
 export const ESTIMATE_WITHHOLDING_FROM = 2026;
 
+/**
+ * Tipo máximo de retención en origen que el convenio de doble imposición con España permite a cada país
+ * (artículo de dividendos, inversor particular sin participación significativa). Solo se puede deducir en
+ * España lo retenido hasta ese tipo; el exceso se reclama en el país de origen. La clave es el prefijo del ISIN.
+ * Fuente: convenios para evitar la doble imposición suscritos por España (BOE) y su tipo para dividendos de cartera.
+ *  - FR: el convenio fija el 15 %; el 12,8 % es la retención interna francesa para particulares, que es lo que
+ *    se retiene en la práctica y, por ser menor, es lo que acaba deduciéndose.
+ *  - GB e IE: sin retención en origen sobre dividendos de cartera (Reino Unido no retiene; los ETF irlandeses
+ *    no retienen a no residentes), así que no hay nada que deducir.
+ *  - ES: es retención española, no de origen.
+ * Es una orientación para la estimación, no un cálculo oficial.
+ */
+export const TREATY_RATES: Readonly<Record<string, number>> = {
+  US: 0.15,
+  DE: 0.15,
+  CH: 0.15,
+  FR: 0.15,
+  NL: 0.15,
+  IT: 0.15,
+  PT: 0.15,
+  BE: 0.15,
+  DK: 0.15,
+  SE: 0.15,
+  FI: 0.15,
+  NO: 0.15,
+  AT: 0.15,
+  LU: 0.15,
+  CA: 0.15,
+  AU: 0.15,
+  JP: 0.1,
+  GB: 0,
+  IE: 0,
+  ES: 0,
+};
+/** Tipo de convenio para un país que no está en la tabla (o un valor sin ISIN). */
+export const DEFAULT_TREATY_RATE = 0.15;
+
+/** Tipo máximo del convenio para un valor, a partir del prefijo de su ISIN. */
+export function treatyRate(isin: string | null | undefined): number {
+  const country = isin?.trim().slice(0, 2).toUpperCase();
+  if (country && Object.hasOwn(TREATY_RATES, country)) return TREATY_RATES[country]!;
+  return DEFAULT_TREATY_RATE;
+}
+
 /** Escala del ahorro (estatal + autonómica) vigente desde 2025. */
 export const SAVINGS_BRACKETS: { upTo: number; rate: number }[] = [
   { upTo: 6_000, rate: 0.19 },
@@ -77,7 +121,10 @@ export interface TaxYear {
   withholdingEs: number;
   withholdingEsEstimated: number;
   withholdingForeign: number;
-  /** Deducción por doble imposición internacional estimada: lo pagado fuera, hasta el 19 % del rendimiento. */
+  /**
+   * Deducción por doble imposición internacional estimada: lo retenido fuera hasta el tipo del convenio y
+   * hasta el impuesto español de esa renta (al tipo medio), sin pasar de la cuota.
+   */
   foreignDeduction: number;
   /** Compensación entre ganancias y RCM de este mismo año. */
   crossCompensation: number;
@@ -89,7 +136,7 @@ export interface TaxYear {
   rcmBase: number;
   taxBase: number;
   taxEstimate: number;
-  /** Cuota estimada menos retenciones y deducción: positivo = a pagar. */
+  /** Cuota estimada tras la deducción, menos retenciones: positivo = a pagar. */
   balanceEstimate: number;
 }
 
@@ -199,17 +246,31 @@ export function computeTaxYears(ledger: Ledger, lastYear = new Date().getFullYea
     pending = pending.filter((p) => p.amount > 0.005);
     pendingRcm = pendingRcm.filter((p) => p.amount > 0.005);
 
-    const withholdingEs = rcmLines.reduce((s, l) => s + l.withholdingEs, 0);
+    // La retención de la venta de derechos (ganancia desde 2017) también se descuenta; solo la apuntada, sin estimar.
+    const rightsWithholding = rights.filter((r) => !rcmItems.includes(r)).reduce((s, r) => s + (r.withholdingEs ?? 0), 0);
+    const withholdingEs = rcmLines.reduce((s, l) => s + l.withholdingEs, 0) + rightsWithholding;
     const withholdingEsEstimated = rcmLines.filter((l) => l.estimated).reduce((s, l) => s + l.withholdingEs, 0);
     const withholdingForeign = rcmItems.reduce((s, i) => s + (i.withholdingForeign ?? 0), 0);
-    const foreignDeduction = rcmItems.reduce(
-      (s, i) => s + Math.min(i.withholdingForeign ?? 0, Math.max(0, i.rcmEur) * ES_WITHHOLDING_RATE),
-      0,
-    );
     const gpBase = Math.max(0, gp);
     const rcmBase = Math.max(0, rcm);
     const taxBase = gpBase + rcmBase;
     const taxEstimate = savingsTax(taxBase);
+    // Doble imposición: lo retenido fuera hasta el tipo del convenio y hasta el impuesto español de esa renta
+    // (al tipo medio); y la suma, sin pasar de la cuota.
+    const averageRate = taxBase > 0 ? taxEstimate / taxBase : 0;
+    const foreignDeduction = Math.min(
+      taxEstimate,
+      rcmItems.reduce(
+        (s, i) =>
+          s +
+          Math.min(
+            i.withholdingForeign ?? 0,
+            Math.max(0, i.grossEur) * treatyRate(i.isin),
+            Math.max(0, i.rcmEur) * averageRate,
+          ),
+        0,
+      ),
+    );
     out.push({
       year,
       sales,
@@ -237,7 +298,7 @@ export function computeTaxYears(ledger: Ledger, lastYear = new Date().getFullYea
       rcmBase,
       taxBase,
       taxEstimate,
-      balanceEstimate: taxEstimate - withholdingEs - foreignDeduction,
+      balanceEstimate: taxEstimate - foreignDeduction - withholdingEs,
     });
   }
   return out;

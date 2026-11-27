@@ -99,6 +99,8 @@ export interface Sale {
 export interface IncomeItem {
   id: number;
   ticker: string;
+  /** ISIN del valor (null si no lo tiene): su prefijo da el país de origen y, con él, el tipo del convenio. */
+  isin: string | null;
   date: string;
   year: number;
   type: OperationType;
@@ -592,6 +594,7 @@ export function computeLedger(operations: Operation[], instruments: readonly Pic
         const item: IncomeItem = {
           id: op.id,
           ticker: op.ticker,
+          isin: t.isin,
           date: op.date,
           year: +op.date.slice(0, 4),
           type: op.type,
