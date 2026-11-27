@@ -4,6 +4,28 @@
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
+// La página anota en IndexedDB la cuenta con sesión (src/lib/pushAccount.ts); aquí no hay JWT ni cookie
+// con la que preguntar a la API. Sin cuenta anotada (sesión cerrada) no se enseña nada.
+function readAccount() {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open('cartera-push', 1);
+    open.onupgradeneeded = () => open.result.createObjectStore('account');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const get = db.transaction('account', 'readonly').objectStore('account').get('accountId');
+      get.onsuccess = () => {
+        db.close();
+        resolve(get.result ?? null);
+      };
+      get.onerror = () => {
+        db.close();
+        reject(get.error);
+      };
+    };
+  });
+}
+
 self.addEventListener('push', (event) => {
   let data = {};
   try {
@@ -14,11 +36,10 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'Portfolio Tracker';
   event.waitUntil(
     (async () => {
-      // Una suscripción puede sobrevivir a un cambio de cuenta en el mismo navegador.
-      const response = await fetch('/api/session', { cache: 'no-store', credentials: 'same-origin' });
-      if (!response.ok) return;
-      const session = await response.json();
-      if (session.authRequired && (!session.authenticated || !data.accountId || session.user?.id !== data.accountId)) return;
+      // Una suscripción puede sobrevivir a un cambio de cuenta en el mismo navegador: solo se enseña si la
+      // cuenta con la sesión abierta aquí (la que anotó la página en IndexedDB) es la del aviso.
+      const account = await readAccount();
+      if (!account || !data.accountId || account !== data.accountId) return;
       await self.registration.showNotification(title, {
         body: data.body || '',
         icon: '/icon-192.png',

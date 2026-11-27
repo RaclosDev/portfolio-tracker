@@ -5,6 +5,7 @@ import { LS_PAGE, seedFirstScreen, seedFromSnapshot } from '../../api/bootstrap.
 import { AppSkeleton } from '../../components/Skeleton.tsx';
 import { AUTH_CHANGED, DEMO, LS_SNAPSHOT, SESSION_LOST, api } from '../../api/client.ts';
 import { AuthPage, ENTERING, reducedMotion } from './AuthPage.tsx';
+import { forgetPushAccount, rememberPushAccount } from '../../lib/pushAccount.ts';
 import { EnterSplash } from './brand.tsx';
 import { Landing } from './Landing.tsx';
 import { AUTH_PATHS, safeNext } from './safeNext.ts';
@@ -38,6 +39,14 @@ export function Gate({ children }: { children: ReactNode }) {
     setInitialAccount(accountId);
     if (localStorage.getItem(AUTH_CHANGED) !== accountId) localStorage.setItem(AUTH_CHANGED, accountId);
   }, [accountId, initialAccount, snapshotAccount]);
+
+  // El service worker solo enseña los avisos push de la cuenta con la sesión abierta aquí (ver lib/pushAccount.ts).
+  const sessionOpen = session.data?.authenticated === true;
+  useEffect(() => {
+    if (DEMO || !session.data) return;
+    if (sessionOpen && accountId && accountId !== 'anonymous') void rememberPushAccount(accountId);
+    else if (!sessionOpen) void forgetPushAccount();
+  }, [accountId, sessionOpen, session.data]);
 
   useEffect(() => {
     const lost = () => {

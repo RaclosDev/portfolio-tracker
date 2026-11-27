@@ -1,4 +1,5 @@
 import { VISITED_LIST_ID } from '@/shared';
+import { forgetPushAccount, rememberPushAccount } from '../lib/pushAccount.ts';
 import type {
   TouchedOrder,
   AlertRecord,
@@ -88,10 +89,14 @@ interface TokenResponse { accessToken: string; user?: SessionUser | null }
 function setAccessToken(token: string | null, user: SessionUser | null = null) {
   accessToken = token;
   tokenUser = token ? user : null;
-  if (token) localStorage.setItem(SESSION_HINT, '1');
-  else {
+  if (token) {
+    localStorage.setItem(SESSION_HINT, '1');
+    // El service worker solo enseña los avisos de la cuenta con la sesión abierta en este navegador.
+    if (user && !DEMO) void rememberPushAccount(user.id);
+  } else {
     localStorage.removeItem(SESSION_HINT);
     localStorage.removeItem(LS_SNAPSHOT);
+    if (!DEMO) void forgetPushAccount();
   }
 }
 
