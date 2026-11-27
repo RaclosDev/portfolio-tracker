@@ -125,11 +125,18 @@ try {
   await page.locator('button.name-btn', { hasText: CHART_VALUE }).click();
   await page.locator('.xp-candles canvas').first().waitFor();
   await page.waitForTimeout(1500); // el desplazamiento hasta el detalle
-  // El detalle, justo bajo la cabecera: sin asomar la fila de encima.
+  // El detalle, justo bajo la cabecera: sin asomar la fila de encima ni la de debajo. Si de la siguiente solo
+  // asomarían unos píxeles (su franja de estado, una rayita verde en la esquina), se baja el detalle hasta taparla,
+  // mientras la fila de encima siga bajo la cabecera.
   await page.evaluate(() => {
-    const top = document.querySelector('.xp__main').getBoundingClientRect().top;
+    const main = document.querySelector('.xp__main');
+    const row = main.closest('tr').getBoundingClientRect();
     const header = document.querySelector('.topbar').getBoundingClientRect().bottom;
-    window.scrollBy(0, top - header - 12);
+    let scroll = main.getBoundingClientRect().top - header - 12;
+    const gap = Math.ceil(innerHeight - (row.bottom - scroll)) + 1;
+    const room = header - (row.top - scroll);
+    if (gap > 0 && gap <= room) scroll -= gap;
+    window.scrollBy(0, scroll);
   });
   await page.mouse.move(0, 0);
   await capture('chart');

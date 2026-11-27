@@ -12,6 +12,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -38,6 +39,24 @@ class PublicMarketServiceTest {
         assertThat(first.candles()).containsOnlyKeys(PublicMarketService.LANDING.toArray(String[]::new));
         assertThat(service.landing()).isSameAs(first);
         verify(market, times(1)).getQuotes(PublicMarketService.LANDING);
+    }
+
+    @Test
+    void demoCarriesTheRealEuroDollarRateButNotAsACatalogValue() {
+        MarketService market = mock(MarketService.class);
+        when(market.getQuotes(anyList())).thenReturn(Map.of("IBE.MC", quote("IBE.MC", 17.1),
+                PublicMarketService.DEMO_FX, quote(PublicMarketService.DEMO_FX, 1.16)));
+        when(market.getCandles(any(), any()))
+                .thenReturn(new CandlesResult(List.of(new Candle("2026-11-20", 1.15, 1.17, 1.14, 1.16)), false));
+        PublicMarketService service = new PublicMarketService(market);
+
+        PublicMarketService.Snapshot demo = service.demo();
+        assertThat(demo.quotes().get(PublicMarketService.DEMO_FX).price()).isEqualTo(1.16);
+        assertThat(demo.candles()).containsKey(PublicMarketService.DEMO_FX);
+        verify(market).getQuotes(argThat(symbols -> symbols.containsAll(PublicMarketService.DEMO)
+                && symbols.contains(PublicMarketService.DEMO_FX)));
+        // Las velas intradía siguen limitadas al catálogo.
+        assertThat(service.demoIntraday(PublicMarketService.DEMO_FX, IntradayInterval.M15)).isEmpty();
     }
 
     @Test

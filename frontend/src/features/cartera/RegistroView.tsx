@@ -46,6 +46,8 @@ export function RegistroView({
     return m;
   }, [model.view.instruments, model.valuation]);
   const issues = useMemo(() => new Map(model.ledger.issues.map((i) => [i.opId, i.message])), [model.ledger.issues]);
+  /** «Notas» solo si alguna operación tiene nota o aviso: vacía para todas, la columna sobra. Con todas, no con las filtradas, para que no aparezca y desaparezca al filtrar. */
+  const showNotes = useMemo(() => ops.some((o) => o.notes || issues.has(o.id)), [ops, issues]);
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     // Más recientes arriba, en el orden inverso exacto en que se procesan (fecha y «orden en el día»).
@@ -163,7 +165,7 @@ export function RegistroView({
                 Retenciones
               </th>
               <th>Bróker</th>
-              <th>Notas</th>
+              {showNotes && <th>Notas</th>}
             </tr>
           </thead>
           <tbody>
@@ -209,11 +211,13 @@ export function RegistroView({
                     </span>
                   )}
                 </td>
-                <td>
-                  <span className="notes" title={issues.get(o.id) ?? o.notes ?? undefined}>
-                    {issues.get(o.id) ?? o.notes}
-                  </span>
-                </td>
+                {showNotes && (
+                  <td>
+                    <span className="notes" title={issues.get(o.id) ?? o.notes ?? undefined}>
+                      {issues.get(o.id) ?? o.notes}
+                    </span>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

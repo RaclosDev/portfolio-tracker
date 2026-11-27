@@ -41,6 +41,6 @@ class DemoPayloadTest {
         DemoPayload.Encoded quotes = payload.quotes();
         assertThat(mapper.readTree(quotes.json()).get("quotes").has("IBE.MC")).isTrue();
         assertThat(mapper.readTree(quotes.json()).get("candles").isEmpty()).isTrue();
-        verify(market, times(1)).getQuotes(PublicMarketService.DEMO);
+        verify(market, times(1)).getQuotes(PublicMarketService.DEMO_SNAPSHOT);
     }
 }

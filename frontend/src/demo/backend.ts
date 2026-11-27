@@ -89,6 +89,9 @@ const FUNDS = [
   security('SXR8.DE', 'iShares Core S&P 500', 562.7, 0.005, 'ETF EE. UU.', 'IE00B5BMR087', 'ETF'),
 ];
 const CATALOG = new Map([...SPAIN, ...USA, ...FUNDS].map((s) => [s.symbol, s]));
+/** Par del cambio euro-dólar en la copia del servidor: el mismo con el que se valoran las carteras reales. */
+const FX_PAIR = 'EURUSD=X';
+/** Dólares por euro: el real si llega con las cotizaciones; si no, uno aproximado. */
 const FX: Record<string, number> = { EUR: 1, USD: 1.09 };
 
 /** Cotizaciones y velas diarias reales de los valores del catálogo (GET /api/public/market/demo y /demo/quotes). */
@@ -106,6 +109,8 @@ async function loadSnapshot(url: string, ms: number): Promise<Snapshot | undefin
   }
 }
 function applyQuotes(quotes: Snapshot['quotes']) {
+  const fx = quotes?.[FX_PAIR]?.price;
+  if (typeof fx === 'number' && fx > 0) FX.USD = fx;
   for (const [symbol, quote] of Object.entries(quotes ?? {})) {
     const s = CATALOG.get(symbol);
     if (!s || typeof quote?.price !== 'number') continue;
@@ -117,7 +122,7 @@ function applyQuotes(quotes: Snapshot['quotes']) {
 function applyCandles(candles: Snapshot['candles']) {
   for (const [symbol, list] of Object.entries(candles ?? {})) {
     const daily = (list ?? []).filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c.t) && c.c > 0);
-    if (CATALOG.has(symbol) && daily.length > 20) realCandles.set(symbol, daily);
+    if ((CATALOG.has(symbol) || symbol === FX_PAIR) && daily.length > 20) realCandles.set(symbol, daily);
   }
 }
 /** Cierre real del último día de mercado no posterior a `date`. */
@@ -149,7 +154,10 @@ function priceAt(symbol: string, days: number): number {
   const wave = (d: number) => 1 + 0.035 * Math.sin(d / 11 + h) + 0.018 * Math.sin(d / 3.7 + 2 * h);
   return s.price * Math.exp((-growth * days) / 365) * (wave(days) / wave(0));
 }
-const fxAt = (days: number) => 1.09 + 0.035 * Math.sin(days / 50);
+/** Dólares por euro hace `days` días: el cierre real del par si han llegado sus velas; si no, una oscilación alrededor del actual. */
+const fxAt = (days: number) => (days > 0 && realCandles.has(FX_PAIR)
+  ? realCloseOn(FX_PAIR, daysAgo(days))!
+  : FX.USD! + 0.035 * Math.sin(days / 50));
 const dayDiff = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
 
 function quoteOf(symbol: string): Quote | undefined {
@@ -239,41 +247,93 @@ function seedLists() {
   FUNDS.forEach((s, i) => seedItem(3, s, i + 7));
   SPAIN.slice(0, 5).flatMap((s, i) => [s, USA[i]!]).forEach((s, i) => seedItem(4, s, i));
 }
-/** Cartera de ejemplo: compras y dividendos a los cierres reales de cada día si han llegado las velas. */
+/**
+ * Cartera de ejemplo: compras, ventas y dividendos a los cierres reales de cada día si han llegado las velas. Además
+ * de lo que sigue en cartera hay dos valores ya vendidos del todo (dos compras y una venta de todo, por FIFO), para
+ * que «Cerradas», las ganancias de ejercicios anteriores y la renta tengan datos.
+ */
 function seedPortfolio() {
   const BROKERS = ['ING', 'MyInvestor', 'Interactive Brokers'];
   const HELD: [string, number][] = [
     ['IBE.MC', 320], ['SAN.MC', 900], ['ITX.MC', 85], ['REP.MC', 260], ['AAPL', 22], ['MSFT', 14],
     ['NVDA', 40], ['GOOGL', 30], ['JPM', 18], ['KO', 70], ['VWCE.DE', 62], ['SXR8.DE', 12],
   ];
-  const NO_DIVIDEND = new Set(['NVDA', 'GOOGL', 'VWCE.DE', 'SXR8.DE']);
+  /** Vendidas del todo: compras [hace días, acciones], día de la venta y bróker. */
+  const CLOSED: { ticker: string; buys: [days: number, shares: number][]; sold: number; broker: string }[] = [
+    { ticker: 'TEF.MC', buys: [[780, 600], [610, 400]], sold: 420, broker: 'ING' },
+    { ticker: 'META', buys: [[850, 12], [700, 8]], sold: 75, broker: 'Interactive Brokers' },
+  ];
+  const NO_DIVIDEND = new Set(['NVDA', 'GOOGL', 'VWCE.DE', 'SXR8.DE', 'META']);
+  /** Notas de algunas operaciones (`valor:compra1|compra2|venta`), como las que escribiría cualquiera. */
+  const NOTES: Record<string, string> = {
+    'IBE.MC:compra1': 'Primera compra: base de la cartera por dividendo.',
+    'SAN.MC:compra2': 'Amplío tras la caída por los resultados.',
+    'ITX.MC:venta': 'Venta parcial: la posición pesaba demasiado.',
+    'AAPL:compra1': 'Orden limitada ejecutada en el soporte.',
+    'MSFT:compra2': 'Aportación trimestral.',
+    'NVDA:venta': 'Recojo beneficios de una cuarta parte.',
+    'KO:compra1': 'Para la parte de dividendos en dólares.',
+    'VWCE.DE:venta': 'Rebalanceo anual: bajo peso del indexado.',
+    'SXR8.DE:compra2': 'Aportación periódica al indexado.',
+    'TEF.MC:compra1': 'Entrada por la rentabilidad por dividendo.',
+    'TEF.MC:venta': 'Cierro la posición: mucha deuda y poco crecimiento.',
+    'META:compra2': 'Amplío con el recorte del mercado.',
+    'META:venta': 'Venta total para pasar a indexado.',
+  };
+  const INSTRUMENT_NOTES: Record<string, string> = {
+    'IBE.MC': 'Largo plazo: reinvertir los dividendos.',
+    'VWCE.DE': 'Núcleo indexado: aportación todos los meses.',
+  };
   function seedOperation(input: OperationInput) {
     operations.push({ id: id(), createdAt: stamp(), updatedAt: stamp(), ...operationInputSchema.parse(input) });
   }
-  HELD.forEach(([ticker, shares], index) => {
+  function seedInstrument(ticker: string) {
     const s = CATALOG.get(ticker)!;
-    const broker = BROKERS[index % BROKERS.length]!;
-    instruments.push(instrumentInputSchema.parse({ ticker, symbol: ticker, name: s.name, sector: s.sector, currency: s.currency, isin: s.isin }));
-    const trade = (type: 'buy' | 'sell', days: number, quantity: number) => {
+    instruments.push(instrumentInputSchema.parse({
+      ticker, symbol: ticker, name: s.name, sector: s.sector, currency: s.currency, isin: s.isin, notes: INSTRUMENT_NOTES[ticker] ?? null,
+    }));
+    return s;
+  }
+  function trader(s: Security, broker: string) {
+    return (type: 'buy' | 'sell', days: number, quantity: number, note: string) => {
       const fxRate = s.currency === 'USD' ? round(fxAt(days), 4) : 1;
-      const price = round(priceAt(ticker, days));
+      const price = round(priceAt(s.symbol, days));
       const gross = (quantity * price) / fxRate;
-      seedOperation({ ticker, date: daysAgo(days), type, shares: quantity, price, fxRate, fees: 2, amountEur: round(type === 'buy' ? gross + 2 : gross - 2), broker });
+      seedOperation({
+        ticker: s.symbol, date: daysAgo(days), type, shares: quantity, price, fxRate, fees: 2,
+        amountEur: round(type === 'buy' ? gross + 2 : gross - 2), broker, notes: NOTES[`${s.symbol}:${note}`] ?? null,
+      });
     };
-    const first = Math.round(shares * 0.6);
-    trade('buy', 520 - index * 17, first);
-    trade('buy', 210 - index * 9, shares - first);
-    if (index % 4 === 2) trade('sell', 48 + index, Math.round(shares * 0.25));
-    if (!NO_DIVIDEND.has(ticker)) {
-      for (const days of [300 - index * 6, 118 - index * 4, 27 + index]) {
-        const gross = round(shares * s.price * 0.008 / FX[s.currency]!);
-        seedOperation({
-          ticker, date: daysAgo(days), type: 'dividend', amountEur: gross, broker,
-          withholdingEs: round(gross * (s.currency === 'USD' ? 0.04 : 0.19)), withholdingForeign: s.currency === 'USD' ? round(gross * 0.15) : null,
-        });
-      }
+  }
+  function dividends(s: Security, shares: number, broker: string, days: number[]) {
+    if (NO_DIVIDEND.has(s.symbol)) return;
+    for (const day of days) {
+      const gross = round(shares * s.price * 0.008 / FX[s.currency]!);
+      seedOperation({
+        ticker: s.symbol, date: daysAgo(day), type: 'dividend', amountEur: gross, broker,
+        withholdingEs: round(gross * (s.currency === 'USD' ? 0.04 : 0.19)), withholdingForeign: s.currency === 'USD' ? round(gross * 0.15) : null,
+      });
     }
+  }
+  HELD.forEach(([ticker, shares], index) => {
+    const s = seedInstrument(ticker);
+    const broker = BROKERS[index % BROKERS.length]!;
+    const trade = trader(s, broker);
+    const first = Math.round(shares * 0.6);
+    trade('buy', 520 - index * 17, first, 'compra1');
+    trade('buy', 210 - index * 9, shares - first, 'compra2');
+    if (index % 4 === 2) trade('sell', 48 + index, Math.round(shares * 0.25), 'venta');
+    dividends(s, shares, broker, [300 - index * 6, 118 - index * 4, 27 + index]);
   });
+  for (const { ticker, buys, sold, broker } of CLOSED) {
+    const s = seedInstrument(ticker);
+    const trade = trader(s, broker);
+    buys.forEach(([days, shares], n) => trade('buy', days, shares, `compra${n + 1}`));
+    const total = buys.reduce((sum, [, shares]) => sum + shares, 0);
+    // Un dividendo mientras se tenían todas, antes de vender.
+    dividends(s, total, broker, [Math.round((buys.at(-1)![0] + sold) / 2)]);
+    trade('sell', sold, total, 'venta');
+  }
 }
 /**
  * Lo primero que se ve (las listas) solo espera a las cotizaciones, que pesan poco (el servidor las precarga

@@ -400,7 +400,8 @@ export function CarteraPage({ model: full, isPending, error, onRetry, draft, onD
             >
               {t.label}
               {t.id === 'abiertas' && <span className="count">{model.valuation.open.length}</span>}
-              {t.id === 'cerradas' && <span className="count">{model.valuation.closed.length}</span>}
+              {/* Sin posiciones cerradas no hay número: un «0» junto a la pestaña parece un dato que falta. */}
+              {t.id === 'cerradas' && model.valuation.closed.length > 0 && <span className="count">{model.valuation.closed.length}</span>}
               {t.id === 'registro' && reviewCount > 0 && (
                 <span className="count count--warn" title={`${reviewCount} operaciones marcadas para revisar`}>
                   {reviewCount} por revisar
