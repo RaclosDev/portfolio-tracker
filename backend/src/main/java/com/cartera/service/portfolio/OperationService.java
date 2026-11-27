@@ -9,6 +9,7 @@ import com.cartera.dto.portfolio.PortfolioDtos.BulkBrokerResponse;
 import com.cartera.dto.portfolio.PortfolioDtos.ImportRequest;
 import com.cartera.dto.portfolio.PortfolioDtos.ImportResponse;
 import com.cartera.exception.ApiException;
+import com.cartera.service.Quotas;
 import com.cartera.model.Instrument;
 import com.cartera.model.Operation;
 import com.cartera.repository.InstrumentRepository;
@@ -60,6 +61,7 @@ public class OperationService {
         PortfolioMapper.apply(op, data);
         operations.save(op);
         saveInstrument(userId, data.ticker(), instrument);
+        assertWithinQuotas(userId);
         assertValid(userId);
         return OperationResponse.of(op);
     }
@@ -79,6 +81,7 @@ public class OperationService {
         PortfolioMapper.apply(op, data);
         op.setUpdatedAt(Instant.now());
         saveInstrument(userId, data.ticker(), instrument);
+        assertWithinQuotas(userId);
         assertValid(userId);
         return OperationResponse.of(op);
     }
@@ -131,6 +134,7 @@ public class OperationService {
         }
         int skipped = data.operations().size() - additions.size();
         if (additions.isEmpty()) return new ImportResponse(0, skipped, null);
+        Quotas.check(operations.countByUserId(userId) + additions.size(), Quotas.MAX_OPERATIONS, "operaciones");
 
         Long savedTo = backup.snapshot(userId, "antes de importar la cartera", true);
         for (OperationRequest op : additions) {
@@ -160,6 +164,7 @@ public class OperationService {
                     first(cur.getIsin(), i.isin()), first(cur.getNotes(), i.notes())));
         }
         tickers.forEach(t -> ensureInstrument(userId, t));
+        assertWithinQuotas(userId);
         assertValid(userId);
         return new ImportResponse(additions.size(), skipped, savedTo);
     }
@@ -172,6 +177,12 @@ public class OperationService {
     }
 
     // ------------------------------------------------------------------------------------------------------------
+
+    /** Tras guardar, dentro de la transacción: si se pasa algún tope, todo se deshace. */
+    private void assertWithinQuotas(UUID userId) {
+        Quotas.check(operations.countByUserId(userId), Quotas.MAX_OPERATIONS, "operaciones");
+        Quotas.check(instruments.countByUserId(userId), Quotas.MAX_INSTRUMENTS, "valores de la cartera");
+    }
 
     private void assertValid(UUID userId) {
         PortfolioService.assertValid(operations.findAllOrdered(userId), instruments.findByUserIdOrderByTicker(userId));

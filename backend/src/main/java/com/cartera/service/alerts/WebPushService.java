@@ -6,6 +6,7 @@ import com.cartera.dto.alerts.AlertDtos.PushPayload;
 import com.cartera.dto.alerts.AlertDtos.SendResult;
 import com.cartera.dto.alerts.AlertDtos.Subscription;
 import com.cartera.exception.ApiException;
+import com.cartera.service.Quotas;
 import com.cartera.model.PushSubscription;
 import com.cartera.repository.PushSubscriptionRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -81,6 +82,10 @@ public class WebPushService {
             throw ApiException.badRequest("endpoint: no es de un servicio de notificaciones conocido");
         }
         PushSubscription s = subscriptions.findByEndpoint(sub.endpoint()).orElseGet(PushSubscription::new);
+        // Un dispositivo nuevo (o que pasa de otra cuenta a esta) cuenta; renovar uno ya registrado no.
+        if (!userId.equals(s.getUserId())) {
+            Quotas.check(subscriptions.countByUserId(userId) + 1, Quotas.MAX_PUSH_DEVICES, "dispositivos con avisos");
+        }
         s.setUserId(userId);
         s.setEndpoint(sub.endpoint());
         s.setP256dh(sub.keys().p256dh());

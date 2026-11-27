@@ -3,6 +3,7 @@ package com.cartera.service.watchlist;
 import com.cartera.dto.ListResponse;
 import com.cartera.event.UserCreatedEvent;
 import com.cartera.exception.ApiException;
+import com.cartera.service.Quotas;
 import com.cartera.model.WatchList;
 import com.cartera.repository.WatchItemRepository;
 import com.cartera.repository.WatchListRepository;
@@ -44,6 +45,7 @@ public class WatchListService {
 
     @Transactional
     public ListResponse create(UUID userId, String name) {
+        Quotas.check(lists.countByUserId(userId) + 1, Quotas.MAX_LISTS, "listas");
         WatchList list = WatchList.builder().userId(userId).name(name).position(lists.maxPosition(userId) + 1).build();
         try {
             lists.saveAndFlush(list);

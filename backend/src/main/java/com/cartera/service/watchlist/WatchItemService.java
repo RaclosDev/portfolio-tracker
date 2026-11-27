@@ -4,6 +4,7 @@ import com.cartera.dto.ImportResponse;
 import com.cartera.dto.ItemRequest;
 import com.cartera.dto.ItemResponse;
 import com.cartera.exception.ApiException;
+import com.cartera.service.Quotas;
 import com.cartera.model.WatchItem;
 import com.cartera.model.WatchList;
 import com.cartera.repository.WatchItemRepository;
@@ -46,10 +47,13 @@ public class WatchItemService {
      * (Yahoo, Financial Hub) y no debe retener la conexión ni el bloqueo de la fila mientras tanto.
      */
     public ItemResponse create(UUID userId, ItemRequest request) {
-        return fillIsin(tx.execute(s -> insert(userId, request)));
+        return fillIsin(tx.execute(s -> {
+            Quotas.check(items.countByUser(userId) + 1, Quotas.MAX_WATCH_ITEMS, "valores vigilados");
+            return insert(userId, request);
+        }));
     }
 
-    /** Alta sin buscar el ISIN, dentro de la transacción de quien llama (restaurar una copia). */
+    /** Alta sin buscar el ISIN, dentro de la transacción de quien llama (restaurar una copia, que ya comprobó los topes). */
     @Transactional
     public ItemResponse insert(UUID userId, ItemRequest request) {
         WatchList list = lists.owned(userId, request.listId());
@@ -101,6 +105,7 @@ public class WatchItemService {
         Map<String, WatchItem> bySymbol = new HashMap<>();
         for (WatchItem i : items.findByListIdOrderByPositionAscIdAsc(listId)) bySymbol.put(i.getSymbol(), i);
         int position = items.maxPosition(listId);
+        long total = items.countByUser(userId);
         int created = 0;
         int updated = 0;
         for (int n = 0; n < rows.size(); n++) {
@@ -120,6 +125,7 @@ public class WatchItemService {
             if (item == null) {
                 item = new WatchItem();
                 item.setList(list);
+                Quotas.check(++total, Quotas.MAX_WATCH_ITEMS, "valores vigilados");
                 item.setPosition(++position);
                 bySymbol.put(request.symbol(), item);
                 created++;

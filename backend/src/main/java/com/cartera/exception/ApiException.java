@@ -34,6 +34,11 @@ public class ApiException extends RuntimeException {
         return new ApiException(HttpStatus.FORBIDDEN, message);
     }
 
+    /** Se ha superado un tope por cuenta (ver {@code Quotas}): 422, no un fallo ni un conflicto. */
+    public static ApiException limit(String message) {
+        return new ApiException(HttpStatus.UNPROCESSABLE_CONTENT, message);
+    }
+
     public static ApiException busy(String message) {
         return new ApiException(HttpStatus.TOO_MANY_REQUESTS, message);
     }
