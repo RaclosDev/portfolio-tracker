@@ -13,6 +13,7 @@ import com.cartera.service.SettingsService;
 import com.cartera.service.VisitedService;
 import com.cartera.service.market.MarketService;
 import com.cartera.service.market.YahooProvider;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -43,6 +44,12 @@ public class WatchlistViewService {
     private final SettingsService settings;
     private final MarketService market;
     private final TransactionTemplate tx;
+    /**
+     * ISIN ya guardados en la base de datos (valor@ISIN). El vigilante trabaja con los valores en memoria, que siguen
+     * sin ISIN hasta la recarga: sin esta marca escribiría lo mismo cada 10 s y la base de datos no podría dormirse.
+     */
+    private final Set<String> isinsSaved = java.util.Collections.newSetFromMap(
+            Caffeine.newBuilder().maximumSize(20_000).<String, Boolean>build().asMap());
 
     /**
      * {@code maxAgeMs}: antigüedad máxima de los precios (más corta con la lista en pantalla), o null para la normal.
@@ -100,7 +107,11 @@ public class WatchlistViewService {
             // Sin ISIN guardado, el de la cotización se queda en el valor: así el logo no depende de qué fuente
             // conteste la próxima vez (Yahoo no lo trae).
             if (item.isin() == null && quote != null && quote.isin() != null) {
-                if (item.id() > 0) tx.executeWithoutResult(st -> items.fillIsin(item.id(), item.symbol(), quote.isin()));
+                String saved = item.id() + "@" + quote.isin();
+                if (item.id() > 0 && !isinsSaved.contains(saved)) {
+                    tx.executeWithoutResult(st -> items.fillIsin(item.id(), item.symbol(), quote.isin()));
+                    isinsSaved.add(saved);
+                }
                 shown = shown.withIsin(quote.isin());
             }
             out.add(new WatchlistView.Row(shown, quote, t, Metrics.compute(item, quote, t, fxRate, s, today)));
