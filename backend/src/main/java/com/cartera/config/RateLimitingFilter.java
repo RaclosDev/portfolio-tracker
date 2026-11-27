@@ -35,11 +35,15 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 
     private static final String AUTH_PREFIX = "/api/auth/";
     private static final String GLOBAL = "*";
+    private static final String LOGO_PREFIX = "/api/public/logo/";
+    /** Logos por IP y minuto: una lista larga pide decenas a la vez, pero no cientos. */
+    static final int MAX_LOGOS_PER_MINUTE = 240;
 
     private final boolean enabled;
     private final Cache<String, AtomicInteger> logins = window(Duration.ofMinutes(15));
     private final Cache<String, AtomicInteger> registrations = window(Duration.ofHours(1));
     private final Cache<String, AtomicInteger> burst = window(Duration.ofMinutes(1));
+    private final Cache<String, AtomicInteger> logoRequests = window(Duration.ofMinutes(1));
 
     private final int trustedProxyHops;
 
@@ -56,7 +60,9 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = UrlPathHelper.defaultInstance.getPathWithinApplication(request);
-        return !enabled || !"POST".equalsIgnoreCase(request.getMethod()) || !path.startsWith(AUTH_PREFIX)
+        if (!enabled) return true;
+        if ("GET".equalsIgnoreCase(request.getMethod())) return !path.startsWith(LOGO_PREFIX);
+        return !"POST".equalsIgnoreCase(request.getMethod()) || !path.startsWith(AUTH_PREFIX)
                 || path.startsWith("/api/auth/session/");
     }
 
@@ -66,9 +72,15 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         String ip = clientIp(request);
         String path = UrlPathHelper.defaultInstance.getPathWithinApplication(request);
         // El total es solo un techo de seguridad: alto para que un único atacante no deje fuera a todos.
-        boolean allowed = take(burst, ip, 30) && take(burst, GLOBAL, 600);
-        if (allowed && path.equals("/api/auth/password/login")) allowed = take(logins, ip, 10);
-        if (allowed && path.equals("/api/auth/password/register")) allowed = take(registrations, ip, 5) && take(registrations, GLOBAL, 30);
+        boolean allowed;
+        if (path.startsWith(LOGO_PREFIX)) {
+            // Logos públicos (cada ISIN desconocido cuesta una búsqueda a una API externa): tope por IP.
+            allowed = take(logoRequests, ip, MAX_LOGOS_PER_MINUTE);
+        } else {
+            allowed = take(burst, ip, 30) && take(burst, GLOBAL, 600);
+            if (allowed && path.equals("/api/auth/password/login")) allowed = take(logins, ip, 10);
+            if (allowed && path.equals("/api/auth/password/register")) allowed = take(registrations, ip, 5) && take(registrations, GLOBAL, 30);
+        }
         if (allowed) {
             chain.doFilter(request, response);
             return;

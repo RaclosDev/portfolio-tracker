@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.Locale;
 
 /**
  * Logo de un valor por su ISIN: redirige al SVG de Financial Hub, la misma fuente que los precios. Sin sesión,
@@ -29,10 +30,13 @@ public class PublicLogoController {
 
     @GetMapping("/{isin}")
     public ResponseEntity<Void> logo(@PathVariable String isin) {
-        if (!Isin.isIsin(isin)) return ResponseEntity.notFound().build();
+        // Un ISIN con el dígito de control mal no existe: se descarta sin gastar una búsqueda externa.
+        if (!Isin.hasValidCheckDigit(isin)) {
+            return ResponseEntity.notFound().cacheControl(CacheControl.maxAge(Duration.ofDays(1)).cachePublic()).build();
+        }
         String url;
         try {
-            url = financialHub.logoUrl(isin);
+            url = financialHub.logoUrl(isin.trim().toUpperCase(Locale.ROOT));
         } catch (RuntimeException e) {
             log.debug("Logo de {} no disponible: {}", isin, e.getMessage());
             // Fallo pasajero (límite de la API): el navegador lo reintenta pronto.
