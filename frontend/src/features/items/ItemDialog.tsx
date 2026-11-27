@@ -6,7 +6,7 @@ import { useDeleteItem, useSaveItem } from '../../api/hooks.ts';
 import { Dialog } from '../../components/Dialog.tsx';
 import { toast } from '../../components/feedback.tsx';
 import { DateField } from '../../components/DateField.tsx';
-import { MINOR_CURRENCY, money, num, parseDecimal, pct, price, shortDate } from '../../lib/format.ts';
+import { MINOR_CURRENCY, firstInvalidNumber, money, num, parseDecimal, pct, price, shortDate } from '../../lib/format.ts';
 import type { OperationDraft } from '../cartera/OperationDialog.tsx';
 import { SymbolPicker } from './SymbolPicker.tsx';
 import { boughtDraft } from './boughtDraft.ts';
@@ -102,7 +102,10 @@ export function ItemDialog({ listId, row, settings, fx, onClose, onBought, prefi
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    const buyPrices = levels.map(parseDecimal).filter((v): v is number => v != null && v > 0);
+    // Un número mal escrito no se trata como «vacío»: borraría el dato que ya había.
+    const bad = firstInvalidNumber([...levels, orderPrice, brokerTarget, invest, shares]);
+    if (bad != null) return setError(`«${bad}» no es un número válido.`);
+    const buyPrices = levels.map((v) => parseDecimal(v)).filter((v): v is number => v != null && v > 0);
     const data: ItemInput = {
       listId,
       symbol: symbol.trim(),

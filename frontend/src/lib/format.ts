@@ -101,16 +101,26 @@ export function timeAgo(iso: string | null | undefined, now = Date.now()) {
   return `hace ${Math.round(h / 24)} días`;
 }
 
-/** Acepta "8,5", "8.5", "1.234,5" o "1,234.5". Devuelve null si está vacío o no es un número. */
-export function parseDecimal(input: string): number | null {
+/**
+ * Acepta "8,5", "8.5", "1.234,5" o "1,234.5". Devuelve null si está vacío o no es un número.
+ * Con `thousandsDot` (ficheros de datos, no lo que se teclea), un punto seguido de tres cifras
+ * justas es separador de miles: «1.500» es 1500 y «1.234.567» es 1234567. «0.500» sigue siendo 0,5.
+ */
+export function parseDecimal(input: string, opts: { thousandsDot?: boolean } = {}): number | null {
   const t = input.trim().replace(/\s|€|\$/g, '');
   if (!t) return null;
+  if (opts.thousandsDot && /^[+-]?[1-9]\d{0,2}(\.\d{3})+(,\d+)?$/.test(t)) return parseDecimal(t.replace(/\./g, ''));
   const lastComma = t.lastIndexOf(',');
   const lastDot = t.lastIndexOf('.');
   const normalized =
     lastComma > lastDot ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '');
   const n = Number(normalized);
   return Number.isFinite(n) ? n : null;
+}
+
+/** El primer texto escrito que no es un número mayor que cero («45,2 USD»), o null si todos valen o están vacíos. */
+export function firstInvalidNumber(values: readonly string[]): string | null {
+  return values.find((v) => v.trim() && !((parseDecimal(v) ?? 0) > 0)) ?? null;
 }
 
 /** Divisas que cotizan en centésimas (Londres en peniques, etc.). */

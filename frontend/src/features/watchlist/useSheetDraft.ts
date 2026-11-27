@@ -3,7 +3,7 @@ import { useState, type FormEvent, type KeyboardEvent } from 'react';
 import { ApiError } from '../../api/client.ts';
 import { useSaveItem } from '../../api/hooks.ts';
 import { toast } from '../../components/feedback.tsx';
-import { parseDecimal } from '../../lib/format.ts';
+import { firstInvalidNumber, parseDecimal } from '../../lib/format.ts';
 
 const str = (v: number | null | undefined) => (v == null ? '' : String(v).replace('.', ','));
 
@@ -45,9 +45,9 @@ export function useSheetDraft(row: WatchlistRow, onDone: () => void) {
   const submit = async (e?: FormEvent) => {
     e?.preventDefault();
     setError(null);
-    const bad = [...d.levels, d.orderPrice, d.brokerTarget, d.invest, d.shares].find((v) => v.trim() && !(parseDecimal(v)! > 0));
+    const bad = firstInvalidNumber([...d.levels, d.orderPrice, d.brokerTarget, d.invest, d.shares]);
     if (bad != null) return setError(`«${bad}» no es un número válido.`);
-    const buyPrices = d.levels.map(parseDecimal).filter((v): v is number => v != null && v > 0);
+    const buyPrices = d.levels.map((v) => parseDecimal(v)).filter((v): v is number => v != null && v > 0);
     const data: ItemPatch = {
       buyPrices,
       orderActive: d.orderActive,

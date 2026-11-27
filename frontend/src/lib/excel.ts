@@ -4,7 +4,7 @@
  */
 import { OPERATION_LABELS, type CarteraValuation, type Operation, type TaxYear, type WatchlistView } from '@/shared';
 import type { Cell, Row, Sheet } from 'write-excel-file/browser';
-import { parseCsv, type Cell as InCell } from './importTable.ts';
+import { decodeCsv, parseCsv, type Cell as InCell } from './importTable.ts';
 
 const ORDER_FILL = '#FFF2A8';
 const FX_TEXT = '#1F4E9E';
@@ -184,6 +184,7 @@ export async function exportRenta(y: TaxYear, names: Map<string, string>) {
     line('Ganancias patrimoniales', y.gains),
     line('Pérdidas patrimoniales', y.losses),
     line('Saldo de ganancias y pérdidas', y.gpBalance, { fontWeight: 'bold' }),
+    ...(y.shortTermBalance !== 0 ? [line('Informativo: de un año o menos (base general, fuera de la cuota)', y.shortTermBalance)] : []),
     line('Rendimientos íntegros (dividendos y primas)', y.rcmGross),
     line('Gastos deducibles (comisiones)', -y.rcmFees),
     line('Saldo de rendimientos', y.rcmBalance, { fontWeight: 'bold' }),
@@ -192,10 +193,10 @@ export async function exportRenta(y: TaxYear, names: Map<string, string>) {
     line('Base imponible del ahorro', y.taxBase, BOLD),
     line('Cuota estimada', y.taxEstimate),
     line('Retenciones en España', y.withholdingEs),
-    line('  de ellas estimadas al 19 %', y.withholdingEsEstimated),
+    line('  de ellas estimadas al 19 % (bróker español)', y.withholdingEsEstimated),
     line('Deducción por doble imposición (estimada)', y.foreignDeduction),
     line('Resultado estimado (+ a pagar / − a devolver)', y.balanceEstimate, BOLD),
-    line('Informativo: pérdidas aplazadas por la regla de los dos meses', y.deferred),
+    line('Informativo: pérdidas aplazadas por la regla de recompra', y.deferred),
     line('Informativo: pérdidas aplazadas antes que se integran (ya incluidas)', y.released),
     ...y.carriedPending.map((c) => line(`${c.kind === 'rcm' ? 'Saldo negativo de RCM' : 'Pérdidas'} de ${c.year} pendientes de compensar`, c.amount)),
   ];
@@ -248,7 +249,7 @@ export interface ReadSheet {
 /** Lee un .xlsx (todas las hojas) o un .csv/.txt (una hoja). */
 export async function readSpreadsheet(file: File): Promise<ReadSheet[]> {
   if (/\.(csv|txt|tsv)$/i.test(file.name)) {
-    return [{ name: file.name.replace(/\.[^.]+$/, ''), data: parseCsv(await file.text()) }];
+    return [{ name: file.name.replace(/\.[^.]+$/, ''), data: parseCsv(decodeCsv(await file.arrayBuffer())) }];
   }
   const { default: readXlsxFile } = await import('read-excel-file/browser');
   const sheets = await readXlsxFile(file);

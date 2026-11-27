@@ -13,6 +13,7 @@ import { Dialog } from './components/Dialog.tsx';
 import { toastError } from './components/feedback.tsx';
 import { StatusFilter, filterRow, type Filter } from './features/watchlist/StatusFilter.tsx';
 import { WatchlistTable, type Tag } from './features/watchlist/WatchlistTable.tsx';
+import { activeFilterCount } from './features/watchlist/filterState.ts';
 import { TagFilters, filterMarket, rowType, type MarketFilter, type TypeFilter } from './features/watchlist/TagFilters.tsx';
 import { num, timeAgo } from './lib/format.ts';
 import { applyAppearance, applyColors } from './lib/theme.ts';
@@ -227,11 +228,12 @@ export function App() {
       ? setCurrencyFilter((c) => (c === tag.value ? 'all' : tag.value))
       : setTypeFilter((t) => (t === tag.value ? 'all' : tag.value));
 
-  const activeFilters = [filter, typeFilter, currencyFilter].filter((value) => value !== 'all').length;
+  const activeFilters = activeFilterCount({ status: filter, type: typeFilter, currency: currencyFilter, market: marketFilter });
   const clearFilters = () => {
     setFilter('all');
     setTypeFilter('all');
     setCurrencyFilter('all');
+    setMarketFilter('all');
   };
   const locateRow = (id: number) => {
     if (rows.some((row) => row.item.id === id)) {
@@ -282,6 +284,7 @@ export function App() {
       setSearch('');
       setTypeFilter('all');
       setCurrencyFilter('all');
+      setMarketFilter('all');
     }
     setTourOpen(true);
   };
