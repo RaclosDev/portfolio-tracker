@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -38,4 +39,9 @@ public class ChartDrawings {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(nullable = false)
     private String drawings;
+
+    /** Sube con cada cambio: el cliente la devuelve en If-Match y, si ya no coincide, no se sobrescribe. */
+    @Version
+    @Column(nullable = false)
+    private Long version;
 }

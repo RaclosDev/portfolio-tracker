@@ -23,6 +23,7 @@ import {
 } from 'lightweight-charts';
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type MutableRefObject } from 'react';
 import { api } from '../../api/client.ts';
+import { drawingsQuery, drawingsSave } from './drawingsQuery.ts';
 import type { ChartLine, ChartMark } from './chartLines.ts';
 import { decimals } from '../../lib/format.ts';
 import {
@@ -235,12 +236,13 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
-  const drawingsQ = useQuery({ queryKey: ['drawings', symbol], queryFn: () => api.drawings(symbol), staleTime: Infinity });
-  const save = useMutation({
-    mutationFn: (next: ChartDrawing[]) => api.saveDrawings(symbol, next),
-    onMutate: (next) => qc.setQueryData(['drawings', symbol], next),
-    onError: () => qc.invalidateQueries({ queryKey: ['drawings', symbol] }),
-  });
+  const drawingsQ = useQuery(drawingsQuery(symbol));
+  /**
+   * Hasta que los dibujos del valor se han cargado bien no se puede dibujar: guardar sobre una lista que no se
+   * conoce (cargando o fallida) sustituiría en el servidor todos los dibujos anteriores (ver `drawingsSave`).
+   */
+  const drawingsReady = drawingsQ.isSuccess;
+  const save = useMutation(drawingsSave(qc, symbol));
   const drawings = drawingsQ.data ?? NO_DRAWINGS;
   const recent = candlesQ.data?.candles ?? NO_CANDLES;
   /** Toda la historia del valor: se pide solo al alejar el gráfico hasta el principio de los cinco años. */
@@ -316,7 +318,9 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
   const [stay, setStay] = useState(false);
   const [lockAll, setLockAll] = useState(false);
   const [hidden, setHidden] = useState(false);
-  const [tool, setTool] = useState<Tool>('cursor');
+  const [pickedTool, setTool] = useState<Tool>('cursor');
+  // Sin los dibujos cargados solo valen el cursor y la regla (que no guarda nada).
+  const tool: Tool = drawingsReady || pickedTool === 'measure' ? pickedTool : 'cursor';
   const [selected, setSelected] = useState<string | null>(null);
   const [pending, setPending] = useState<ChartPoint[]>([]);
   const [groupTool, setGroupTool] = useState<Record<string, DrawTool>>({});
@@ -378,12 +382,14 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
 
   /** Guarda los dibujos y apunta el estado anterior para deshacer. */
   const commit = (next: ChartDrawing[]) => {
+    if (!drawingsReady) return;
     undoRef.current = [...undoRef.current.slice(-99), drawings];
     redoRef.current = [];
     save.mutate(next);
     rerender();
   };
   const undo = () => {
+    if (!drawingsReady) return;
     const prev = undoRef.current.at(-1);
     if (!prev) return;
     undoRef.current = undoRef.current.slice(0, -1);
@@ -393,6 +399,7 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
     rerender();
   };
   const redo = () => {
+    if (!drawingsReady) return;
     const next = redoRef.current.at(-1);
     if (!next) return;
     redoRef.current = redoRef.current.slice(0, -1);
@@ -926,6 +933,7 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
   }, [menu]);
 
   const chooseTool = (t: Tool) => {
+    if (!drawingsReady && t !== 'cursor' && t !== 'measure') return;
     const next = t !== 'cursor' && t === tool ? 'cursor' : t;
     setTool(next);
     setPending([]);
@@ -1073,8 +1081,8 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
     (intraday ? intradayQ.data?.stale : candlesQ.data?.stale) && 'Datos guardados: la fuente no responde',
     save.isError && 'No se pudo guardar el dibujo',
   ].filter((n): n is string => !!n);
-  const toggle = (icon: IconName, label: string, on: boolean, onClick: () => void) => (
-    <button type="button" className={on ? 'on' : ''} aria-pressed={on} title={label} aria-label={label} onClick={onClick}>
+  const toggle = (icon: IconName, label: string, on: boolean, onClick: () => void, disabled = false) => (
+    <button type="button" className={on ? 'on' : ''} aria-pressed={on} title={label} aria-label={label} disabled={disabled} onClick={onClick}>
       <ChartIcon name={icon} />
     </button>
   );
@@ -1149,7 +1157,7 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
             const cur = groupTool[g.id] ?? g.tools[0]!;
             return (
               <div className="xp-candles__group" key={g.id}>
-                {toggle(cur, toolTitle(cur), tool === cur, () => chooseTool(cur))}
+                {toggle(cur, toolTitle(cur), tool === cur, () => chooseTool(cur), !drawingsReady && cur !== 'measure')}
                 {g.tools.length > 1 && (
                   <button
                     type="button"
@@ -1194,6 +1202,16 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
               <p className="muted small xp-candles__msg">No hay velas de {STEP_LABEL[step]} de este valor en las fuentes de datos.</p>
             )}
           </div>
+          {(drawingsQ.isError || drawingsQ.isPending) && (
+            <p className="xp-candles__drawnote muted small" role={drawingsQ.isError ? 'alert' : 'status'}>
+              {drawingsQ.isError ? (
+                <>
+                  No se han podido cargar tus dibujos, así que dibujar está desactivado.{' '}
+                  <button type="button" className="btn btn--small" onClick={() => void drawingsQ.refetch()}>Reintentar</button>
+                </>
+              ) : 'Cargando tus dibujos…'}
+            </p>
+          )}
           {hasData && (
             <Legend name={name} step={shown} bars={bars} flat={flat} indicators={visibleInd} indData={indData} precision={precision} setter={legendRef} />
           )}
@@ -1211,7 +1229,7 @@ export function CandleChart({ symbol, name, price: quoted, lines, tvSymbol, mark
         {flyoutGroup && (
           <div className="xp-candles__flyout" role="menu" aria-label={flyoutGroup.label} style={{ top: flyout.top }}>
             {flyoutGroup.tools.map((t) => (
-              <button key={t} type="button" role="menuitemradio" aria-checked={tool === t} className={tool === t ? 'on' : ''} onClick={() => chooseTool(t)}>
+              <button key={t} type="button" role="menuitemradio" aria-checked={tool === t} className={tool === t ? 'on' : ''} disabled={!drawingsReady && t !== 'measure'} onClick={() => chooseTool(t)}>
                 <ChartIcon name={t} />
                 <span>{TOOL_INFO[t][0]}</span>
                 {TOOL_INFO[t][1] && <kbd>{TOOL_INFO[t][1]}</kbd>}

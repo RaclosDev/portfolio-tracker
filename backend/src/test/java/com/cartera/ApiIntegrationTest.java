@@ -28,7 +28,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -208,6 +210,40 @@ class ApiIntegrationTest {
         assertThat(second).isNotSameAs(first);
         assertThat(second.lists()).flatMap(AlertWorkset.ListData::items).singleElement()
                 .satisfies(i -> assertThat(i.orderPrice()).isEqualTo(4.2));
+    }
+
+    @Test
+    void drawingsRefuseToOverwriteWhatAnotherDeviceSaved() throws Exception {
+        String token = register("dibujos-" + UUID.randomUUID() + "@test.invalid");
+        String a = "{\"id\":\"a\",\"type\":\"hline\",\"points\":[{\"t\":\"2026-01-02\",\"p\":10.5}]}";
+        String b = "{\"id\":\"b\",\"type\":\"hline\",\"points\":[{\"t\":\"2026-01-02\",\"p\":12.5}]}";
+
+        // Valor sin dibujos: lista vacía y una versión que ninguna fila guardada tendrá.
+        String empty = mvc.perform(auth(get("/api/drawings/SAN.MC"), token)).andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty()).andReturn().getResponse().getHeader(HttpHeaders.ETAG);
+        assertThat(empty).isEqualTo("\"new\"");
+
+        String v1 = mvc.perform(auth(put("/api/drawings/SAN.MC"), token).header(HttpHeaders.IF_MATCH, empty)
+                        .contentType(MediaType.APPLICATION_JSON).content("[" + a + "]"))
+                .andExpect(status().isOk()).andReturn().getResponse().getHeader(HttpHeaders.ETAG);
+        // Quien aún cree que no hay nada (la carga falló o va tarde) no puede sustituir la lista por [b].
+        mvc.perform(auth(put("/api/drawings/SAN.MC"), token).header(HttpHeaders.IF_MATCH, empty)
+                        .contentType(MediaType.APPLICATION_JSON).content("[" + b + "]"))
+                .andExpect(status().isConflict());
+        mvc.perform(auth(get("/api/drawings/SAN.MC"), token)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].id").value("a"))
+                .andExpect(header().string(HttpHeaders.ETAG, v1));
+
+        // Con la versión al día se guarda y la versión cambia; la anterior ya no vale.
+        String v2 = mvc.perform(auth(put("/api/drawings/SAN.MC"), token).header(HttpHeaders.IF_MATCH, v1)
+                        .contentType(MediaType.APPLICATION_JSON).content("[" + a + "," + b + "]"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2))
+                .andReturn().getResponse().getHeader(HttpHeaders.ETAG);
+        assertThat(v2).isNotEqualTo(v1);
+        mvc.perform(auth(put("/api/drawings/SAN.MC"), token).header(HttpHeaders.IF_MATCH, v1)
+                        .contentType(MediaType.APPLICATION_JSON).content("[" + a + "]"))
+                .andExpect(status().isConflict());
+        mvc.perform(auth(get("/api/drawings/SAN.MC"), token)).andExpect(jsonPath("$.length()").value(2));
     }
 
     private static final String PASSWORD = "una-contraseña-de-prueba-larga";
